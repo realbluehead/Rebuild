@@ -17,6 +17,7 @@ caselles de costat); es comença al més proper i el següent es desbloqueja en 
   arribar-hi i amb la pestanya Obres es fan llibres (velocitat), discos (or) i àlbums (bodega): bonus ×1,1 per obra, cost ×1,9 cada cop.
 - Radar: els objectes fins a `radar` anells més enllà els va a buscar un robot (`trip` 'detour', al pas d'explorar; la casella queda fosca).
   `radarNext` és l'índex del primer objecte que el radar no ha repassat. Al mapa parpellegen fins al doble de l'abast.
+- Si el robot surt de la vista, una fletxa a la vora (lluny dels botons) hi apunta; tocant-la s'hi va. El mapa mai es mou sol.
 - Or per terreny: llegenda a l'ajuda i un toc al mapa diu el terreny i quant val la casella.
 - La casella que un robot explora va agafant color (segona meitat del pas; la primera hi camina). Ajuda: botó ? i menú; surt sola a la primera partida.
 - Regles dels robots: surten del campament (casella inicial); **només descobreixen la casella contigua** i una casella

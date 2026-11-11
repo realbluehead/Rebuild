@@ -53,6 +53,8 @@ export class MapView {
   private logicalPerCss = 1;
   /** Si s'ha demanat anar al robot: la càmera hi vola fins que el jugador la torna a moure. */
   private flying = false;
+  /** On s'ha dibuixat la fletxa que apunta al robot quan és fora de la vista (px lògics), per poder-la tocar. */
+  private pointer: { x: number; y: number } | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private w: World, zoom: number) {
     this.ctx = canvas.getContext('2d')!;
@@ -126,6 +128,15 @@ export class MapView {
     const y = Math.floor(this.camY + (ly - this.H / 2) / this.cellPx);
     const size = this.w.size;
     return x < 0 || y < 0 || x >= size || y >= size ? -1 : y * size + x;
+  }
+
+  /** Si un toc (coordenades de client) cau sobre la fletxa del robot fora de la vista. */
+  hitsPointer(clientX: number, clientY: number): boolean {
+    if (!this.pointer) return false;
+    const rect = this.canvas.getBoundingClientRect();
+    const lx = ((clientX - rect.left) / rect.width) * this.W;
+    const ly = ((clientY - rect.top) / rect.height) * this.H;
+    return Math.abs(lx - this.pointer.x) < 20 && Math.abs(ly - this.pointer.y) < 20;
   }
 
   popup(rank: number, text: string, now: number): void {
@@ -376,6 +387,51 @@ export class MapView {
         ctx.fillRect(sx - 1, sy - 1, 3, 3);
       }
     });
+
+    // Si el robot surt de la vista, una fletxa a la vora indica cap on és (tocant-la, s'hi va).
+    this.pointer = null;
+    const lead = this.bots[0];
+    if (lead) {
+      const rx = (lead.x - left) * cp;
+      const ry = (lead.y - top) * cp;
+      const m = 4;
+      if (rx < m || ry < m || rx > W - m || ry > H - m) {
+        // Zona on pot anar la fletxa: lluny dels botons de zoom (dreta) i dels panells de baix.
+        const css = this.logicalPerCss;
+        const x0 = 18, y0 = 18, x1 = W - Math.max(18, 60 * css), y1 = H - Math.max(18, 60 * css);
+        const cx0 = (x0 + x1) / 2;
+        const cy0 = (y0 + y1) / 2;
+        const dx = rx - cx0;
+        const dy = ry - cy0;
+        const k = Math.min((x1 - x0) / 2 / Math.max(1e-6, Math.abs(dx)), (y1 - y0) / 2 / Math.max(1e-6, Math.abs(dy)));
+        const ax = Math.round(cx0 + dx * k);
+        const ay = Math.round(cy0 + dy * k);
+        this.pointer = { x: ax, y: ay };
+        const ang = Math.atan2(dy, dx);
+        const pulse = Math.floor(now / 350) % 2;
+        ctx.save();
+        ctx.translate(ax, ay);
+        // Fons rodó amb el robot petit a dins
+        ctx.fillStyle = '#1b1420';
+        ctx.fillRect(-10, -10, 20, 20);
+        ctx.fillStyle = pulse ? '#f2c14e' : '#b37a2a';
+        ctx.fillRect(-9, -9, 18, 18);
+        ctx.fillStyle = '#1b1420';
+        ctx.fillRect(-8, -8, 16, 16);
+        const icon = this.robot[0];
+        ctx.drawImage(icon, -(icon.width >> 1), -(icon.height >> 1));
+        // Fletxa cap al robot
+        ctx.rotate(ang);
+        ctx.fillStyle = pulse ? '#f2c14e' : '#b37a2a';
+        ctx.beginPath();
+        ctx.moveTo(17, 0);
+        ctx.lineTo(11, -5);
+        ctx.lineTo(11, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
 
     // Textos flotants (or dels llocs especials).
     ctx.font = '8px "Press Start 2P", monospace'; // font de 8 px: queda nítida al canvas lògic

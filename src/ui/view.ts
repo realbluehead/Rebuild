@@ -171,6 +171,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   };
 
   function cellInfo(cx: number, cy: number) {
+    if (map.hitsPointer(cx, cy)) { map.goToRobot(); return; }
     const i = map.cellAt(cx, cy);
     const s = current;
     if (i < 0 || !s) return;
@@ -298,7 +299,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     sec('El mapa',
       'Arrossega el mapa amb el dit o el ratolí, o mou-te amb les fletxes o WASD.',
       'Zoom: botons + i −, la roda del ratolí o pessigant. Hi ha 4 zooms; el següent s\'obre quan has explorat el 80% del que es veu (la barra de baix a l\'esquerra).',
-      'El botó del robot (o l\'espai) porta la vista on és el robot.');
+      'El botó del robot (o l\'espai) porta la vista on és el robot. Si el robot surt de la pantalla, una fletxa a la vora indica cap on és: toca-la per anar-hi.');
     sec('Altres',
       'Vel ×N: accelera el temps del joc per provar-lo.',
       'Si tanques el joc, els robots continuen (fins a 24 hores) i en tornar veus què han trobat.',
