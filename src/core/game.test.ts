@@ -106,8 +106,11 @@ describe('joc', () => {
 
   it('els passos avancen proporcionalment al temps i el campament es descobreix al primer pas', () => {
     const s = newGame(42);
-    tick(s, world, 10);
-    expect(s.bots[0].prog).toBeCloseTo(stats(s).speed * 10);
+    // Prou poc temps perquè no acabi l'anell del campament (i no comenci el viatge de tornada).
+    const sec = 0.5 / stats(s).speed;
+    tick(s, world, sec);
+    expect(s.bots[0].prog).toBeCloseTo(0.5);
+    expect(s.bots[0].trip).toBe('explore');
     expect(explored(s, world)).toBeGreaterThan(0);
     // El bluetreri el porten els robots fins que el descarreguen al campament.
     expect(s.gold.toNumber() + carried(s)).toBeCloseTo(goldBetween(world, 0, explored(s, world)));
@@ -137,16 +140,17 @@ describe('joc', () => {
     s.upgrades.explorers = 2;
     s.upgrades.speed = 12;
     let staggered = 0;
+    let cargoDiffers = 0;
     for (let k = 0; k < 20000 && explored(s, world) < 3000; k++) {
       tick(s, world, 0.2);
-      const trips = new Set(s.bots.map((b) => b.trip));
-      if (s.bots.length === 3 && trips.size > 1) staggered++;
+      if (s.bots.length !== 3) continue;
+      // En molts moments no tots fan el mateix, i cadascun porta la seva càrrega.
+      if (new Set(s.bots.map((b) => b.trip)).size > 1) staggered++;
+      if (new Set(s.bots.map((b) => b.cargo.toFixed(6))).size > 1) cargoDiffers++;
     }
     expect(s.bots.length).toBe(3);
     expect(staggered).toBeGreaterThan(50);
-    // Cada robot té la seva càrrega.
-    const cargos = s.bots.map((b) => b.cargo);
-    expect(new Set(cargos.map((c) => c.toFixed(6))).size).toBeGreaterThan(1);
+    expect(cargoDiffers).toBeGreaterThan(50);
   });
 
   it('un tick llarg dona el mateix que molts de curts (offline exacte)', () => {
