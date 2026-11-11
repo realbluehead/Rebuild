@@ -10,19 +10,21 @@ export interface TerrainDef {
   name: string;
   /** Or base per casella descoberta. */
   value: number;
-  /** Com costa travessar-lo (≥ 1): l'exploració avança més de pressa per terrenys fàcils. */
+  /** Com costa travessar-lo (≥ 1) per decidir l'ordre d'exploració (els terrenys fàcils primer). */
   cost: number;
+  /** Rugositat: quants passos costa explorar-ne una casella (1 = carrer net). */
+  rough: number;
 }
 
 export const TERRAINS: readonly TerrainDef[] = [
-  { name: 'Aigües fosques', value: 0.2, cost: 1.6 },
-  { name: 'Aigua tòxica', value: 0.4, cost: 1.3 },
-  { name: 'Runa', value: 1, cost: 1.1 },
-  { name: 'Carrers', value: 1, cost: 1 },
-  { name: 'Selva urbana', value: 2, cost: 1.3 },
-  { name: 'Edificis en ruïnes', value: 2, cost: 1.4 },
-  { name: 'Gratacels', value: 3, cost: 1.9 },
-  { name: 'Abocador tòxic', value: 2.5, cost: 1.7 },
+  { name: 'Dark water', value: 0.2, cost: 1.6, rough: 3 },
+  { name: 'Toxic water', value: 0.4, cost: 1.3, rough: 2.2 },
+  { name: 'Rubble', value: 1, cost: 1.1, rough: 1.6 },
+  { name: 'Streets', value: 1, cost: 1, rough: 1 },
+  { name: 'Urban jungle', value: 2, cost: 1.3, rough: 1.8 },
+  { name: 'Ruined blocks', value: 2, cost: 1.4, rough: 2 },
+  { name: 'Towers', value: 3, cost: 1.9, rough: 2.6 },
+  { name: 'Toxic dump', value: 2.5, cost: 1.7, rough: 2.2 },
 ];
 
 /** Probabilitat que una casella de terra tingui un lloc especial (cofre o ruïnes). */
@@ -40,10 +42,10 @@ export interface ZoomDef {
 
 /** Del més proper (1) al més llunyà (4). Cada nivell veu 4× més de costat. */
 export const ZOOMS: readonly ZoomDef[] = [
-  { name: 'Carrer', view: 16 },
-  { name: 'Barri', view: 64 },
-  { name: 'Ciutat', view: 256 },
-  { name: 'Metròpoli', view: 1024 },
+  { name: 'Street', view: 16 },
+  { name: 'District', view: 64 },
+  { name: 'City', view: 256 },
+  { name: 'Metropolis', view: 1024 },
 ];
 
 /** Fracció del quadrat d'un zoom que cal descobrir per desbloquejar el següent. */

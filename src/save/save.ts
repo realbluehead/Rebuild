@@ -2,13 +2,15 @@
 //   1. puja SAVE_VERSION
 //   2. afegeix la migració (vN → vN+1) a MIGRATIONS
 //   3. afegeix un test amb una partida antiga real a save.test.ts
-// v1: primera versió publicada. v2: els robots carreguen l'or i el porten al campament (bodega).
+// v1: primera versió publicada. v2: els robots carreguen el bluetreri i el porten al campament (bodega).
 // v3: objectes (pàgines, notes, fotos), obres (llibres, discos, àlbums) i el radar que desvia els robots.
+// v4: robots independents (cadascun amb càrrega, viatge i arc); `walked` passa a `legacyWalked` i es converteix
+//     en carregar el món (`fromLegacy`).
 import { D } from '../core/decimal';
-import { newGame, type GameState, type Trip } from '../core/state';
+import { newBot, newGame, type Bot, type GameState, type Trip } from '../core/state';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** Forma JSON de la partida: els Decimal es guarden com a text. */
 export interface SaveData {
@@ -16,22 +18,17 @@ export interface SaveData {
   /** Moment del desat (ms epoch), per calcular el progrés offline. */
   savedAt: number;
   seed: number;
-  /** Passos fets pels robots. */
-  walked: number;
+  ring: number;
+  ringRobots: number;
+  bots: Bot[];
+  /** Només en partides migrades de v3 o abans: passos totals antics. */
+  legacyWalked?: number;
   gold: string;
   totalGold: string;
   upgrades: Record<string, number>;
-  /** v2: or que porten els robots i en quina part del viatge són. */
-  cargo: string;
-  trip: Trip;
-  travel: number;
-  travelLen: number;
-  /** v3 */
   items: Record<string, number>;
   works: Record<string, number>;
   radarNext: number;
-  /** Afegit després de la v1 inicial; si falta, 1. */
-  ringRobots?: number;
   zoomUnlocked: number;
   zoom: number;
   playTime: number;
@@ -53,6 +50,16 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     const { loot, ...rest } = (s.upgrades ?? {}) as Record<string, number>;
     return { ...s, v: 3, upgrades: { ...rest, radar: loot ?? 0 }, items: {}, works: {}, radarNext: 0 };
   },
+  // v3 → v4: robots independents. La càrrega que duia la flota es dona al primer robot; els passos totals es guarden
+  // per convertir-los en anell quan hi hagi el món.
+  3: (s) => {
+    const rest = { ...s };
+    const { walked, cargo } = rest;
+    delete rest.walked; delete rest.cargo; delete rest.trip; delete rest.travel; delete rest.travelLen;
+    const first = newBot();
+    first.cargo = Number(cargo ?? 0) || 0;
+    return { ...rest, v: 4, ring: 0, bots: [first], legacyWalked: Number(walked ?? 0) || 0 };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -60,18 +67,16 @@ export function serialize(s: GameState, now: number): SaveData {
     v: SAVE_VERSION,
     savedAt: now,
     seed: s.seed,
-    walked: s.walked,
+    ring: s.ring,
+    ringRobots: s.ringRobots,
+    bots: s.bots.map((b) => ({ ...b })),
+    ...(s.legacyWalked !== undefined ? { legacyWalked: s.legacyWalked } : {}),
     gold: s.gold.toString(),
     totalGold: s.totalGold.toString(),
     upgrades: { ...s.upgrades },
-    cargo: s.cargo.toString(),
-    trip: s.trip,
-    travel: s.travel,
-    travelLen: s.travelLen,
     items: { ...s.items },
     works: { ...s.works },
     radarNext: s.radarNext,
-    ringRobots: s.ringRobots,
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
     playTime: s.playTime,
@@ -89,26 +94,35 @@ export function migrate(raw: RawSave): SaveData {
   return s as unknown as SaveData;
 }
 
+const TRIPS: Trip[] = ['explore', 'home', 'out', 'detour'];
+const num = (x: unknown, min = 0): number => Math.max(min, Number(x) || 0);
+
 export function deserialize(raw: RawSave): { state: GameState; savedAt: number } {
   const data = migrate(raw);
   if (typeof data.seed !== 'number') throw new Error('Partida sense seed');
   const state = newGame(data.seed);
-  state.walked = Math.max(0, data.walked ?? 0);
+  state.ring = Math.floor(num(data.ring));
   state.gold = D(data.gold ?? 0);
   state.totalGold = D(data.totalGold ?? 0);
-  state.playTime = data.playTime ?? 0;
-  state.cargo = D(data.cargo ?? 0);
-  state.trip = data.trip === 'home' || data.trip === 'out' || data.trip === 'detour' ? data.trip : 'explore';
-  state.radarNext = Math.max(0, Math.floor(data.radarNext ?? 0));
-  for (const id of Object.keys(state.items) as (keyof GameState['items'])[]) state.items[id] = Math.max(0, data.items?.[id] ?? 0);
-  for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = Math.max(0, data.works?.[id] ?? 0);
-  state.travelLen = Math.max(0, data.travelLen ?? 0);
-  state.travel = Math.min(state.travelLen, Math.max(0, data.travel ?? 0));
-  state.ringRobots = Math.max(1, Math.floor(data.ringRobots ?? 1));
+  state.playTime = num(data.playTime);
+  state.radarNext = Math.floor(num(data.radarNext));
+  state.bots = (Array.isArray(data.bots) && data.bots.length ? data.bots : [newBot()]).map((b) => {
+    const bot = newBot(TRIPS.includes(b?.trip) ? b.trip : 'explore', num(b?.travelLen));
+    bot.prog = num(b?.prog);
+    bot.cargo = num(b?.cargo);
+    bot.travel = Math.min(bot.travelLen, num(b?.travel));
+    bot.target = Number.isInteger(b?.target) ? b.target : -1;
+    if (bot.trip === 'detour' && bot.target < 0) bot.trip = 'explore';
+    return bot;
+  });
+  state.ringRobots = Math.max(1, Math.floor(num(data.ringRobots, 1)));
+  if (data.legacyWalked !== undefined) state.legacyWalked = num(data.legacyWalked);
   state.zoomUnlocked = Math.min(ZOOMS.length, Math.max(1, data.zoomUnlocked ?? 1));
   state.zoom = Math.min(state.zoomUnlocked - 1, Math.max(0, data.zoom ?? 0));
   // Només les millores que encara existeixen; les noves queden a 0.
-  for (const id of Object.keys(state.upgrades) as (keyof GameState['upgrades'])[]) state.upgrades[id] = data.upgrades?.[id] ?? 0;
+  for (const id of Object.keys(state.upgrades) as (keyof GameState['upgrades'])[]) state.upgrades[id] = num(data.upgrades?.[id]);
+  for (const id of Object.keys(state.items) as (keyof GameState['items'])[]) state.items[id] = num(data.items?.[id]);
+  for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = num(data.works?.[id]);
   return { state, savedAt: data.savedAt };
 }
 

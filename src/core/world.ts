@@ -149,14 +149,16 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
 
   if (order[0] !== cy * size + cx) throw new Error('El campament ha de ser la primera casella');
 
-  // Passos: per arribar a la casella r cal anar des de la r - 1 (distància de rei: 1 si és contigua).
+  // Passos: per arribar a la casella r cal anar des de la r - 1 (distància de rei: 1 si és contigua), multiplicat
+  // per la rugositat de la casella.
   const steps = new Float64Array(n + 1);
   steps[1] = 1; // el campament mateix
   for (let r = 1; r < n; r++) {
     const p = order[r - 1];
     const q = order[r];
     const d = Math.max(Math.abs((p % size) - (q % size)), Math.abs(Math.floor(p / size) - Math.floor(q / size)));
-    steps[r + 1] = steps[r] + d;
+    // Entrar i explorar la casella costa segons la rugositat del terreny (carrers ràpids, selva i runa lents).
+    steps[r + 1] = steps[r] + d * TERRAINS[terrain[q]].rough;
   }
   const ringSteps = new Float64Array(count.length);
   for (let k = 0; k < count.length; k++) ringSteps[k] = steps[count[k]];
@@ -274,7 +276,7 @@ export function ringAt(w: World, walked: number): number {
 }
 
 /** Caselles (amb fracció) recorregudes dins de l'arc [lo, hi) quan el robot porta `t` passos del total. */
-function cellsReached(w: World, lo: number, hi: number, t: number): number {
+export function cellsReached(w: World, lo: number, hi: number, t: number): number {
   const st = w.steps;
   // m més gran amb steps[m] <= t: les caselles < m ja estan descobertes.
   let a = lo;
@@ -287,6 +289,23 @@ function cellsReached(w: World, lo: number, hi: number, t: number): number {
   if (a >= hi) return hi - lo;
   return a - lo + Math.max(0, (t - st[a]) / (st[a + 1] - st[a]));
 }
+
+/** Nombre d'anells (l'últim índex vàlid és ringCount - 1). */
+export const ringCount = (w: World): number => w.rings.length - 1;
+
+/** Primer rang de cada arc de l'anell `ring` repartit entre `robots` (n + 1 valors: l'últim és el final de l'anell). */
+export function arcStarts(w: World, ring: number, robots: number): number[] {
+  const a = w.rings[ring];
+  const len = w.rings[ring + 1] - a;
+  const arcs = Math.max(1, Math.min(robots, len));
+  const starts: number[] = [];
+  for (let k = 0; k <= arcs; k++) starts.push(a + Math.floor((k * len) / arcs));
+  return starts;
+}
+
+/** Quin arc fa el robot j. Els anells es recorren en sentit alternat: a l'anell senar el robot j agafa l'arc del
+ *  costat contrari, i així continua des d'on havia acabat. (És la seva pròpia inversa: també dona el robot d'un arc.) */
+export const arcOf = (ring: number, j: number, arcs: number): number => (ring % 2 === 0 ? j : arcs - 1 - j);
 
 /** Com va l'anell actual: on comença i acaba, i fins on ha arribat cada arc (un per robot). */
 export interface RingProgress {
@@ -402,7 +421,7 @@ export function isRevealed(w: World, walked: number, robots: number, r: number):
   return r < p.starts[k] + Math.floor(p.reach[k]);
 }
 
-function prefixAt(w: World, r: number): number {
+export function prefixAt(w: World, r: number): number {
   const n = totalCells(w);
   if (r <= 0) return 0;
   if (r >= n) return w.goldPrefix[n];

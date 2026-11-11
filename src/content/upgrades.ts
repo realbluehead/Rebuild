@@ -10,14 +10,14 @@ export interface UpgradeDef {
 }
 
 export const UPGRADES: readonly UpgradeDef[] = [
-  { id: 'speed', name: 'Motor', desc: 'Els robots caminen i exploren més de pressa', baseCost: 6, costGrowth: 1.9 },
-  { id: 'radar', name: 'Radar', desc: 'Detecta pàgines, notes i fotos dins la foscor i els robots s\'hi desvien a buscar-les', baseCost: 40, costGrowth: 3 },
-  { id: 'cargo', name: 'Bodega', desc: 'Cada robot pot carregar més bluetreri abans de tornar a la base', baseCost: 25, costGrowth: 2.2 },
-  { id: 'explorers', name: 'Robots', desc: 'Surt un robot més del campament', baseCost: 1000, costGrowth: 9 },
+  { id: 'speed', name: 'Engine', desc: 'Rovers travel and explore faster', baseCost: 6, costGrowth: 1.9 },
+  { id: 'radar', name: 'Radar', desc: 'Detects pages, notes and photos in the dark; rovers go and fetch them', baseCost: 40, costGrowth: 3 },
+  { id: 'cargo', name: 'Hold', desc: 'Each rover carries more bluetreri before returning to camp', baseCost: 25, costGrowth: 2.2 },
+  { id: 'explorers', name: 'Rovers', desc: 'One more rover leaves camp', baseCost: 1000, costGrowth: 9 },
 ];
 
 /** Efecte de cada nivell. */
-export const BASE_SPEED = 0.1; // passos per segon de cada robot (una casella cada 10 s)
+export const BASE_SPEED = 0.18; // passos per segon de cada robot (un carrer cada ~5,5 s; la rugositat del terreny frena)
 export const SPEED_MULT = 1.25;
 /** Abast del radar, en anells més enllà d'on són els robots (nivell 0 = sense radar). */
 export const radarRange = (level: number): number => (level > 0 ? 1 + 2 * level : 0);

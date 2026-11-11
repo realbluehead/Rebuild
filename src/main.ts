@@ -1,7 +1,7 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './ui/style.css';
-import { buy, craft, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buy, craft, fromLegacy, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
 import { createWorld, goldBetween, type World } from './core/world';
 import { fmt } from './core/format';
@@ -20,12 +20,13 @@ const MAX_FRAME_SEC = 5;
 const app = document.getElementById('app')!;
 
 async function boot() {
-  app.innerHTML = '<div class="splash">Generant el món…</div>';
+  app.innerHTML = '<div class="splash">Building the world…</div>';
   await new Promise((r) => setTimeout(r, 30)); // que es pinti el missatge abans de la feina
 
   const loaded = await loadGame();
   const state: GameState = loaded?.state ?? newGame();
   const world: World = createWorld(state.seed);
+  fromLegacy(state, world); // partides d'abans dels robots independents
   /** Quan es reinicia o s'importa, la partida actual ja no s'ha de desar (el pagehide la tornaria a escriure). */
   let locked = false;
   const save = () => (locked ? Promise.resolve() : saveGame(state));
@@ -42,7 +43,7 @@ async function boot() {
         locked = true;
         void saveGame(imported).then(() => location.reload());
       } catch {
-        alert('Aquest text no és una partida vàlida.');
+        alert('That text is not a valid game.');
       }
     },
     reset: () => { locked = true; void wipeGame().then(() => location.reload()); },
@@ -61,7 +62,7 @@ async function boot() {
     for (const r of ev.items) view.itemFound(r, now);
     if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
     if (ev.zoomUnlocked) {
-      view.toast(`Nou zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);
+      view.toast(`New zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);
       setZoom(state, ev.zoomUnlocked - 1); // ensenyem de seguida la vista nova
       void save();
     }
@@ -101,7 +102,7 @@ async function boot() {
     if (hidden) {
       void save();
       // Avís local d'aquí a una hora: s'anul·la si el jugador torna abans.
-      if (goldPerSec(state, world) > 0) void scheduleReminder('El teu robot no para', 'Torna a veure quines terres ha descobert!', 3600);
+      if (goldPerSec(state, world) > 0) void scheduleReminder('Your rovers keep going', 'Come back and see what they have uncovered!', 3600);
     } else {
       void cancelReminders();
     }

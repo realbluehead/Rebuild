@@ -29,10 +29,11 @@ let zoom = 1;
 // Valor d'una millora: quant augmenta l'or/s que arriba al campament (i, una mica, la velocitat
 // d'exploració, que és el que obre el mapa) per unitat d'or gastada.
 function value(): number {
-  const robots = s.ringRobots;
-  s.ringRobots = stats(s).explorers; // els robots nous treballaran a l'anell següent
+  // Els robots nous treballaran a l'anell següent: es valoren com si ja hi fossin.
+  const bots = s.bots;
+  s.bots = Array.from({ length: stats(s).explorers }, (_, j) => bots[j] ?? bots[0]);
   const v = goldPerSec(s, w) * Math.sqrt(stats(s).stepsPerSec);
-  s.ringRobots = robots;
+  s.bots = bots;
   return v;
 }
 function score(id: (typeof UPGRADES)[number]['id']): number {

@@ -3,7 +3,8 @@
 // per al zoom més llunyà. La boira depèn del rang de cada casella respecte de les caselles explorades.
 import { ZOOMS } from '../content/world';
 import { hash2 } from '../core/rng';
-import { itemIndexAt, ringOfRank, ringProgress, type World } from '../core/world';
+import type { Progress } from '../core/game';
+import { itemIndexAt, ringOfRank, type World } from '../core/world';
 import { buildAtlas, campFrames, FLAT, ITEM_SPRITES, PAL, robotFrames, SPECIAL_BASE, spriteCanvas, TILE, VARIANTS } from './sprites';
 
 /** Píxels lògics que fa una casella a cada zoom (el costat curt del canvas fa ~256 px lògics). */
@@ -18,8 +19,8 @@ const SWEEP_TRAIL = 1.1;
 
 interface Popup { wx: number; wy: number; text: string; t0: number; }
 
-/** Què fan els robots quan no exploren: anar o tornar del campament, o anar a buscar un objecte (`target`, rang). */
-export interface TripView { kind: 'home' | 'out' | 'detour'; f: number; target?: number; }
+/** Què fa un robot quan no explora: anar o tornar del campament, o anar a buscar un objecte (`target`, rang). */
+export interface TripView { kind: 'explore' | 'home' | 'out' | 'detour'; f: number; target?: number; }
 /** Objectes que el radar detecta: a partir de l'índex `next` de `itemRanks`, fins a `range` anells més enllà. */
 export interface RadarView { next: number; range: number; }
 
@@ -194,13 +195,12 @@ export class MapView {
     return [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
   }
 
-  /** `trip`: si els robots van o tornen del campament, cap a on (`home`) i quina part del camí han fet (`f`). */
-  render(walked: number, robots: number, zoom: number, now: number, dt: number, trip: TripView | null = null, radar: RadarView = { next: 0, range: 0 }): void {
+  /** `prog`: com va l'anell (arcs i fins on ha arribat cada robot); `trips[j]`: què fa el robot j. */
+  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { next: 0, range: 0 }): void {
     const { w, W, H, buf } = this;
     const size = w.size;
     const n = size * size;
     // Fins on ha arribat cada robot dins de l'anell actual: només hi ha descobert el que ja ha trepitjat.
-    const prog = ringProgress(w, walked, robots);
     const ringA = prog.a;
     const ringB = prog.b;
     const arcStart = prog.starts;
@@ -212,7 +212,7 @@ export class MapView {
     prog.reach.forEach((x, k) => {
       const r = arcStart[k] + Math.floor(x);
       const t = Math.min(1, Math.max(0, (x - Math.floor(x)) * 2 - 1));
-      if (r < arcStart[k + 1] && t > 0) exploring.set(r, t);
+      if (r < arcStart[k + 1] && t > 0 && trips[prog.robotOf[k]]?.kind === 'explore') exploring.set(r, t);
     });
     const seen = (r: number): boolean => {
       if (r < ringA) return true;
@@ -229,40 +229,31 @@ export class MapView {
     if (Math.abs(this.cellPx / target - 1) < 0.002) this.cellPx = target;
     const cp = this.cellPx;
 
-    // Un robot per arc. Els anells es recorren en sentit alternat, i per això a l'anell senar el robot j
-    // agafa l'arc del costat contrari: així cada robot continua des d'on havia acabat.
+    // On és cada robot: al seu arc (si explora), de camí al campament o tornant-ne, o anant a buscar un objecte.
     const band = 2 * Math.sqrt(Math.PI * Math.max(1, explored)) + 8;
-    const walkers: [number, number][] = [];
-    if (explored < n) {
-      for (let j = 0; j < arcs; j++) {
-        const k = prog.ring % 2 === 0 ? j : arcs - 1 - j;
-        walkers.push(this.walkerPos(arcStart[k] + prog.reach[k]));
+    const hx = w.cx + 0.5;
+    const hy = w.cy + 0.5;
+    const walkers: [number, number][] = trips.map((t, j) => {
+      const k = prog.robotOf.indexOf(j);
+      const p: [number, number] = k >= 0 ? this.walkerPos(arcStart[k] + prog.reach[k]) : [hx, hy];
+      if (t.kind === 'home' || t.kind === 'out') {
+        const f = t.kind === 'home' ? t.f : 1 - t.f;
+        p[0] += (hx - p[0]) * f;
+        p[1] += (hy - p[1]) * f;
+      } else if (t.kind === 'detour' && t.target !== undefined) {
+        const ti = w.order[t.target];
+        const f = t.f < 0.5 ? t.f * 2 : (1 - t.f) * 2;
+        p[0] += ((ti % size) + 0.5 - p[0]) * f;
+        p[1] += (Math.floor(ti / size) + 0.5 - p[1]) * f;
       }
-    }
-    // De camí cap al campament a descarregar, o tornant a la frontera: en línia recta pel terreny conegut.
-    if (trip && trip.kind !== 'detour') {
-      const hx = w.cx + 0.5;
-      const hy = w.cy + 0.5;
-      const f = trip.kind === 'home' ? trip.f : 1 - trip.f;
-      for (const p of walkers) { p[0] += (hx - p[0]) * f; p[1] += (hy - p[1]) * f; }
-    }
-    // Desviament del radar: el robot més proper va fins a l'objecte i torna; els altres l'esperen.
-    if (trip?.kind === 'detour' && trip.target !== undefined && walkers.length) {
-      const ti = w.order[trip.target];
-      const tx = (ti % size) + 0.5;
-      const ty = Math.floor(ti / size) + 0.5;
-      let best = 0;
-      walkers.forEach((p, j) => { if (Math.hypot(p[0] - tx, p[1] - ty) < Math.hypot(walkers[best][0] - tx, walkers[best][1] - ty)) best = j; });
-      const f = trip.f < 0.5 ? trip.f * 2 : (1 - trip.f) * 2;
-      const p = walkers[best];
-      p[0] += (tx - p[0]) * f;
-      p[1] += (ty - p[1]) * f;
-    }
+      return p;
+    });
+    if (explored >= n) walkers.length = 0;
     this.bots.length = Math.min(this.bots.length, walkers.length);
     walkers.forEach(([x, y], e) => {
       const b = this.bots[e];
       // Cada robot nou surt del campament i va fins al seu arc.
-      if (!b) { this.bots[e] = { x: w.cx + 0.5, y: w.cy + 0.5, face: x >= w.cx ? 1 : -1 }; return; }
+      if (!b) { this.bots[e] = { x: hx, y: hy, face: x >= w.cx ? 1 : -1 }; return; }
       const dx = x - b.x;
       const dy = y - b.y;
       const d = Math.hypot(dx, dy);
@@ -351,10 +342,11 @@ export class MapView {
       }
     }
 
-    // Objecte que un robot està anant a buscar: marc fix al voltant, perquè es vegi cap on va.
-    const fetching = trip?.kind === 'detour' ? trip.target : undefined;
-    if (fetching !== undefined) {
-      const i = w.order[fetching];
+    // Objectes que algun robot està anant a buscar: marc fix al voltant, perquè es vegi cap on va.
+    const fetching = new Set<number>();
+    for (const t of trips) if (t.kind === 'detour' && t.target !== undefined) fetching.add(t.target);
+    for (const r of fetching) {
+      const i = w.order[r];
       const sx = Math.round(((i % size) + 0.5 - left) * cp);
       const sy = Math.round((Math.floor(i / size) + 0.5 - top) * cp);
       const hs = cp >= TILE_MIN_PX ? 7 : 3;
@@ -413,7 +405,7 @@ export class MapView {
       for (let k = Math.max(radar.next, itemIndexAt(w, ringA)); k < w.itemRanks.length; k++) {
         const r = w.itemRanks[k];
         if (ringOfRank(w, r) > maxRing) break;
-        if (seen(r) || r === fetching) continue;
+        if (seen(r) || fetching.has(r)) continue;
         const i = w.order[r];
         const ix = (i % size) + 0.5;
         const iy = Math.floor(i / size) + 0.5;

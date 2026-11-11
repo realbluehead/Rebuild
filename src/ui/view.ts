@@ -3,12 +3,12 @@ import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, workCost, workTitle, type WorkId } from '../content/collection';
 import { TERRAINS } from '../content/world';
 import { ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
-import { canBuy, canCraft, capacity, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, stats, type Stats } from '../core/game';
+import { canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { fmt, fmtTime } from '../core/format';
 import type { GameState } from '../core/state';
-import { isRevealed, totalCells, zoomFraction, type World } from '../core/world';
+import { totalCells, zoomFraction, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
-import { MapView } from './map';
+import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, robotFrames, spriteCanvas } from './sprites';
 
 export interface ViewActions {
@@ -33,10 +33,10 @@ const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el
 /** Efecte curt (ara → següent nivell), perquè càpiga a les targetes estretes del mòbil. */
 function effectText(id: StatId, a: Stats, b: Stats): string {
   switch (id) {
-    case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)} pas/s`;
-    case 'radar': return a.radar ? `abast ${a.radar}→${b.radar}` : `detecta a ${b.radar}`;
-    case 'cargo': return `carrega ${fmt(a.cargo)}→${fmt(b.cargo)}`;
-    case 'explorers': return `robots ${a.explorers}→${b.explorers}`;
+    case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)} steps/s`;
+    case 'radar': return a.radar ? `range ${a.radar}→${b.radar}` : `range ${b.radar}`;
+    case 'cargo': return `hold ${fmt(a.cargo)}→${fmt(b.cargo)}`;
+    case 'explorers': return `rovers ${a.explorers}→${b.explorers}`;
   }
 }
 
@@ -62,11 +62,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   cargoLine.append(cargoBar, cargoText);
   stats0.append(goldLine, cargoLine, explored);
   const menuBtn = h('button', 'px-btn menu-btn');
-  menuBtn.title = 'Menú';
+  menuBtn.title = 'Menu';
   menuBtn.append(h('i'), h('i'), h('i'));
   menuBtn.addEventListener('click', () => openMenu());
   const helpBtn = h('button', 'px-btn menu-btn help-btn', '?');
-  helpBtn.title = 'Ajuda';
+  helpBtn.title = 'Field notes';
   helpBtn.addEventListener('click', () => openHelp());
   topbar.append(stats0, helpBtn, menuBtn);
 
@@ -79,7 +79,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const pips = h('div', 'pips');
   const pipEls = ZOOMS.map(() => pips.appendChild(h('i')));
   const home = h('button', 'px-btn home');
-  home.title = 'Anar al robot (espai)';
+  home.title = 'Go to rover (space)';
   home.append(h('i', 'robot-icon'));
   zoomCtl.append(zin, pips, zout, home);
   zin.addEventListener('click', () => actions.zoom(-1));
@@ -101,8 +101,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   let speed = 1;
   try { speed = SPEEDS.includes(Number(localStorage.getItem('rebuild:speed'))) ? Number(localStorage.getItem('rebuild:speed')) : 1; } catch { /* sense storage */ }
   const speedBtn = h('button', 'px-btn speed-ctl');
-  speedBtn.title = 'Velocitat del joc (per provar)';
-  const showSpeed = () => { speedBtn.textContent = `Vel ×${speed}`; speedBtn.classList.toggle('can', speed > 1); };
+  speedBtn.title = 'Game speed (for testing)';
+  const showSpeed = () => { speedBtn.textContent = `Speed ×${speed}`; speedBtn.classList.toggle('can', speed > 1); };
   showSpeed();
   speedBtn.addEventListener('click', () => {
     speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
@@ -176,16 +176,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const s = current;
     if (i < 0 || !s) return;
     const r = world.rank[i];
-    if (!isRevealed(world, s.walked, s.ringRobots, r)) { showToast('Encara per explorar'); return; }
+    if (!revealed(s, world, r)) { showToast('Not explored yet'); return; }
     const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * stats(s).loot;
-    showToast(`${world.special[i] ? 'Dipòsit' : TERRAINS[world.terrain[i]].name}: ${fmt(value)} bluetreri`);
+    showToast(`${world.special[i] ? 'Deposit' : TERRAINS[world.terrain[i]].name}: ${fmt(value)} bluetreri`);
   }
 
   const panel = h('aside', 'panel');
   // Pestanyes: millores (amb or) i obres (amb pàgines, notes i fotos).
   const tabs = h('div', 'tabs');
-  const tabUpg = h('button', 'px-btn tab on', 'Millores');
-  const tabWorks = h('button', 'px-btn tab', 'Obres');
+  const tabUpg = h('button', 'px-btn tab on', 'Upgrades');
+  const tabWorks = h('button', 'px-btn tab', 'Works');
   tabs.append(tabUpg, tabWorks);
   const showTab = (works: boolean) => {
     tabUpg.classList.toggle('on', !works);
@@ -226,17 +226,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const cost = h('span');
     btn.append(itemIcon(ITEMS.findIndex((it) => it.id === wd.item)), cost);
     btn.addEventListener('click', () => actions.craft(wd.id));
-    card.title = `Cada obra: ${wd.effect} ×${wd.bonus}`;
+    card.title = `Each one: ${wd.effect} ×${wd.bonus}`;
     card.append(head, next, btn);
     worksList.append(card);
     return { wd, lvl, next, btn, cost };
   });
   const shelfCard = h('div', 'upg px-box shelf');
   const shelfInfo = h('div', 'eff');
-  const shelfBtn = h('button', 'px-btn buy', 'Vitrina');
+  const shelfBtn = h('button', 'px-btn buy', 'Shelf');
   shelfBtn.addEventListener('click', () => openShelf());
   shelfCard.append(h('div', 'head'), shelfInfo, shelfBtn);
-  shelfCard.firstElementChild!.append(h('span', 'name', 'Col·lecció'));
+  shelfCard.firstElementChild!.append(h('span', 'name', 'Collection'));
   worksList.append(shelfCard);
   panel.append(tabs, list, worksList);
 
@@ -245,17 +245,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const s = current;
     if (!s) return;
     const m = modal('help');
-    m.box.append(h('div', 'name', 'Vitrina'));
+    m.box.append(h('div', 'name', 'Shelf'));
     const body = h('div', 'help-body');
     for (const wd of WORKS) {
       const n = s.works[wd.id];
       body.append(h('h3', '', `${wd.name}: ${wd.effect} ×${fmt(wd.bonus ** n)}`));
-      if (!n) body.append(h('p', 'info', 'Encara cap.'));
+      if (!n) body.append(h('p', 'info', 'None yet.'));
       for (let k = 0; k < n; k++) body.append(h('p', '', `${k + 1}. ${workTitle(wd, k)}`));
-      body.append(h('p', 'info', `Següent: ${workTitle(wd, n)} (${workCost(wd, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
+      body.append(h('p', 'info', `Next: ${workTitle(wd, n)} (${workCost(wd, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
     }
     m.box.append(body);
-    m.addClose('Tancar');
+    m.addClose('Close');
   }
 
   // Què ha descobert el jugador (per anar omplint l'ajuda). Es repassen les caselles noves a cada frame, de mica en mica.
@@ -278,36 +278,36 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const crafted = s.works.book + s.works.cd + s.works.album > 0;
     const deposited = s.totalGold.gt(0);
     const entries: { on: boolean; title: string; lines: string[]; legend?: boolean }[] = [
-      { on: true, title: 'L\'objectiu', lines: [
-        'El mapa comença fosc. Els robots surten del campament i el van descobrint sols, casella a casella, encara que no hi siguis.',
-        'Un robot només pot explorar la casella del costat. Mentre hi és, la casella va agafant color; quan l\'acaba, queda descoberta.'] },
-      { on: true, title: 'El mapa', lines: [
-        'Arrossega el mapa amb el dit o el ratolí, o mou-te amb les fletxes o WASD.',
-        'El botó del robot (o l\'espai) porta la vista on és el robot. Si el robot surt de la pantalla, una fletxa a la vora indica cap on és: toca-la per anar-hi.',
-        'Toca una casella descoberta per veure què és i quant bluetreri val.'] },
-      { on: deposited, title: 'El bluetreri i la bodega', lines: [
-        'El bluetreri és un mineral blau que ha aparegut entre les ruïnes, i és el que fas servir per pagar les millores.',
-        'Els robots carreguen el bluetreri que troben, però només en poden dur una quantitat. Quan la bodega és plena, tornen al campament a descarregar-lo i després tornen on ho havien deixat. No es pot gastar fins que arriba al campament.',
-        'A dalt: el número blau és el que tens per gastar i, al costat, el que hi arriba de mitjana per segon. La barra de sota és la càrrega dels robots; quan és plena, es posa de franges de perill.'] },
-      { on: seenTerrain.size > 0 && deposited, title: 'Terrenys', legend: true, lines: [
-        'Cada casella dona bluetreri segons el terreny (i com més lluny del campament, més). Els que ja has trobat:'] },
-      { on: seenSpecial, title: 'Dipòsits', lines: ['Les caselles amb cristalls blaus són dipòsits de bluetreri: en donen molt més que la resta.'] },
-      { on: u.speed > 0, title: 'Motor', lines: ['Els robots exploren i caminen més de pressa. El preu de cada millora puja a cada nivell; el botó s\'encén quan la pots comprar.'] },
-      { on: u.cargo > 0, title: 'Bodega', lines: ['Cada robot pot carregar més bluetreri, i torna menys sovint al campament.'] },
+      { on: true, title: 'The goal', lines: [
+        'The map starts dark. Rovers leave the base camp and uncover it on their own, one cell at a time, even while you are away.',
+        'A rover can only explore the cell next to it. While it works, the cell slowly gains colour; when it is done, the cell is revealed.'] },
+      { on: true, title: 'The map', lines: [
+        'Drag the map with a finger or the mouse, or move with the arrow keys or WASD.',
+        'The rover button (or space) takes the view to a rover. If a rover leaves the screen, an arrow at the edge points to it: tap it to go there.',
+        'Tap a revealed cell to see what it is and how much bluetreri it is worth.'] },
+      { on: deposited, title: 'Bluetreri and the hold', lines: [
+        'Bluetreri is a blue mineral that has grown among the ruins. It is what you spend on upgrades.',
+        'Rovers carry the bluetreri they find, but each hold is limited. When a hold is full, that rover returns to camp to unload and then goes back to where it left off. Each rover goes on its own schedule. Nothing can be spent until it reaches camp.',
+        'At the top: the blue number is what you have at camp, and next to it what arrives per second on average. The bar below is the rovers\' total load; when every hold is full it shows hazard stripes.'] },
+      { on: seenTerrain.size > 0 && deposited, title: 'Terrain', legend: true, lines: [
+        'Each cell yields bluetreri by terrain (and the farther from camp, the more). Rough terrain is slower to explore: streets are fast, jungle and rubble are slow. Found so far:'] },
+      { on: seenSpecial, title: 'Deposits', lines: ['Cells with blue crystals are bluetreri deposits: they yield far more than the rest.'] },
+      { on: u.speed > 0, title: 'Engine', lines: ['Rovers explore and travel faster. Every upgrade costs more at each level; the button lights up when you can afford it.'] },
+      { on: u.cargo > 0, title: 'Hold', lines: ['Each rover can carry more bluetreri, so it returns to camp less often.'] },
       { on: s.zoomUnlocked > 1, title: 'Zoom', lines: [
-        'Botons + i −, la roda del ratolí o pessigant. Hi ha 4 zooms; el següent s\'obre quan has explorat el 80% del que es veu (la barra de baix a l\'esquerra).'] },
-      { on: itemsFound, title: 'Pàgines, notes i fotos', lines: [
-        'Algunes caselles amaguen una pàgina, una nota musical o una foto. Els robots les recullen quan hi arriben.',
-        'A la pestanya Obres les fas servir per crear llibres (amb pàgines), discos (amb notes) i àlbums (amb fotos). Cada obra costa més que l\'anterior.'] },
-      { on: crafted, title: 'Obres', lines: [
-        'Cada obra dona un bonus per sempre: els llibres, velocitat; els discos, més bluetreri; els àlbums, més bodega. A la Vitrina hi ha totes les que has fet.'] },
+        'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
+      { on: itemsFound, title: 'Pages, notes and photos', lines: [
+        'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them.',
+        'On the Works tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
+      { on: crafted, title: 'Works', lines: [
+        'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.'] },
       { on: u.radar > 0, title: 'Radar', lines: [
-        'Al voltant de cada robot gira un radar de submarí que arriba tantes caselles com el seu abast. Detecta pàgines, notes i fotos dins la foscor: s\'encenen quan l\'agulla hi passa.',
-        'Un robot deixa l\'exploració, va a buscar-les d\'una en una (la que va a buscar té un marc) i torna on era. Es perd una mica d\'exploració, però els objectes arriben abans.'] },
-      { on: u.explorers > 0, title: 'Robots', lines: ['Surt un robot més. Comença a treballar quan els altres comencen una volta nova al voltant del campament; cada anell es reparteix entre tots.'] },
-      { on: true, title: 'Altres', lines: [
-        'Si tanques el joc, els robots continuen (fins a 24 hores) i en tornar veus què han trobat.',
-        'Menú ≡: exportar i importar la partida (per passar-la a un altre aparell) o reiniciar amb un mapa nou. Vel ×N accelera el temps per provar.'] },
+        'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark: they light up as the needle passes.',
+        'A rover leaves its exploring, fetches them one at a time (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
+      { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring around camp; each ring is split between all of them, and each works at its own pace.'] },
+      { on: true, title: 'Other', lines: [
+        'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
+        'Menu ≡: export and import your game (to move it to another device) or restart with a new map. Speed ×N speeds up time for testing.'] },
     ];
     return entries;
   }
@@ -319,7 +319,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   function openHelp() {
     const s = current;
     const m = modal('help');
-    m.box.append(h('div', 'name', 'Quadern de camp'));
+    m.box.append(h('div', 'name', 'Field notes'));
     const body = h('div', 'help-body');
     const entries = s ? helpEntries(s) : [];
     const css = (c: number) => `rgb(${c & 255},${(c >>> 8) & 255},${(c >>> 16) & 255})`;
@@ -342,28 +342,28 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
     }
     const locked = entries.length - unlocked + (TERRAINS.length - seenTerrain.size > 0 ? 1 : 0);
-    if (locked > 0) body.append(h('p', 'locked', `??? Encara hi ha ${locked} coses per descobrir. Continua explorant.`));
+    if (locked > 0) body.append(h('p', 'locked', `??? ${locked} more ${locked === 1 ? 'thing' : 'things'} to discover. Keep exploring.`));
     helpSeen = unlocked + seenTerrain.size;
     try { localStorage.setItem(HELP_SEEN_KEY, String(helpSeen)); } catch { /* sense storage */ }
     helpBtn.classList.remove('alert');
     m.box.append(body);
-    m.addClose('Entesos');
+    m.addClose('Got it');
   }
 
   function openMenu() {
     const m = modal();
-    m.box.append(h('div', 'name', 'Menú'));
+    m.box.append(h('div', 'name', 'Menu'));
     const item = (label: string, cls: string, fn: () => void) => {
       const b = h('button', `px-btn ${cls}`, label);
       b.addEventListener('click', () => { m.close(); fn(); });
       m.box.append(b);
     };
-    item('Ajuda', '', () => openHelp());
-    item('Exportar partida', '', () => textModal('Copia aquest text per guardar la partida:', actions.exportText(), true));
-    item('Importar partida', '', () => textModal('Enganxa una partida exportada:', '', false, actions.importText));
-    item('Reiniciar (mapa nou)', 'danger', () => { if (confirm('Segur que vols esborrar la partida i començar un mapa nou?')) { try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* sense storage */ } actions.reset(); } });
-    m.box.append(h('div', 'info', `Versió ${__APP_VERSION__}`));
-    m.addClose('Tancar');
+    item('Field notes', '', () => openHelp());
+    item('Export game', '', () => textModal('Copy this text to save your game:', actions.exportText(), true));
+    item('Import game', '', () => textModal('Paste an exported game:', '', false, actions.importText));
+    item('Restart (new map)', 'danger', () => { if (confirm('Erase this game and start a new map?')) { try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* sense storage */ } actions.reset(); } });
+    m.box.append(h('div', 'info', `Version ${__APP_VERSION__}`));
+    m.addClose('Close');
   }
 
   root.append(topbar, mapWrap, panel);
@@ -398,20 +398,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         const count = helpEntries(s).filter((e) => e.on).length + seenTerrain.size;
         helpBtn.classList.toggle('alert', count > helpSeen);
       }
-      map.render(s.walked, s.ringRobots, s.zoom, now, dt,
-        s.trip === 'explore' ? null : { kind: s.trip, f: s.travelLen > 0 ? s.travel / s.travelLen : 1, target: world.itemRanks[s.radarNext] },
-        { next: s.radarNext, range: st.radar }); // només els que es van a buscar
-      const cells = exploredCells(s, world);
+      const prog = progress(s, world);
+      const trips: TripView[] = s.bots.map((b) => ({ kind: b.trip, f: b.travelLen > 0 ? b.travel / b.travelLen : 1, target: b.target >= 0 ? world.itemRanks[b.target] : undefined }));
+      map.render(prog, s.zoom, now, dt, trips, { next: s.radarNext, range: st.radar });
+      const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
       set(gold, fmt(s.gold));
       set(rate, `+${fmt(goldPerSec(s, world))}/s`);
       const cap = capacity(s);
-      const load = s.cargo.toNumber();
+      const load = carried(s);
       cargoFill.style.width = `${Math.min(100, (100 * load) / cap)}%`;
       cargoBar.classList.toggle('full', load >= cap - 1e-6);
-      set(cargoText, `${fmt(load)}/${fmt(cap)} ${s.trip === 'home' ? '· tornant a la base' : s.trip === 'out' ? '· sortint' : load >= cap - 1e-6 ? '· ple!' : ''}`);
+      const home = s.bots.filter((b) => b.trip === 'home').length;
+      const out = s.bots.filter((b) => b.trip === 'out').length;
+      const fetching = s.bots.filter((b) => b.trip === 'detour').length;
+      const doing = home ? `· ${home} returning` : out ? `· ${out} heading out` : fetching ? `· ${fetching} fetching` : load >= cap - 1e-6 ? '· full!' : '';
+      set(cargoText, `${fmt(load)}/${fmt(cap)} ${doing}`);
       const pct = (100 * cells) / n;
-      set(explored, `${pct < 10 ? pct.toFixed(2) : pct.toFixed(1)}% explorat · ${fmt(st.stepsPerSec)} pas/s · ${s.ringRobots}R`);
+      set(explored, `${pct < 10 ? pct.toFixed(2) : pct.toFixed(1)}% explored · ${fmt(st.stepsPerSec)} steps/s · ${s.bots.length}R`);
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });
       zin.disabled = s.zoom <= 0;
@@ -419,17 +423,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       set(zoomName, `Zoom ${s.zoom + 1}: ${ZOOMS[s.zoom].name}`);
       if (s.zoomUnlocked < ZOOMS.length) {
         const f = Math.min(1, zoomFraction(world, s.zoomUnlocked - 1, cells) / ZOOM_UNLOCK_FRACTION);
-        set(zoomNext, `Següent: ${ZOOMS[s.zoomUnlocked].name} ${Math.floor(f * 100)}%`);
+        set(zoomNext, `Next: ${ZOOMS[s.zoomUnlocked].name} ${Math.floor(f * 100)}%`);
         barFill.style.width = `${f * 100}%`;
         bar.hidden = false;
       } else {
-        set(zoomNext, isComplete(s, world) ? 'Mapa complet!' : 'Tots els zooms oberts');
+        set(zoomNext, isComplete(s, world) ? 'Map complete!' : 'All zooms open');
         bar.hidden = true;
       }
 
       for (const r of rows) {
         const lvl = s.upgrades[r.def.id];
-        set(r.lvl, `nv${lvl}`);
+        set(r.lvl, `lv${lvl}`);
         s.upgrades[r.def.id]++;
         const next = stats(s);
         s.upgrades[r.def.id]--;
@@ -446,7 +450,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       const ready = WORKS.some((wd) => canCraft(s, wd.id));
       tabWorks.classList.toggle('alert', ready);
-      set(shelfInfo, `${s.works.book + s.works.cd + s.works.album} obres`);
+      set(shelfInfo, `${s.works.book + s.works.cd + s.works.album} works`);
     },
     /** Or d'un lloc especial descobert, flotant sobre el mapa. */
     specialFound(rank: number, amount: string, now: number) {
@@ -467,27 +471,27 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     /** Obra nova creada. */
     crafted(id: WorkId, n: number) {
       const wd = WORKS.find((x) => x.id === id)!;
-      showToast(`Nou: ${workTitle(wd, n - 1)}`);
+      showToast(`New: ${workTitle(wd, n - 1)}`);
     },
     /** Multiplicador de velocitat triat (1 = normal). */
     gameSpeed: () => speed,
     showUpdate(version: string, notes: string, onInstall: () => void) {
       const m = modal();
-      m.box.append(h('div', 'name', `Versió nova: ${version}`), h('div', 'info', notes));
-      m.addClose('Descarregar', onInstall);
-      m.addClose('Més tard');
+      m.box.append(h('div', 'name', `New version: ${version}`), h('div', 'info', notes));
+      m.addClose('Download', onInstall);
+      m.addClose('Later');
     },
     showOffline(r: OfflineReport) {
       const m = modal();
       m.box.append(
-        h('div', '', `Mentre eres fora (${fmtTime(r.seconds)}) has explorat`),
-        h('div', 'gain', `${fmt(r.cells)} caselles`),
+        h('div', '', `While you were away (${fmtTime(r.seconds)}) the rovers explored`),
+        h('div', 'gain', `${fmt(r.cells)} cells`),
         h('div', 'gain gold-text', `+${fmt(r.gold)} bluetreri`),
       );
-      if (r.specials) m.box.append(h('div', 'info', `${r.specials} llocs especials trobats`));
-      if (r.items) m.box.append(h('div', 'info', `${r.items} pàgines, notes i fotos recollides`));
-      if (r.zoomUnlocked) m.box.append(h('div', 'info', `Nou zoom: ${ZOOMS[r.zoomUnlocked - 1].name}!`));
-      m.addClose('Som-hi');
+      if (r.specials) m.box.append(h('div', 'info', `${r.specials} deposits found`));
+      if (r.items) m.box.append(h('div', 'info', `${r.items} pages, notes and photos collected`));
+      if (r.zoomUnlocked) m.box.append(h('div', 'info', `New zoom: ${ZOOMS[r.zoomUnlocked - 1].name}!`));
+      m.addClose('Let\'s go');
     },
   };
 }
@@ -515,6 +519,6 @@ function textModal(title: string, value: string, readOnly: boolean, onOk?: (t: s
   ta.value = value;
   ta.readOnly = readOnly;
   m.box.append(h('div', '', title), ta);
-  m.addClose(readOnly ? 'Tancar' : 'Carregar', () => onOk?.(ta.value));
+  m.addClose(readOnly ? 'Close' : 'Load', () => onOk?.(ta.value));
   if (readOnly) ta.select();
 }

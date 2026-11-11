@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: {
         name: 'Rebuild',
         short_name: 'Rebuild',
-        description: 'Un joc idle d\'exploració: robots que recorren una ciutat en ruïnes buscant bluetreri.',
+        description: 'An idle exploration game: rovers roam a ruined city hunting for bluetreri.',
         theme_color: '#0c0a12',
         background_color: '#0c0a12',
         display: 'standalone',
