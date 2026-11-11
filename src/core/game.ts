@@ -1,9 +1,10 @@
 // Simulació pura: cap accés a DOM, rellotge ni emmagatzematge. Tot és testable.
 import { D, Decimal } from './decimal';
 import type { GameState } from './state';
-import { BASE_CARGO, BASE_SPEED, CARGO_MULT, LOOT_MULT, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
+import { BASE_CARGO, BASE_SPEED, CARGO_MULT, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
-import { cellsExplored, revealedGold, revealedSpecials, ringAt, totalSteps, unlockAt, type World } from './world';
+import { workById, workCost, ITEMS, type WorkId } from '../content/collection';
+import { cellsExplored, isRevealed, itemsBetween, revealedGold, revealedRanges, ringAt, ringOfRank, specialsBetween, totalSteps, unlockAt, type World } from './world';
 
 export const TICK_RATE = 10; // ticks per segon
 export const TICK_SEC = 1 / TICK_RATE;
@@ -13,8 +14,10 @@ export interface Stats {
   speed: number;
   /** Passos per segon de cada robot pel terreny ja descobert (anant o tornant del campament). */
   travelSpeed: number;
-  /** Multiplicador d'or. */
+  /** Multiplicador d'or (discos). */
   loot: number;
+  /** Abast del radar en anells (0 = sense radar). */
+  radar: number;
   /** Or que pot carregar cada robot. */
   cargo: number;
   explorers: number;
@@ -24,11 +27,12 @@ export interface Stats {
 
 export function stats(s: GameState): Stats {
   const u = s.upgrades;
-  const speed = BASE_SPEED * SPEED_MULT ** u.speed;
-  const loot = LOOT_MULT ** u.loot;
-  const cargo = BASE_CARGO * CARGO_MULT ** u.cargo;
+  const wk = (id: WorkId) => workById(id).bonus ** s.works[id];
+  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book');
+  const loot = wk('cd');
+  const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album');
   const explorers = 1 + u.explorers;
-  return { speed, travelSpeed: speed * TRAVEL_MULT, loot, cargo, explorers, stepsPerSec: speed * explorers };
+  return { speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: radarRange(u.radar), cargo, explorers, stepsPerSec: speed * explorers };
 }
 
 /** Or que poden carregar entre tots els robots que treballen ara. */
@@ -63,6 +67,8 @@ export function costOf(def: UpgradeDef, owned: number, qty = 1): Decimal {
 export interface TickEvents {
   /** Rangs dels llocs especials descoberts en aquest pas. */
   specials: number[];
+  /** Rangs de les caselles d'on s'han recollit objectes en aquest pas. */
+  items: number[];
   /** Or descarregat al campament en aquest pas (0 si cap). */
   deposited: number;
   /** Zoom desbloquejat en aquest pas (nombre de nivells), si n'hi ha. */
@@ -75,12 +81,12 @@ const robotsAt = (s: GameState, w: World, x: number, explorers: number): number 
 
 /** Avança la simulació `dt` segons. Exacta per a qualsevol dt: es parteix per fases (explorar, tornar, sortir). */
 export function tick(s: GameState, w: World, dt: number): TickEvents {
-  const ev: TickEvents = { specials: [], deposited: 0 };
+  const ev: TickEvents = { specials: [], items: [], deposited: 0 };
   if (dt <= 0) return ev;
   s.playTime += dt;
   const n = totalSteps(w);
   let left = dt;
-  for (let guard = 0; left > 1e-9 && guard < 1000; guard++) {
+  for (let guard = 0; left > 1e-9 && guard < 200000; guard++) {
     const st = stats(s);
     if (s.trip === 'explore') {
       const cap = capacity(s);
@@ -92,12 +98,29 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         continue;
       }
       if (s.walked >= n) break;
+      // Radar: el primer objecte pendent, si ja el detecta, un robot s'hi desvia a buscar-lo.
+      let radarStop = Infinity;
+      if (st.radar > 0) {
+        const ring = ringAt(w, s.walked);
+        while (s.radarNext < w.itemRanks.length && isRevealed(w, s.walked, s.ringRobots, w.itemRanks[s.radarNext])) s.radarNext++;
+        if (s.radarNext < w.itemRanks.length) {
+          const itemRing = ringOfRank(w, w.itemRanks[s.radarNext]);
+          if (itemRing <= ring + st.radar) {
+            s.trip = 'detour';
+            s.travel = 0;
+            s.travelLen = 2 * (itemRing - ring + 1);
+            continue;
+          }
+          // No s'explora més enllà d'on el radar el detectarà.
+          radarStop = w.ringSteps[itemRing - st.radar];
+        }
+      }
       const from = s.walked;
       const r0 = s.ringRobots;
       const g0 = revealedGold(w, from, r0);
       const gold = (x: number) => (revealedGold(w, x, robotsAt(s, w, x, st.explorers)) - g0) * st.loot;
       const room = cap - s.cargo.toNumber();
-      let to = Math.min(n, from + st.stepsPerSec * left);
+      let to = Math.min(n, from + st.stepsPerSec * left, radarStop);
       let full = false;
       if (gold(to) >= room) {
         // On s'omple la bodega: l'or creix de manera contínua amb els passos, així que es busca el punt exacte.
@@ -113,21 +136,31 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       }
       const r1 = robotsAt(s, w, to, st.explorers);
       const got = full ? room : Math.max(0, gold(to));
-      ev.specials.push(...revealedSpecials(w, from, to, r0, r1));
+      for (const [a, b] of revealedRanges(w, from, to, r0, r1)) {
+        ev.specials.push(...specialsBetween(w, a, b));
+        for (const k of itemsBetween(w, a, b)) if (k >= s.radarNext) collect(s, w, k, ev);
+      }
       s.walked = to;
       s.ringRobots = r1;
       s.cargo = s.cargo.add(got);
       left -= (to - from) / st.stepsPerSec;
       if (full) s.cargo = D(cap);
     } else {
-      // Caminant pel terreny ja descobert, d'anada o de tornada.
-      const need = (s.travelLen - s.travel) / st.travelSpeed;
+      // Pel terreny ja descobert es camina de pressa; per anar a buscar un objecte dins la foscor, al pas d'explorar.
+      const v = s.trip === 'detour' ? st.speed : st.travelSpeed;
+      const need = (s.travelLen - s.travel) / v;
       if (need > left) {
-        s.travel += left * st.travelSpeed;
+        s.travel += left * v;
         break;
       }
       left -= need;
-      if (s.trip === 'home') {
+      if (s.trip === 'detour') {
+        collect(s, w, s.radarNext, ev);
+        s.radarNext++;
+        s.trip = 'explore';
+        s.travel = 0;
+        s.travelLen = 0;
+      } else if (s.trip === 'home') {
         const g = s.cargo;
         s.gold = s.gold.add(g);
         s.totalGold = s.totalGold.add(g);
@@ -149,6 +182,25 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     ev.zoomUnlocked = s.zoomUnlocked;
   }
   return ev;
+}
+
+function collect(s: GameState, w: World, k: number, ev: TickEvents): void {
+  const r = w.itemRanks[k];
+  s.items[ITEMS[w.item[w.order[r]] - 1].id]++;
+  ev.items.push(r);
+}
+
+/** Objectes que costa la propera obra d'aquesta mena. */
+export const nextWorkCost = (s: GameState, id: WorkId): number => workCost(workById(id), s.works[id]);
+
+export const canCraft = (s: GameState, id: WorkId): boolean => s.items[workById(id).item] >= nextWorkCost(s, id);
+
+/** Crea la propera obra (llibre, disc o àlbum) amb els objectes recollits. */
+export function craft(s: GameState, id: WorkId): boolean {
+  if (!canCraft(s, id)) return false;
+  s.items[workById(id).item] -= nextWorkCost(s, id);
+  s.works[id]++;
+  return true;
 }
 
 export function canBuy(s: GameState, id: StatId, qty = 1): boolean {

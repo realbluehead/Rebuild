@@ -13,6 +13,7 @@
 // camina per terra ja coneguda (passos sense descobrir res). El temps es compta en passos, i una casella
 // compta com a descoberta quan el robot hi ha arribat (no quan hi comença a anar).
 import { DIST_VALUE_SCALE, MAP_SIZE, SPECIAL_CHANCE, SPECIAL_MULT, T, TERRAINS, ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
+import { ITEM_CHANCE, ITEMS } from '../content/collection';
 import { fbm, rand2 } from './rng';
 
 export interface World {
@@ -25,6 +26,10 @@ export interface World {
   terrain: Uint8Array;
   /** 1 si la casella té un lloc especial. */
   special: Uint8Array;
+  /** Objecte amagat a cada casella: 0 = cap, k + 1 = ITEMS[k]. */
+  item: Uint8Array;
+  /** Rangs (ordenats) de les caselles amb objecte. */
+  itemRanks: Uint32Array;
   /** order[r] = casella que es descobreix en la posició r. */
   order: Uint32Array;
   /** rank[i] = posició en què es descobreix la casella i. */
@@ -51,6 +56,8 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
   const half = size / 2;
   const terrain = new Uint8Array(n);
   const special = new Uint8Array(n);
+  const item = new Uint8Array(n);
+  const itemWeight = ITEMS.reduce((a, it) => a + it.weight, 0);
   const value = new Float32Array(n);
   const cost = new Float32Array(n);
   const angle = new Float32Array(n);
@@ -79,6 +86,14 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
       terrain[i] = t;
       const sp = t >= T.Sand && rand2(x, y, seed + 7) < SPECIAL_CHANCE && d > 3;
       special[i] = sp ? 1 : 0;
+      const ir = rand2(x, y, seed + 11);
+      if (!sp && d > 2 && ir < ITEM_CHANCE) {
+        // La mena surt del mateix número (reescalat): dos números del mateix hash amb seeds veïns no són independents.
+        let u = (ir / ITEM_CHANCE) * itemWeight;
+        let k = 0;
+        while (k < ITEMS.length - 1 && u >= ITEMS[k].weight) u -= ITEMS[k++].weight;
+        item[i] = k + 1;
+      }
       value[i] = TERRAINS[t].value * (1 + d / DIST_VALUE_SCALE) * (sp ? SPECIAL_MULT : 1);
 
       cost[i] = TERRAINS[t].cost * (1 + COST_NOISE * fbm(x, y, seed + 31, 24, 2));
@@ -119,6 +134,10 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     goldPrefix[r + 1] = goldPrefix[r] + value[order[r]];
   }
 
+  const itemList: number[] = [];
+  for (let r = 0; r < n; r++) if (item[order[r]]) itemList.push(r);
+  const itemRanks = Uint32Array.from(itemList);
+
   if (order[0] !== cy * size + cx) throw new Error('El campament ha de ser la primera casella');
 
   // Passos: per arribar a la casella r cal anar des de la r - 1 (distància de rei: 1 si és contigua).
@@ -144,7 +163,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     return out.sort();
   });
 
-  return { seed, size, cx, cy, terrain, special, order, rank, goldPrefix, rings: count, steps, ringSteps, zoomRanks };
+  return { seed, size, cx, cy, terrain, special, item, itemRanks, order, rank, goldPrefix, rings: count, steps, ringSteps, zoomRanks };
 }
 
 const SQRT2 = Math.SQRT2;
@@ -304,22 +323,74 @@ export function revealedGold(w: World, walked: number, robots: number): number {
   return g;
 }
 
-/** Llocs especials als quals un robot ha arribat entre dos moments (robots0 a l'anell inicial, robots1 al final). */
-export function revealedSpecials(w: World, e0: number, e1: number, robots0: number, robots1: number): number[] {
+/** Trams de rangs [a, b) als quals algun robot ha arribat entre dos moments (robots0 a l'anell inicial, robots1 al final). */
+export function revealedRanges(w: World, e0: number, e1: number, robots0: number, robots1: number): [number, number][] {
   const p0 = ringProgress(w, e0, robots0);
   const p1 = ringProgress(w, e1, robots1);
-  const out: number[] = [];
+  const out: [number, number][] = [];
   const arcs = (p: RingProgress, from: (k: number) => number, to: (k: number) => number) => {
-    for (let k = 0; k < p.reach.length; k++) out.push(...specialsBetween(w, p.starts[k] + from(k), p.starts[k] + to(k)));
+    for (let k = 0; k < p.reach.length; k++) {
+      const a = p.starts[k] + from(k);
+      const b = p.starts[k] + to(k);
+      if (b > a) out.push([a, b]);
+    }
   };
   if (p0.ring === p1.ring) {
     arcs(p1, (k) => Math.floor(p0.reach[k] ?? 0), (k) => Math.floor(p1.reach[k]));
   } else {
     arcs(p0, (k) => Math.floor(p0.reach[k]), (k) => p0.starts[k + 1] - p0.starts[k]);
-    out.push(...specialsBetween(w, p0.b, p1.a));
+    if (p1.a > p0.b) out.push([p0.b, p1.a]);
     arcs(p1, () => 0, (k) => Math.floor(p1.reach[k]));
   }
   return out;
+}
+
+/** Llocs especials als quals un robot ha arribat entre dos moments. */
+export function revealedSpecials(w: World, e0: number, e1: number, robots0: number, robots1: number): number[] {
+  return revealedRanges(w, e0, e1, robots0, robots1).flatMap(([a, b]) => specialsBetween(w, a, b));
+}
+
+/** Índex (a `itemRanks`) del primer objecte amb rang >= r. */
+export function itemIndexAt(w: World, r: number): number {
+  const ir = w.itemRanks;
+  let lo = 0;
+  let hi = ir.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ir[mid] < r) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Índexs (a `itemRanks`) dels objectes amb rang a [a, b). */
+export function itemsBetween(w: World, a: number, b: number): number[] {
+  const out: number[] = [];
+  for (let k = itemIndexAt(w, a); k < w.itemRanks.length && w.itemRanks[k] < b; k++) out.push(k);
+  return out;
+}
+
+/** Anell on és la casella de rang r. */
+export function ringOfRank(w: World, r: number): number {
+  const rs = w.rings;
+  let lo = 0;
+  let hi = rs.length - 2;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (rs[mid] <= r) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/** Si la casella de rang r ja l'ha trepitjada algun robot. */
+export function isRevealed(w: World, walked: number, robots: number, r: number): boolean {
+  const p = ringProgress(w, walked, robots);
+  if (r < p.a) return true;
+  if (r >= p.b) return false;
+  let k = p.reach.length - 1;
+  while (k > 0 && p.starts[k] > r) k--;
+  return r < p.starts[k] + Math.floor(p.reach[k]);
 }
 
 function prefixAt(w: World, r: number): number {

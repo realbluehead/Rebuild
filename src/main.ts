@@ -1,7 +1,7 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './ui/style.css';
-import { buy, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buy, craft, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
 import { createWorld, goldBetween, type World } from './core/world';
 import { fmt } from './core/format';
@@ -32,6 +32,7 @@ async function boot() {
 
   const view = createView(app, world, state, {
     buy: (id) => { if (buy(state, id)) void save(); },
+    craft: (id) => { if (craft(state, id)) { view.crafted(id, state.works[id]); void save(); } },
     zoom: (d) => { setZoom(state, state.zoom + d); },
     exportText: () => exportSave(serialize(state, Date.now())),
     importText: (text) => {
@@ -57,6 +58,7 @@ async function boot() {
   const handle = (ev: ReturnType<typeof tick>, now: number) => {
     const loot = stats(state).loot;
     for (const r of ev.specials) view.specialFound(r, fmt(goldBetween(world, r, r + 1) * loot), now);
+    for (const r of ev.items) view.itemFound(r, now);
     if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
     if (ev.zoomUnlocked) {
       view.toast(`Nou zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);

@@ -18,6 +18,9 @@ describe('save', () => {
     s.trip = 'home';
     s.travel = 1.5;
     s.travelLen = 4;
+    s.items.page = 7;
+    s.works.cd = 2;
+    s.radarNext = 11;
     s.upgrades.speed = 7;
     s.zoomUnlocked = 3;
     s.zoom = 2;
@@ -26,6 +29,9 @@ describe('save', () => {
     expect(state.gold.eq(s.gold)).toBe(true);
     expect(state).toMatchObject({ seed: 7, walked: 123.5, ringRobots: 2, zoomUnlocked: 3, zoom: 2, trip: 'home', travel: 1.5, travelLen: 4 });
     expect(state.cargo.toNumber()).toBe(3.5);
+    expect(state.items.page).toBe(7);
+    expect(state.works.cd).toBe(2);
+    expect(state.radarNext).toBe(11);
     expect(state.upgrades.speed).toBe(7);
   });
 
@@ -37,7 +43,9 @@ describe('save', () => {
   it('migra una partida v1 (abans de la bodega)', () => {
     const v1 = { v: 1, savedAt: 9, seed: 3, walked: 50, gold: '12', totalGold: '40', upgrades: { speed: 4, radius: 2, loot: 3, explorers: 1 }, ringRobots: 2, zoomUnlocked: 2, zoom: 1, playTime: 99 };
     const { state } = deserialize(v1);
-    expect(state.upgrades).toEqual({ speed: 4, loot: 3, cargo: 0, explorers: 1 });
+    expect(state.upgrades).toEqual({ speed: 4, radar: 3, cargo: 0, explorers: 1 });
+    expect(state.items).toEqual({ page: 0, note: 0, photo: 0 });
+    expect(state.radarNext).toBe(0);
     expect(state.cargo.toNumber()).toBe(0);
     expect(state.trip).toBe('explore');
     expect(state).toMatchObject({ walked: 50, ringRobots: 2, zoomUnlocked: 2 });

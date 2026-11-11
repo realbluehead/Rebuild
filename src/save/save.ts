@@ -3,11 +3,12 @@
 //   2. afegeix la migració (vN → vN+1) a MIGRATIONS
 //   3. afegeix un test amb una partida antiga real a save.test.ts
 // v1: primera versió publicada. v2: els robots carreguen l'or i el porten al campament (bodega).
+// v3: objectes (pàgines, notes, fotos), obres (llibres, discos, àlbums) i el radar que desvia els robots.
 import { D } from '../core/decimal';
 import { newGame, type GameState, type Trip } from '../core/state';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /** Forma JSON de la partida: els Decimal es guarden com a text. */
 export interface SaveData {
@@ -25,6 +26,10 @@ export interface SaveData {
   trip: Trip;
   travel: number;
   travelLen: number;
+  /** v3 */
+  items: Record<string, number>;
+  works: Record<string, number>;
+  radarNext: number;
   /** Afegit després de la v1 inicial; si falta, 1. */
   ringRobots?: number;
   zoomUnlocked: number;
@@ -43,6 +48,11 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     delete upgrades.radius;
     return { ...s, v: 2, upgrades: { ...upgrades, cargo: 0 }, cargo: '0', trip: 'explore', travel: 0, travelLen: 0 };
   },
+  // v2 → v3: el Radar deixa de donar or i passa a detectar objectes (es conserven els nivells). Sense objectes encara.
+  2: (s) => {
+    const { loot, ...rest } = (s.upgrades ?? {}) as Record<string, number>;
+    return { ...s, v: 3, upgrades: { ...rest, radar: loot ?? 0 }, items: {}, works: {}, radarNext: 0 };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -58,6 +68,9 @@ export function serialize(s: GameState, now: number): SaveData {
     trip: s.trip,
     travel: s.travel,
     travelLen: s.travelLen,
+    items: { ...s.items },
+    works: { ...s.works },
+    radarNext: s.radarNext,
     ringRobots: s.ringRobots,
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
@@ -85,7 +98,10 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = data.playTime ?? 0;
   state.cargo = D(data.cargo ?? 0);
-  state.trip = data.trip === 'home' || data.trip === 'out' ? data.trip : 'explore';
+  state.trip = data.trip === 'home' || data.trip === 'out' || data.trip === 'detour' ? data.trip : 'explore';
+  state.radarNext = Math.max(0, Math.floor(data.radarNext ?? 0));
+  for (const id of Object.keys(state.items) as (keyof GameState['items'])[]) state.items[id] = Math.max(0, data.items?.[id] ?? 0);
+  for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = Math.max(0, data.works?.[id] ?? 0);
   state.travelLen = Math.max(0, data.travelLen ?? 0);
   state.travel = Math.min(state.travelLen, Math.max(0, data.travel ?? 0));
   state.ringRobots = Math.max(1, Math.floor(data.ringRobots ?? 1));

@@ -3,8 +3,8 @@
 // per al zoom més llunyà. La boira depèn del rang de cada casella respecte de les caselles explorades.
 import { ZOOMS } from '../content/world';
 import { hash2 } from '../core/rng';
-import { ringProgress, type World } from '../core/world';
-import { buildAtlas, campFrames, FLAT, PAL, robotFrames, SPECIAL_BASE, TILE, VARIANTS } from './sprites';
+import { itemIndexAt, ringOfRank, ringProgress, type World } from '../core/world';
+import { buildAtlas, campFrames, FLAT, ITEM_SPRITES, PAL, robotFrames, SPECIAL_BASE, spriteCanvas, TILE, VARIANTS } from './sprites';
 
 /** Píxels lògics que fa una casella a cada zoom (el costat curt del canvas fa ~256 px lògics). */
 export const ZOOM_PX = ZOOMS.map((_, z) => TILE / 4 ** z);
@@ -14,6 +14,11 @@ const TILE_MIN_PX = 6;
 const MIP = 4;
 
 interface Popup { wx: number; wy: number; text: string; t0: number; }
+
+/** Què fan els robots quan no exploren: anar o tornar del campament, o anar a buscar un objecte (`target`, rang). */
+export interface TripView { kind: 'home' | 'out' | 'detour'; f: number; target?: number; }
+/** Objectes que el radar detecta: a partir de l'índex `next` de `itemRanks`, fins a `range` anells més enllà. */
+export interface RadarView { next: number; range: number; }
 
 const darken = (c: number) => (((c >>> 2) & 0x3f3f3f) | 0xff000000) >>> 0;
 /** Barreja dos colors ABGR (t = 0 → a, t = 1 → b). */
@@ -36,6 +41,7 @@ export class MapView {
   private mipMin: Uint32Array;
   private robot = robotFrames();
   private camp = campFrames();
+  private itemIcons = ITEM_SPRITES.map(spriteCanvas);
   /** Posició dibuixada de cada robot: segueix la real amb suavitat perquè avanci a poc a poc, sense salts. */
   private bots: { x: number; y: number; face: 1 | -1 }[] = [];
   private popups: Popup[] = [];
@@ -111,6 +117,17 @@ export class MapView {
     this.buf = new Uint32Array(this.img.data.buffer);
   }
 
+  /** Casella (índex) sota un punt de la pantalla (coordenades de client), o -1 si és fora del mapa. */
+  cellAt(clientX: number, clientY: number): number {
+    const rect = this.canvas.getBoundingClientRect();
+    const lx = ((clientX - rect.left) / rect.width) * this.W;
+    const ly = ((clientY - rect.top) / rect.height) * this.H;
+    const x = Math.floor(this.camX + (lx - this.W / 2) / this.cellPx);
+    const y = Math.floor(this.camY + (ly - this.H / 2) / this.cellPx);
+    const size = this.w.size;
+    return x < 0 || y < 0 || x >= size || y >= size ? -1 : y * size + x;
+  }
+
   popup(rank: number, text: string, now: number): void {
     const i = this.w.order[rank];
     this.popups.push({ wx: (i % this.w.size) + 0.5, wy: Math.floor(i / this.w.size), text, t0: now });
@@ -164,7 +181,7 @@ export class MapView {
   }
 
   /** `trip`: si els robots van o tornen del campament, cap a on (`home`) i quina part del camí han fet (`f`). */
-  render(walked: number, robots: number, zoom: number, now: number, dt: number, trip: { home: boolean; f: number } | null = null): void {
+  render(walked: number, robots: number, zoom: number, now: number, dt: number, trip: TripView | null = null, radar: RadarView = { next: 0, range: 0 }): void {
     const { w, W, H, buf } = this;
     const size = w.size;
     const n = size * size;
@@ -209,11 +226,23 @@ export class MapView {
       }
     }
     // De camí cap al campament a descarregar, o tornant a la frontera: en línia recta pel terreny conegut.
-    if (trip) {
+    if (trip && trip.kind !== 'detour') {
       const hx = w.cx + 0.5;
       const hy = w.cy + 0.5;
-      const f = trip.home ? trip.f : 1 - trip.f;
+      const f = trip.kind === 'home' ? trip.f : 1 - trip.f;
       for (const p of walkers) { p[0] += (hx - p[0]) * f; p[1] += (hy - p[1]) * f; }
+    }
+    // Desviament del radar: el robot més proper va fins a l'objecte i torna; els altres l'esperen.
+    if (trip?.kind === 'detour' && trip.target !== undefined && walkers.length) {
+      const ti = w.order[trip.target];
+      const tx = (ti % size) + 0.5;
+      const ty = Math.floor(ti / size) + 0.5;
+      let best = 0;
+      walkers.forEach((p, j) => { if (Math.hypot(p[0] - tx, p[1] - ty) < Math.hypot(walkers[best][0] - tx, walkers[best][1] - ty)) best = j; });
+      const f = trip.f < 0.5 ? trip.f * 2 : (1 - trip.f) * 2;
+      const p = walkers[best];
+      p[0] += (tx - p[0]) * f;
+      p[1] += (ty - p[1]) * f;
     }
     this.bots.length = Math.min(this.bots.length, walkers.length);
     walkers.forEach(([x, y], e) => {
@@ -305,6 +334,26 @@ export class MapView {
         ctx.fillRect(sx - 2, sy - 2, 5, 5);
         ctx.fillStyle = '#ff5a4a';
         ctx.fillRect(sx - 1, sy - 1, 3, 3);
+      }
+    }
+
+    // Objectes que detecta el radar dins la foscor (parpellegen).
+    if (radar.range > 0 && Math.floor(now / 400) % 3 !== 0) {
+      const maxRing = prog.ring + radar.range;
+      for (let k = Math.max(radar.next, itemIndexAt(w, ringA)); k < w.itemRanks.length; k++) {
+        const r = w.itemRanks[k];
+        if (ringOfRank(w, r) > maxRing) break;
+        if (seen(r)) continue;
+        const i = w.order[r];
+        const sx = Math.round(((i % size) + 0.5 - left) * cp);
+        const sy = Math.round((Math.floor(i / size) + 0.5 - top) * cp);
+        if (sx < -8 || sy < -8 || sx > W + 8 || sy > H + 8) continue;
+        if (cp >= TILE_MIN_PX) {
+          ctx.drawImage(this.itemIcons[w.item[i] - 1], sx - 4, sy - 4);
+        } else {
+          ctx.fillStyle = '#ff7ad9';
+          ctx.fillRect(sx - 1, sy - 1, 2, 2);
+        }
       }
     }
 

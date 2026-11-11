@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from './state';
-import { buy, capacity, costOf, explored, isComplete, setZoom, stats, tick } from './game';
+import { buy, canCraft, capacity, costOf, craft, explored, isComplete, nextWorkCost, setZoom, stats, tick } from './game';
 import { UPGRADES } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
 import { D } from './decimal';
@@ -13,6 +13,16 @@ const world = createWorld(42, SIZE);
 const botes = UPGRADES.find((u) => u.id === 'speed')!;
 
 describe('món', () => {
+  it('reparteix pàgines, notes i fotos segons els pesos', () => {
+    const counts = [0, 0, 0];
+    for (const r of world.itemRanks) counts[world.item[world.order[r]] - 1]++;
+    const total = counts.reduce((a, b) => a + b, 0);
+    expect(total / totalCells(world)).toBeGreaterThan(0.005);
+    expect(counts[0] / total).toBeCloseTo(0.45, 1);
+    expect(counts[1] / total).toBeCloseTo(0.2, 1);
+    expect(counts[2] / total).toBeCloseTo(0.35, 1);
+  });
+
   it('és determinista amb el mateix seed', () => {
     const other = createWorld(42, SIZE);
     expect(other.terrain).toEqual(world.terrain);
@@ -116,15 +126,23 @@ describe('joc', () => {
     expect(a.trip).toBe(b.trip);
   });
 
-  for (const robots of [1, 3]) {
-    it(`amb ${robots} robot(s), tot l'or i tots els llocs especials arriben exactament un cop`, () => {
+  for (const [robots, radar] of [[1, 0], [3, 0], [1, 2], [3, 4]]) {
+    it(`amb ${robots} robot(s) i radar ${radar}, tot l'or, els llocs especials i els objectes arriben exactament un cop`, () => {
       const s = newGame(42);
       s.upgrades.explorers = robots - 1;
       s.upgrades.speed = 40;
       s.upgrades.cargo = 20;
+      s.upgrades.radar = radar;
       let specials = 0;
-      for (let k = 0; k < 20000 && !isComplete(s, world); k++) specials += tick(s, world, 0.5).specials.length;
+      const items = new Set<number>();
+      for (let k = 0; k < 40000 && !isComplete(s, world); k++) {
+        const ev = tick(s, world, 0.5);
+        specials += ev.specials.length;
+        for (const r of ev.items) { expect(items.has(r)).toBe(false); items.add(r); }
+      }
       expect(isComplete(s, world)).toBe(true);
+      expect(items.size).toBe(world.itemRanks.length);
+      expect(s.items.page + s.items.note + s.items.photo).toBe(world.itemRanks.length);
       expect(explored(s, world)).toBeCloseTo(totalCells(world));
       expect(specials).toBe(world.special.reduce((a, b) => a + b, 0));
       expect(s.totalGold.toNumber() / world.goldPrefix[totalCells(world)]).toBeCloseTo(1, 6);
@@ -142,6 +160,32 @@ describe('joc', () => {
     expect(s.ringRobots).toBe(ring);
     for (let k = 0; k < 200; k++) tick(s, world, 0.5);
     expect(s.ringRobots).toBe(3);
+  });
+
+  it('el radar porta els robots a buscar objectes dins la foscor, abans que s\'hi arribi explorant', () => {
+    const s = newGame(42);
+    s.upgrades.speed = 10;
+    s.upgrades.cargo = 20;
+    s.upgrades.radar = 3;
+    let early = 0;
+    for (let k = 0; k < 20000 && s.radarNext < 5; k++) {
+      const before = s.radarNext;
+      const ev = tick(s, world, 0.2);
+      if (s.radarNext > before) for (const r of ev.items) if (r >= explored(s, world)) early++;
+    }
+    expect(early).toBeGreaterThan(0);
+  });
+
+  it('amb prou objectes es crea una obra, i la següent costa més', () => {
+    const s = newGame(42);
+    expect(canCraft(s, 'book')).toBe(false);
+    s.items.page = 10;
+    const speed = stats(s).speed;
+    expect(craft(s, 'book')).toBe(true);
+    expect(s.items.page).toBe(0);
+    expect(s.works.book).toBe(1);
+    expect(stats(s).speed).toBeGreaterThan(speed);
+    expect(nextWorkCost(s, 'book')).toBeGreaterThan(10);
   });
 
   it('no es pot comprar sense or', () => {

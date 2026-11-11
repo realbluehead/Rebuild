@@ -2,7 +2,7 @@
 // Ús: npm run sim [-- hores [seed]]
 import { UPGRADES } from '../src/content/upgrades';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
-import { buy, canBuy, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
+import { buy, canBuy, craft, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -44,6 +44,7 @@ function score(id: (typeof UPGRADES)[number]['id']): number {
 }
 
 for (let t = 0; t < hours * 3600; t += DT) {
+  for (const id of ['book', 'cd', 'album'] as const) while (craft(s, id));
   for (;;) {
     let best = UPGRADES[0].id;
     for (const u of UPGRADES) if (score(u.id) > score(best)) best = u.id;
@@ -59,10 +60,10 @@ for (let t = 0; t < hours * 3600; t += DT) {
   }
   while (nextPct < pctMilestones.length && explored(s, w) >= n * pctMilestones[nextPct]) {
     const st = stats(s);
-    console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% del mapa · ${st.stepsPerSec.toFixed(1)} passos/s · bodega ${fmt(stats(s).cargo)} · or ${fmt(s.totalGold)} · millores ${JSON.stringify(s.upgrades)}`);
+    console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% del mapa · ${st.stepsPerSec.toFixed(1)} passos/s · bodega ${fmt(stats(s).cargo)} · or ${fmt(s.totalGold)} · millores ${JSON.stringify(s.upgrades)} · obres ${JSON.stringify(s.works)}`);
     nextPct++;
   }
   if (isComplete(s, w)) break;
 }
 
-console.log(`\nFinal (${fmtTime(s.playTime)}): ${(100 * explored(s, w) / n).toFixed(2)}% · ${JSON.stringify(s.upgrades)}`);
+console.log(`\nFinal (${fmtTime(s.playTime)}): ${(100 * explored(s, w) / n).toFixed(2)}% · ${JSON.stringify(s.upgrades)} · obres ${JSON.stringify(s.works)} · objectes ${JSON.stringify(s.items)}`);

@@ -280,3 +280,37 @@ export const COIN = sprite([
   '.kyyyyk.',
   '..kkkk..',
 ], { k: PAL.ink, y: PAL.gold, Y: PAL.gold2 });
+
+/** Objectes que es troben pel mapa: pàgina, nota musical i foto (mateix ordre que ITEMS). */
+export const ITEM_SPRITES = [
+  sprite([
+    '.kkkkk..',
+    '.kwwwkk.',
+    '.kwgggk.',
+    '.kwwwwk.',
+    '.kwgggk.',
+    '.kwwwwk.',
+    '.kwgggk.',
+    '.kkkkkk.',
+  ], { k: PAL.ink, w: px('#f4ecd6'), g: px('#a99c80') }),
+  sprite([
+    '....kkk.',
+    '....kmmk',
+    '....kk.k',
+    '....k...',
+    '.kkkk...',
+    'kmmmk...',
+    'kmmmk...',
+    '.kkk....',
+  ], { k: PAL.ink, m: px('#ff7ad9') }),
+  sprite([
+    'kkkkkkkk',
+    'kwwwwwwk',
+    'kwbbbbwk',
+    'kwbsbbwk',
+    'kwgggbwk',
+    'kwggggwk',
+    'kwwwwwwk',
+    'kkkkkkkk',
+  ], { k: PAL.ink, w: px('#f4ecd6'), b: px('#7fc4ff'), s: px('#ffe27a'), g: px('#5aa53c') }),
+];

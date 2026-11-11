@@ -13,6 +13,8 @@ export interface OfflineReport {
   gold: Decimal;
   cells: number;
   specials: number;
+  /** Pàgines, notes i fotos recollides. */
+  items: number;
   zoomUnlocked?: number;
 }
 
@@ -25,12 +27,13 @@ export function applyOffline(s: GameState, w: World, savedAt: number, now: numbe
   }
   const gold0 = D(s.totalGold);
   const cells0 = explored(s, w);
-  const report: OfflineReport = { seconds, gold: D(0), cells: 0, specials: 0 };
+  const report: OfflineReport = { seconds, gold: D(0), cells: 0, specials: 0, items: 0 };
   let left = seconds;
   while (left > 0) {
     const dt = Math.min(CHUNK_SEC, left);
     const ev = tick(s, w, dt);
     report.specials += ev.specials.length;
+    report.items += ev.items.length;
     if (ev.zoomUnlocked) report.zoomUnlocked = ev.zoomUnlocked;
     left -= dt;
   }
