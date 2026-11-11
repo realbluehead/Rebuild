@@ -17,7 +17,8 @@ caselles de costat); es comença al més proper i el següent es desbloqueja en 
 - Objectes (`content/collection.ts`): pàgines, notes i fotos amagades a ~1/90 caselles (`world.item`, `itemRanks`). Es recullen en
   arribar-hi i amb la pestanya Obres es fan llibres (velocitat), discos (or) i àlbums (bodega): bonus ×1,1 per obra, cost ×1,9 cada cop.
 - Radar: els objectes fins a `radar` anells més enllà els va a buscar un robot (`trip` 'detour', al pas d'explorar; la casella queda fosca).
-  `radarNext` és l'índex del primer objecte que el radar no ha repassat. Al mapa parpellegen fins al doble de l'abast.
+  `radarNext` és l'índex del primer objecte que el radar no ha repassat. Al mapa: radar de submarí (agulla que gira, radi = abast) al voltant
+  de cada robot; els objectes detectats s'encenen quan l'agulla hi passa i l'objectiu del desviament té un marc.
 - Si el robot surt de la vista, una fletxa a la vora (lluny dels botons) hi apunta; tocant-la s'hi va. El mapa mai es mou sol.
 - Terrenys (`content/world.ts` `T`): l'alçada tria aigua/runa/ciutat; a la ciutat, carrers cada 7 caselles (`BLOCK`, campament en un encreuament)
   i illes de cases; la humitat fa selva urbana; un soroll a part fa taques d'abocador. Rajoles a `ui/sprites.ts` (8 variants).

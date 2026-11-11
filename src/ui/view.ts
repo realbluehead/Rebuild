@@ -292,7 +292,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       'Cada obra dona un bonus per sempre: els llibres, velocitat; els discos, més or; els àlbums, més bodega. A la Vitrina hi ha totes les que has fet.');
     sec('Les millores',
       'Motor: els robots exploren i caminen més de pressa.',
-      'Radar: detecta pàgines, notes i fotos dins la foscor (parpellegen al mapa). Un robot deixa l\'exploració, va a buscar-les d\'una en una (la que va a buscar té un marc) i torna on era. Es perd una mica d\'exploració, però els objectes arriben abans. Com més nivell, més lluny arriba.',
+      'Radar: al voltant de cada robot gira un radar de submarí que arriba tantes caselles com el seu abast. Detecta pàgines, notes i fotos dins la foscor: s\'encenen quan l\'agulla hi passa. Un robot deixa l\'exploració, va a buscar-les d\'una en una (la que va a buscar té un marc) i torna on era. Es perd una mica d\'exploració, però els objectes arriben abans. Com més nivell, més lluny arriba.',
       'Bodega: cada robot pot carregar més or, i torna menys sovint al campament.',
       'Robots: surt un robot més. Comença a treballar quan els altres comencen una volta nova al voltant del campament.',
       'El preu de cada millora puja a cada nivell. El botó es posa groc quan la pots comprar.');

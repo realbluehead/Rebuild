@@ -12,6 +12,9 @@ const LOGICAL_SHORT_SIDE = 256;
 /** Per sota d'això es deixen de dibuixar rajoles i es fa servir un color per casella. */
 const TILE_MIN_PX = 6;
 const MIP = 4;
+/** Temps que tarda l'agulla del radar a fer una volta, i llargada de l'estela (radiants). */
+const SWEEP_MS = 2600;
+const SWEEP_TRAIL = 1.1;
 
 interface Popup { wx: number; wy: number; text: string; t0: number; }
 
@@ -360,23 +363,80 @@ export class MapView {
       ctx.strokeRect(sx - hs - 0.5, sy - hs - 0.5, hs * 2 + 1, hs * 2 + 1);
       if (cp >= TILE_MIN_PX) ctx.drawImage(this.itemIcons[w.item[i] - 1], sx - 4, sy - 4);
     }
-    // Objectes que detecta el radar dins la foscor (parpellegen): els que els robots aniran a buscar.
-    if (radar.range > 0 && Math.floor(now / 400) % 3 !== 0) {
+    // Radar de submarí al voltant de cada robot: radi = abast del radar en caselles, una agulla que gira amb
+    // una estela que s'esvaeix, i els objectes detectats s'encenen quan l'agulla hi passa per sobre.
+    const sweep = ((now / SWEEP_MS) % 1) * Math.PI * 2;
+    if (radar.range > 0) {
+      const R = radar.range * cp;
+      ctx.save();
+      for (const b of this.bots) {
+        const bx = (b.x - left) * cp;
+        const by = (b.y - top) * cp;
+        if (bx < -R || by < -R || bx > W + R || by > H + R) continue;
+        ctx.fillStyle = 'rgba(80, 255, 120, 0.05)';
+        ctx.beginPath();
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
+        ctx.fill();
+        // Cercles de distància i creu.
+        ctx.strokeStyle = 'rgba(110, 255, 140, 0.35)';
+        ctx.lineWidth = 1;
+        for (const f of [1, 2 / 3, 1 / 3]) {
+          ctx.beginPath();
+          ctx.arc(bx, by, R * f, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(110, 255, 140, 0.15)';
+        ctx.beginPath();
+        ctx.moveTo(bx - R, by); ctx.lineTo(bx + R, by);
+        ctx.moveTo(bx, by - R); ctx.lineTo(bx, by + R);
+        ctx.stroke();
+        // Estela: falques cada cop més transparents darrere de l'agulla.
+        const steps = 12;
+        for (let k = 0; k < steps; k++) {
+          ctx.fillStyle = `rgba(90, 255, 130, ${0.28 * (1 - k / steps)})`;
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.arc(bx, by, R, sweep - ((k + 1) * SWEEP_TRAIL) / steps, sweep - (k * SWEEP_TRAIL) / steps);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(170, 255, 190, 0.9)';
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(sweep) * R, by + Math.sin(sweep) * R);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Objectes detectats (els que els robots aniran a buscar): s'encenen quan l'agulla els toca i s'esvaeixen.
       const maxRing = prog.ring + radar.range;
       for (let k = Math.max(radar.next, itemIndexAt(w, ringA)); k < w.itemRanks.length; k++) {
         const r = w.itemRanks[k];
         if (ringOfRank(w, r) > maxRing) break;
         if (seen(r) || r === fetching) continue;
         const i = w.order[r];
-        const sx = Math.round(((i % size) + 0.5 - left) * cp);
-        const sy = Math.round((Math.floor(i / size) + 0.5 - top) * cp);
+        const ix = (i % size) + 0.5;
+        const iy = Math.floor(i / size) + 0.5;
+        const sx = Math.round((ix - left) * cp);
+        const sy = Math.round((iy - top) * cp);
         if (sx < -8 || sy < -8 || sx > W + 8 || sy > H + 8) continue;
+        // Robot més proper: el seu radar és el que el veu.
+        let near = this.bots[0];
+        for (const b of this.bots) if (near && Math.hypot(b.x - ix, b.y - iy) < Math.hypot(near.x - ix, near.y - iy)) near = b;
+        const behind = near ? (((sweep - Math.atan2(iy - near.y, ix - near.x)) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) : 0;
+        const glow = 1 - behind / (Math.PI * 2); // 1 just quan hi passa l'agulla, 0 just abans de tornar-hi
+        ctx.globalAlpha = 0.25 + 0.75 * glow * glow;
+        if (glow > 0.85) {
+          ctx.fillStyle = 'rgba(120, 255, 150, 0.5)';
+          ctx.fillRect(sx - 6, sy - 6, 12, 12);
+        }
         if (cp >= TILE_MIN_PX) {
           ctx.drawImage(this.itemIcons[w.item[i] - 1], sx - 4, sy - 4);
         } else {
-          ctx.fillStyle = '#ff7ad9';
-          ctx.fillRect(sx - 1, sy - 1, 2, 2);
+          ctx.fillStyle = '#9cff57';
+          ctx.fillRect(sx - 1, sy - 1, 3, 3);
         }
+        ctx.globalAlpha = 1;
       }
     }
 
