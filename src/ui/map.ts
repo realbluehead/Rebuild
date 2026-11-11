@@ -16,6 +16,11 @@ const MIP = 4;
 interface Popup { wx: number; wy: number; text: string; t0: number; }
 
 const darken = (c: number) => (((c >>> 2) & 0x3f3f3f) | 0xff000000) >>> 0;
+/** Barreja dos colors ABGR (t = 0 → a, t = 1 → b). */
+const mix = (a: number, b: number, t: number) => {
+  const ch = (sh: number) => Math.round(((a >>> sh) & 0xff) + (((b >>> sh) & 0xff) - ((a >>> sh) & 0xff)) * t) << sh;
+  return (0xff000000 | ch(16) | ch(8) | ch(0)) >>> 0;
+};
 
 export class MapView {
   private ctx: CanvasRenderingContext2D;
@@ -141,8 +146,8 @@ export class MapView {
     this.camY = Math.min(size, Math.max(0, this.camY));
   }
 
-  /** Posició (en caselles, centre) del robot que va per la posició `r` de l'ordre: camina en línia recta
-   *  des de la casella r - 1 fins a la r i hi arriba just quan la descobreix. */
+  /** Posició (en caselles, centre) del robot que va per la posició `r` de l'ordre: durant la primera meitat
+   *  del pas camina des de la casella r - 1 fins a la r, i la segona meitat s'hi queda explorant-la. */
   private walkerPos(r: number): [number, number] {
     const { order, size } = this.w;
     const n = order.length;
@@ -154,11 +159,12 @@ export class MapView {
     const prev = order[k - 1];
     const x0 = (prev % size) + 0.5;
     const y0 = Math.floor(prev / size) + 0.5;
-    const f = Math.min(1, r - Math.floor(r));
+    const f = Math.min(1, 2 * (r - Math.floor(r)));
     return [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
   }
 
-  render(walked: number, robots: number, zoom: number, now: number, dt: number): void {
+  /** `trip`: si els robots van o tornen del campament, cap a on (`home`) i quina part del camí han fet (`f`). */
+  render(walked: number, robots: number, zoom: number, now: number, dt: number, trip: { home: boolean; f: number } | null = null): void {
     const { w, W, H, buf } = this;
     const size = w.size;
     const n = size * size;
@@ -170,6 +176,13 @@ export class MapView {
     const arcEnd = prog.reach.map((x, k) => arcStart[k] + Math.floor(x));
     const arcs = arcEnd.length;
     const explored = ringA + prog.reach.reduce((x, y) => x + y, 0);
+    // Casella que explora cada robot ara mateix: va agafant color (0 → 1) mentre el robot hi és.
+    const exploring = new Map<number, number>();
+    prog.reach.forEach((x, k) => {
+      const r = arcStart[k] + Math.floor(x);
+      const t = Math.min(1, Math.max(0, (x - Math.floor(x)) * 2 - 1));
+      if (r < arcStart[k + 1] && t > 0) exploring.set(r, t);
+    });
     const seen = (r: number): boolean => {
       if (r < ringA) return true;
       if (r >= ringB) return false;
@@ -194,6 +207,13 @@ export class MapView {
         const k = prog.ring % 2 === 0 ? j : arcs - 1 - j;
         walkers.push(this.walkerPos(arcStart[k] + prog.reach[k]));
       }
+    }
+    // De camí cap al campament a descarregar, o tornant a la frontera: en línia recta pel terreny conegut.
+    if (trip) {
+      const hx = w.cx + 0.5;
+      const hy = w.cy + 0.5;
+      const f = trip.home ? trip.f : 1 - trip.f;
+      for (const p of walkers) { p[0] += (hx - p[0]) * f; p[1] += (hy - p[1]) * f; }
     }
     this.bots.length = Math.min(this.bots.length, walkers.length);
     walkers.forEach(([x, y], e) => {
@@ -245,7 +265,10 @@ export class MapView {
           } else {
             c = this.flat[i];
           }
-          if (!seen(r)) c = ((pxl + py) & 1) === 0 && !special[i] ? darken(c) : VOID;
+          if (!seen(r)) {
+            const t = exploring.get(r);
+            c = t !== undefined ? mix(darken(c), c, t) : ((pxl + py) & 1) === 0 && !special[i] ? darken(c) : VOID;
+          }
           buf[row + pxl] = c;
         }
       }

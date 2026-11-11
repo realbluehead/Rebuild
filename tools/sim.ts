@@ -2,7 +2,7 @@
 // Ús: npm run sim [-- hores [seed]]
 import { UPGRADES } from '../src/content/upgrades';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
-import { buy, canBuy, costOf, explored, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
+import { buy, canBuy, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -26,14 +26,21 @@ let nextPct = 0;
 const DT = 1; // segons per pas: prou fi per a compres
 let zoom = 1;
 
-// Valor d'una millora: quant augmenta l'or/s (aprox. per caselles/s × botí) per unitat d'or gastada.
+// Valor d'una millora: quant augmenta l'or/s que arriba al campament (i, una mica, la velocitat
+// d'exploració, que és el que obre el mapa) per unitat d'or gastada.
+function value(): number {
+  const robots = s.ringRobots;
+  s.ringRobots = stats(s).explorers; // els robots nous treballaran a l'anell següent
+  const v = goldPerSec(s, w) * Math.sqrt(stats(s).stepsPerSec);
+  s.ringRobots = robots;
+  return v;
+}
 function score(id: (typeof UPGRADES)[number]['id']): number {
-  const before = stats(s);
+  const before = value();
   s.upgrades[id]++;
-  const after = stats(s);
+  const after = value();
   s.upgrades[id]--;
-  const gain = (after.stepsPerSec * after.loot) / (before.stepsPerSec * before.loot) - 1;
-  return gain / costOf(UPGRADES.find((u) => u.id === id)!, s.upgrades[id]).toNumber();
+  return (after / before - 1) / costOf(UPGRADES.find((u) => u.id === id)!, s.upgrades[id]).toNumber();
 }
 
 for (let t = 0; t < hours * 3600; t += DT) {
@@ -52,7 +59,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
   }
   while (nextPct < pctMilestones.length && explored(s, w) >= n * pctMilestones[nextPct]) {
     const st = stats(s);
-    console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% del mapa · ${st.stepsPerSec.toFixed(1)} passos/s · or ${fmt(s.totalGold)} · millores ${JSON.stringify(s.upgrades)}`);
+    console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% del mapa · ${st.stepsPerSec.toFixed(1)} passos/s · bodega ${fmt(stats(s).cargo)} · or ${fmt(s.totalGold)} · millores ${JSON.stringify(s.upgrades)}`);
     nextPct++;
   }
   if (isComplete(s, w)) break;

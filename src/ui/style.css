@@ -103,8 +103,14 @@ button { font: inherit; color: inherit; }
 .gold-line { display: flex; align-items: center; gap: 8px; }
 .gold { font: 16px/1 var(--font-num); color: var(--gold); }
 .rate { color: var(--ok); font-size: 20px; }
+.cargo-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cargo-bar { flex: 0 0 64px; margin: 0; height: 10px; }
+.cargo-bar i { background: var(--gold); }
+.cargo-bar.full i { background: var(--red); }
+.cargo-text { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .explored { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .menu-btn { width: 40px; height: 40px; padding: 0; display: grid; place-content: center; gap: 4px; flex: none; }
+.help-btn { font: 16px/1 var(--font-num); color: var(--text); }
 .menu-btn i { display: block; width: 18px; height: 3px; background: var(--text); }
 
 .zoom-ctl {
@@ -166,3 +172,12 @@ button { font: inherit; color: inherit; }
   width: 100%; min-height: 90px; background: var(--void); color: var(--text);
   border: var(--u) solid var(--edge); font: 12px monospace; user-select: text;
 }
+
+/* Ajuda: text llarg amb desplaçament dins del telèfon */
+.modal.help { grid-template-rows: minmax(0, 1fr); }
+.modal.help .box { max-height: 100%; min-height: 0; overflow: hidden; text-align: left; grid-template-rows: auto minmax(0, 1fr) auto; }
+.modal.help .name { text-align: center; }
+.help-body { overflow-y: auto; padding-right: 4px; }
+.help-body h3 { font: 9px/1.6 var(--font-num); color: var(--gold); margin: 12px 0 4px; }
+.help-body h3:first-child { margin-top: 0; }
+.help-body p { margin: 0 0 6px; color: var(--text); font-size: 19px; line-height: 1.05; }

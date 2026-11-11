@@ -14,19 +14,33 @@ describe('save', () => {
     s.gold = D('1.5e300');
     s.walked = 123.5;
     s.ringRobots = 2;
+    s.cargo = D(3.5);
+    s.trip = 'home';
+    s.travel = 1.5;
+    s.travelLen = 4;
     s.upgrades.speed = 7;
     s.zoomUnlocked = 3;
     s.zoom = 2;
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));
     expect(savedAt).toBe(1234);
     expect(state.gold.eq(s.gold)).toBe(true);
-    expect(state).toMatchObject({ seed: 7, walked: 123.5, ringRobots: 2, zoomUnlocked: 3, zoom: 2 });
+    expect(state).toMatchObject({ seed: 7, walked: 123.5, ringRobots: 2, zoomUnlocked: 3, zoom: 2, trip: 'home', travel: 1.5, travelLen: 4 });
+    expect(state.cargo.toNumber()).toBe(3.5);
     expect(state.upgrades.speed).toBe(7);
   });
 
   it('export/import en text', () => {
     const data = serialize(newGame(), 5);
     expect(importSave(exportSave(data))).toEqual(data);
+  });
+
+  it('migra una partida v1 (abans de la bodega)', () => {
+    const v1 = { v: 1, savedAt: 9, seed: 3, walked: 50, gold: '12', totalGold: '40', upgrades: { speed: 4, radius: 2, loot: 3, explorers: 1 }, ringRobots: 2, zoomUnlocked: 2, zoom: 1, playTime: 99 };
+    const { state } = deserialize(v1);
+    expect(state.upgrades).toEqual({ speed: 4, loot: 3, cargo: 0, explorers: 1 });
+    expect(state.cargo.toNumber()).toBe(0);
+    expect(state.trip).toBe('explore');
+    expect(state).toMatchObject({ walked: 50, ringRobots: 2, zoomUnlocked: 2 });
   });
 
   it('rebutja versions del futur', () => {
@@ -48,7 +62,8 @@ describe('offline', () => {
     const s = newGame(7);
     const r = applyOffline(s, world, 0, 600_000);
     expect(r?.seconds).toBe(600);
-    expect(s.walked).toBeCloseTo(600 * stats(s).stepsPerSec);
+    expect(s.walked).toBeGreaterThan(0);
+    expect(s.walked).toBeLessThanOrEqual(600 * stats(s).stepsPerSec);
     expect(r?.cells).toBeCloseTo(explored(s, world));
   });
 

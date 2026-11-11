@@ -2,12 +2,12 @@
 //   1. puja SAVE_VERSION
 //   2. afegeix la migració (vN → vN+1) a MIGRATIONS
 //   3. afegeix un test amb una partida antiga real a save.test.ts
-// (La v1 és la primera del joc d'exploració; encara no s'ha publicat cap versió anterior.)
+// v1: primera versió publicada. v2: els robots carreguen l'or i el porten al campament (bodega).
 import { D } from '../core/decimal';
-import { newGame, type GameState } from '../core/state';
+import { newGame, type GameState, type Trip } from '../core/state';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /** Forma JSON de la partida: els Decimal es guarden com a text. */
 export interface SaveData {
@@ -20,6 +20,11 @@ export interface SaveData {
   gold: string;
   totalGold: string;
   upgrades: Record<string, number>;
+  /** v2: or que porten els robots i en quina part del viatge són. */
+  cargo: string;
+  trip: Trip;
+  travel: number;
+  travelLen: number;
   /** Afegit després de la v1 inicial; si falta, 1. */
   ringRobots?: number;
   zoomUnlocked: number;
@@ -31,7 +36,13 @@ type RawSave = { v: number } & Record<string, unknown>;
 
 /** MIGRATIONS[n] converteix una partida de versió n a versió n+1. */
 const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
-  // 1: (s) => ({ ...s, v: 2, gems: '0' }),
+  // v1 → v2: neix la bodega. El Radar antic (radi) desapareix i la Bodega antiga (or ×) passa a dir-se Radar,
+  // que ja fa això mateix; la Bodega nova (capacitat) comença a 0. Els robots són explorant i sense càrrega.
+  1: (s) => {
+    const upgrades = { ...((s.upgrades ?? {}) as Record<string, number>) };
+    delete upgrades.radius;
+    return { ...s, v: 2, upgrades: { ...upgrades, cargo: 0 }, cargo: '0', trip: 'explore', travel: 0, travelLen: 0 };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -43,6 +54,10 @@ export function serialize(s: GameState, now: number): SaveData {
     gold: s.gold.toString(),
     totalGold: s.totalGold.toString(),
     upgrades: { ...s.upgrades },
+    cargo: s.cargo.toString(),
+    trip: s.trip,
+    travel: s.travel,
+    travelLen: s.travelLen,
     ringRobots: s.ringRobots,
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
@@ -69,6 +84,10 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.gold = D(data.gold ?? 0);
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = data.playTime ?? 0;
+  state.cargo = D(data.cargo ?? 0);
+  state.trip = data.trip === 'home' || data.trip === 'out' ? data.trip : 'explore';
+  state.travelLen = Math.max(0, data.travelLen ?? 0);
+  state.travel = Math.min(state.travelLen, Math.max(0, data.travel ?? 0));
   state.ringRobots = Math.max(1, Math.floor(data.ringRobots ?? 1));
   state.zoomUnlocked = Math.min(ZOOMS.length, Math.max(1, data.zoomUnlocked ?? 1));
   state.zoom = Math.min(state.zoomUnlocked - 1, Math.max(0, data.zoom ?? 0));

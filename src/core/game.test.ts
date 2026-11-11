@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from './state';
-import { buy, costOf, explored, isComplete, setZoom, stats, tick } from './game';
+import { buy, capacity, costOf, explored, isComplete, setZoom, stats, tick } from './game';
 import { UPGRADES } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
 import { D } from './decimal';
@@ -83,7 +83,37 @@ describe('joc', () => {
     expect(s.walked).toBeCloseTo(stats(s).stepsPerSec * 10);
     expect(explored(s, world)).toBeGreaterThan(0);
     expect(explored(s, world)).toBeLessThanOrEqual(s.walked);
-    expect(s.gold.toNumber()).toBeCloseTo(goldBetween(world, 0, explored(s, world)));
+    // L'or el porten els robots fins que el descarreguen al campament.
+    expect(s.gold.add(s.cargo).toNumber()).toBeCloseTo(goldBetween(world, 0, explored(s, world)));
+  });
+
+  it('amb la bodega plena el robot torna al campament, descarrega i torna a sortir', () => {
+    const s = newGame(42);
+    s.upgrades.speed = 10;
+    const cap = capacity(s);
+    let k = 0;
+    while (s.trip === 'explore' && k++ < 100000) tick(s, world, 0.1);
+    expect(s.trip).toBe('home');
+    expect(s.cargo.toNumber()).toBeCloseTo(cap, 9);
+    expect(s.gold.toNumber()).toBe(0);
+    const walked = s.walked;
+    let deposited = 0;
+    while (s.trip !== 'explore' && k++ < 100000) deposited += tick(s, world, 0.1).deposited;
+    expect(s.walked).toBeCloseTo(walked, 0); // mentre va i ve, no explora
+    expect(deposited).toBeCloseTo(cap, 6);
+    expect(s.gold.toNumber()).toBeGreaterThanOrEqual(cap - 1e-6);
+  });
+
+  it('un tick llarg dona el mateix que molts de curts (offline exacte)', () => {
+    const a = newGame(42);
+    const b = newGame(42);
+    a.upgrades.speed = b.upgrades.speed = 12;
+    tick(a, world, 600);
+    for (let k = 0; k < 6000; k++) tick(b, world, 0.1);
+    expect(a.walked).toBeCloseTo(b.walked, 3);
+    expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 3);
+    expect(a.cargo.toNumber()).toBeCloseTo(b.cargo.toNumber(), 3);
+    expect(a.trip).toBe(b.trip);
   });
 
   for (const robots of [1, 3]) {
@@ -91,6 +121,7 @@ describe('joc', () => {
       const s = newGame(42);
       s.upgrades.explorers = robots - 1;
       s.upgrades.speed = 40;
+      s.upgrades.cargo = 20;
       let specials = 0;
       for (let k = 0; k < 20000 && !isComplete(s, world); k++) specials += tick(s, world, 0.5).specials.length;
       expect(isComplete(s, world)).toBe(true);
@@ -103,6 +134,7 @@ describe('joc', () => {
   it('un robot comprat a mig anell comença a treballar a l\'anell següent', () => {
     const s = newGame(42);
     s.upgrades.speed = 20;
+    s.upgrades.cargo = 20;
     while (s.ringRobots === 1 && explored(s, world) < 300) tick(s, world, 0.05);
     s.upgrades.explorers = 2;
     const ring = s.ringRobots;
@@ -136,6 +168,7 @@ describe('joc', () => {
   it('desbloqueja zooms en ordre i no passa del final del mapa', () => {
     const s = newGame(42);
     s.upgrades.speed = 60;
+    s.upgrades.cargo = 30;
     let unlocked = 1;
     for (let k = 0; k < 2000 && !isComplete(s, world); k++) {
       const ev = tick(s, world, 1);

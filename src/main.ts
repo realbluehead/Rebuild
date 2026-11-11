@@ -47,6 +47,7 @@ async function boot() {
     reset: () => { locked = true; void wipeGame().then(() => location.reload()); },
   });
 
+  if (!loaded) view.openHelp();
   if (loaded) {
     const report = applyOffline(state, world, loaded.savedAt, Date.now());
     if (report) view.showOffline(report);
@@ -56,6 +57,7 @@ async function boot() {
   const handle = (ev: ReturnType<typeof tick>, now: number) => {
     const loot = stats(state).loot;
     for (const r of ev.specials) view.specialFound(r, fmt(goldBetween(world, r, r + 1) * loot), now);
+    if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
     if (ev.zoomUnlocked) {
       view.toast(`Nou zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);
       setZoom(state, ev.zoomUnlocked - 1); // ensenyem de seguida la vista nova

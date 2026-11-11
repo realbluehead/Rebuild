@@ -1,7 +1,7 @@
 // Interfície: el mapa (canvas) i un HUD amb DOM. Es construeix un cop; render() només actualitza textos.
 import { UPGRADES, type StatId } from '../content/upgrades';
 import { ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
-import { canBuy, costOf, explored as exploredCells, goldPerSec, isComplete, stats, type Stats } from '../core/game';
+import { canBuy, capacity, costOf, explored as exploredCells, goldPerSec, isComplete, stats, type Stats } from '../core/game';
 import { fmt, fmtTime } from '../core/format';
 import type { GameState } from '../core/state';
 import { totalCells, zoomFraction, type World } from '../core/world';
@@ -31,8 +31,8 @@ const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el
 function effectText(id: StatId, a: Stats, b: Stats): string {
   switch (id) {
     case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)} pas/s`;
-    case 'radius': return `radi ${a.radius}→${b.radius}`;
     case 'loot': return `or ×${fmt(a.loot)}→${fmt(b.loot)}`;
+    case 'cargo': return `carrega ${fmt(a.cargo)}→${fmt(b.cargo)}`;
     case 'explorers': return `robots ${a.explorers}→${b.explorers}`;
   }
 }
@@ -50,12 +50,22 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const stats0 = h('div', 'stats');
   const goldLine = h('div', 'gold-line');
   goldLine.append(h('i', 'coin'), gold, rate);
-  stats0.append(goldLine, explored);
+  // Càrrega dels robots: l'or no és teu fins que el porten al campament.
+  const cargoLine = h('div', 'cargo-line');
+  const cargoBar = h('div', 'bar cargo-bar');
+  const cargoFill = h('i');
+  cargoBar.append(cargoFill);
+  const cargoText = h('span', 'cargo-text');
+  cargoLine.append(cargoBar, cargoText);
+  stats0.append(goldLine, cargoLine, explored);
   const menuBtn = h('button', 'px-btn menu-btn');
   menuBtn.title = 'Menú';
   menuBtn.append(h('i'), h('i'), h('i'));
   menuBtn.addEventListener('click', () => openMenu());
-  topbar.append(stats0, menuBtn);
+  const helpBtn = h('button', 'px-btn menu-btn help-btn', '?');
+  helpBtn.title = 'Ajuda';
+  helpBtn.addEventListener('click', () => openHelp());
+  topbar.append(stats0, helpBtn, menuBtn);
 
   const mapWrap = h('section', 'map-wrap');
   const canvas = h('canvas', 'map');
@@ -173,6 +183,44 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   });
   panel.append(list);
 
+  /** Pàgina d'ajuda: per a què serveix cada cosa. */
+  function openHelp() {
+    const m = modal('help');
+    m.box.append(h('div', 'name', 'Com es juga'));
+    const body = h('div', 'help-body');
+    const sec = (title: string, ...lines: string[]) => {
+      body.append(h('h3', '', title));
+      for (const l of lines) body.append(h('p', '', l));
+    };
+    sec('L\'objectiu',
+      'El mapa comença fosc. Els robots surten del campament i el van descobrint sols, casella a casella, encara que no hi siguis.',
+      'Un robot només pot explorar la casella del costat. Mentre hi és, la casella va agafant color; quan l\'acaba, queda descoberta.');
+    sec('L\'or i la bodega',
+      'Cada casella dona or segons el terreny: muntanya i neu més, bosc i turons força, prat i sorra poc, aigua gairebé res. Com més lluny del campament, més val.',
+      'Els cofres i les ruïnes (caselles daurades) en donen molt.',
+      'Els robots carreguen l\'or que troben, però només en poden dur una quantitat. Quan la bodega és plena, tornen al campament a descarregar-lo i després tornen on ho havien deixat. L\'or no es pot gastar fins que arriba al campament.');
+    sec('La barra de dalt',
+      'Or: el que tens al campament per gastar. +N/s: el que arriba de mitjana.',
+      'La barra sota l\'or és la càrrega dels robots (ara / màxim) i què fan: explorar, tornar a la base o sortir.',
+      'A sota: % del mapa explorat, passos per segon i robots que treballen (R).');
+    sec('Les millores',
+      'Motor: els robots exploren i caminen més de pressa.',
+      'Radar: detecta més or a cada casella.',
+      'Bodega: cada robot pot carregar més or, i torna menys sovint al campament.',
+      'Robots: surt un robot més. Comença a treballar quan els altres comencen una volta nova al voltant del campament.',
+      'El preu de cada millora puja a cada nivell. El botó es posa groc quan la pots comprar.');
+    sec('El mapa',
+      'Arrossega el mapa amb el dit o el ratolí, o mou-te amb les fletxes o WASD.',
+      'Zoom: botons + i −, la roda del ratolí o pessigant. Hi ha 4 zooms; el següent s\'obre quan has explorat el 80% del que es veu (la barra de baix a l\'esquerra).',
+      'El botó del robot (o l\'espai) porta la vista on és el robot.');
+    sec('Altres',
+      'Vel ×N: accelera el temps del joc per provar-lo.',
+      'Si tanques el joc, els robots continuen (fins a 24 hores) i en tornar veus què han trobat.',
+      'Menú ≡: exportar i importar la partida (per passar-la a un altre aparell) o reiniciar amb un mapa nou.');
+    m.box.append(body);
+    m.addClose('Entesos');
+  }
+
   function openMenu() {
     const m = modal();
     m.box.append(h('div', 'name', 'Menú'));
@@ -181,6 +229,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       b.addEventListener('click', () => { m.close(); fn(); });
       m.box.append(b);
     };
+    item('Ajuda', '', () => openHelp());
     item('Exportar partida', '', () => textModal('Copia aquest text per guardar la partida:', actions.exportText(), true));
     item('Importar partida', '', () => textModal('Enganxa una partida exportada:', '', false, actions.importText));
     item('Reiniciar (mapa nou)', 'danger', () => { if (confirm('Segur que vols esborrar la partida i començar un mapa nou?')) actions.reset(); });
@@ -203,11 +252,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       lastFrame = now;
       const st = stats(s);
       map.nudge(...keyDir(), dt);
-      map.render(s.walked, s.ringRobots, s.zoom, now, dt);
+      map.render(s.walked, s.ringRobots, s.zoom, now, dt, s.trip === 'explore' ? null : { home: s.trip === 'home', f: s.travelLen > 0 ? s.travel / s.travelLen : 1 });
       const cells = exploredCells(s, world);
 
       set(gold, fmt(s.gold));
       set(rate, `+${fmt(goldPerSec(s, world))}/s`);
+      const cap = capacity(s);
+      const load = s.cargo.toNumber();
+      cargoFill.style.width = `${Math.min(100, (100 * load) / cap)}%`;
+      cargoBar.classList.toggle('full', load >= cap - 1e-6);
+      set(cargoText, `${fmt(load)}/${fmt(cap)} ${s.trip === 'home' ? '· tornant a la base' : s.trip === 'out' ? '· sortint' : load >= cap - 1e-6 ? '· ple!' : ''}`);
       const pct = (100 * cells) / n;
       set(explored, `${pct < 10 ? pct.toFixed(2) : pct.toFixed(1)}% explorat · ${fmt(st.stepsPerSec)} pas/s · ${s.ringRobots}R`);
 
@@ -240,6 +294,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     specialFound(rank: number, amount: string, now: number) {
       map.popup(rank, `+${amount}`, now);
     },
+    /** Or descarregat al campament. */
+    deposited(amount: string, now: number) {
+      map.popup(0, `+${amount}`, now);
+    },
+    /** Ajuda a la primera partida. */
+    openHelp: () => openHelp(),
     toast(text: string) {
       toast.textContent = text;
       toast.classList.add('show');
@@ -268,8 +328,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   };
 }
 
-function modal() {
-  const wrap = h('div', 'modal');
+function modal(cls = '') {
+  const wrap = h('div', `modal ${cls}`);
   const box = h('div', 'box px-box');
   wrap.append(box);
   // Dins del "telèfon", no a tota la finestra.
