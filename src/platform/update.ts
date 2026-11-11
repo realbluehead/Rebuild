@@ -1,0 +1,35 @@
+// Comprovació d'actualitzacions per a l'APK distribuït a GitHub Releases (no cal a la web: el
+// service worker ja s'actualitza sol). L'API de GitHub permet CORS i no cal token.
+import { isNative } from '.';
+
+export const GITHUB_REPO = 'realbluehead/Rebuild';
+
+export interface UpdateInfo {
+  version: string;
+  apkUrl: string;
+  notes: string;
+}
+
+/** a > b per a versions semver simples (1.2.3). */
+export function isNewer(a: string, b: string): boolean {
+  const pa = a.replace(/^v/, '').split('.').map(Number);
+  const pb = b.replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  }
+  return false;
+}
+
+export async function checkForUpdate(current = __APP_VERSION__): Promise<UpdateInfo | null> {
+  if (!isNative) return null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+    if (!res.ok) return null;
+    const rel = await res.json();
+    const apk = rel.assets?.find((a: { name: string }) => a.name.endsWith('.apk'));
+    if (!apk || !isNewer(rel.tag_name, current)) return null;
+    return { version: rel.tag_name.replace(/^v/, ''), apkUrl: apk.browser_download_url, notes: rel.body ?? '' };
+  } catch {
+    return null; // sense connexió: ja ho mirarem el pròxim cop
+  }
+}

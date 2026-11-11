@@ -1,0 +1,14 @@
+node_modules
+dist
+dev-dist
+*.log
+.DS_Store
+# Android: Capacitor regenera els assets web a cada sync
+android/app/src/main/assets/public
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+*.jks
+*.keystore
+keystore.properties

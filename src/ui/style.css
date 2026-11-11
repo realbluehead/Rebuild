@@ -1,0 +1,168 @@
+/* Estil retro pixelat: font de píxels, vores dures sense arrodonir, ombres "esglaonades". */
+:root {
+  --void: #0c0a12;
+  --bg: #15111f;
+  --panel: #2a2238;
+  --panel-2: #3b3150;
+  --edge: #0c0a12;
+  --hi: #5a4c78;
+  --text: #f1ead8;
+  --muted: #a99fbd;
+  --gold: #f2c14e;
+  --gold-2: #b37a2a;
+  --ok: #7cc450;
+  --red: #c63d2f;
+  --u: 3px; /* mida d'un "píxel" de la interfície */
+  /* Dues fonts de píxels: una de molt clara per a números i títols, i una de compacta per al text. */
+  --font-num: 'Press Start 2P', monospace;
+  --font-text: 'VT323', monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--void);
+  color: var(--text);
+  font: 400 21px/1.1 var(--font-text);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-font-smoothing: none;
+}
+button { font: inherit; color: inherit; }
+
+/* El joc sempre és un telèfon en vertical: al mòbil ocupa tota la pantalla; a l'ordinador és un
+   "telèfon" centrat amb proporció 9:19,5, perquè es vegi i es jugui igual que a Android. */
+#app {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg);
+  overflow: hidden;
+  /* Zones segures d'Android (retall de càmera, barra de gestos) */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+@media (min-aspect-ratio: 2/3) {
+  body {
+    display: grid; place-items: center;
+    background:
+      radial-gradient(circle at 1px 1px, #241d33 1px, transparent 1.5px) 0 0 / 12px 12px,
+      var(--void);
+  }
+  #app {
+    height: calc(100dvh - 40px);
+    width: auto;
+    aspect-ratio: 9 / 19.5;
+    margin: 0;
+    border: 4px solid var(--edge);
+    box-shadow: 0 0 0 4px var(--panel-2), 0 0 0 8px var(--edge), 0 12px 40px #000c;
+  }
+}
+
+.splash { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 26px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .4; } }
+
+/* Caixes i botons amb vora de píxel */
+.px-box {
+  background: var(--panel);
+  border: var(--u) solid var(--edge);
+  box-shadow: inset var(--u) var(--u) 0 var(--hi), inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #1c1628;
+}
+.px-btn {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: var(--u) solid var(--edge);
+  box-shadow: inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #241d33;
+  padding: 6px 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.px-btn.can { background: var(--gold); color: #2a1a08; box-shadow: inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 var(--gold-2); }
+.px-btn.can:active { box-shadow: inset var(--u) var(--u) 0 var(--gold-2); }
+.px-btn:disabled { opacity: .35; cursor: default; }
+.coin {
+  display: inline-block; width: 16px; height: 16px; flex: none;
+  background: var(--coin) center / contain no-repeat; image-rendering: pixelated;
+}
+
+/* Mapa */
+.map-wrap { position: relative; min-height: 0; background: var(--void); overflow: hidden; }
+.map { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: grab; }
+.map.dragging { cursor: grabbing; }
+
+/* Barra de dalt */
+.topbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; background: var(--panel);
+  border-bottom: var(--u) solid var(--edge);
+  box-shadow: inset 0 calc(-1 * var(--u)) 0 #1c1628;
+}
+.stats { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.gold-line { display: flex; align-items: center; gap: 8px; }
+.gold { font: 16px/1 var(--font-num); color: var(--gold); }
+.rate { color: var(--ok); font-size: 20px; }
+.explored { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-btn { width: 40px; height: 40px; padding: 0; display: grid; place-content: center; gap: 4px; flex: none; }
+.menu-btn i { display: block; width: 18px; height: 3px; background: var(--text); }
+
+.zoom-ctl {
+  position: absolute; right: 8px; top: 8px; z-index: 1;
+  display: grid; justify-items: center; gap: 6px;
+}
+.zoom-ctl .px-btn { width: 40px; height: 40px; padding: 0; font: 16px/1 var(--font-num); color: var(--text); }
+.pips { display: grid; gap: 4px; }
+.zoom-ctl .home { margin-top: 6px; display: grid; place-items: center; }
+.robot-icon { width: 22px; height: 24px; background: var(--robot) center / contain no-repeat; image-rendering: pixelated; }
+.pips i { width: 12px; height: 12px; background: var(--panel-2); border: 2px solid var(--edge); }
+.pips i.on { background: var(--gold); }
+.pips i.locked { background: transparent; border-color: #3a3150; }
+
+.zoom-info { position: absolute; left: 8px; bottom: 8px; padding: 6px 10px; width: min(200px, calc(100% - 120px)); pointer-events: none; }
+.zoom-name { font: 10px/1.6 var(--font-num); }
+.zoom-next { color: var(--muted); font-size: 17px; }
+.bar { height: 8px; margin-top: 4px; background: var(--void); border: 2px solid var(--edge); }
+.bar i { display: block; height: 100%; background: var(--ok); }
+.bar[hidden] { display: none; }
+
+.speed-ctl { position: absolute; right: 8px; bottom: 8px; font: 10px/1 var(--font-num); padding: 8px 10px; }
+
+.toast {
+  position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(.6);
+  padding: 12px 16px; font: 14px/1.4 var(--font-num); color: var(--gold);
+  opacity: 0; pointer-events: none; transition: opacity .2s steps(3), transform .2s steps(3);
+  white-space: nowrap; z-index: 2;
+}
+.toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+/* Panell de millores: graella 2×2 a baix, a l'abast del polze */
+.panel {
+  background: var(--bg);
+  border-top: var(--u) solid var(--edge);
+  padding: 8px;
+}
+.list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.upg { display: grid; gap: 4px; padding: 8px; min-width: 0; }
+.upg .head { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.upg .name { font: 9px/1.4 var(--font-num); }
+.upg .lvl { font: 8px/1 var(--font-num); color: var(--muted); }
+.upg .eff { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upg .buy {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 4px; font: 10px/1 var(--font-num);
+}
+
+/* Finestres */
+.modal { position: absolute; inset: 0; background: #000b; display: grid; place-items: center; padding: 16px; z-index: 10; }
+.modal .box { padding: 18px; max-width: 360px; width: 100%; text-align: center; display: grid; gap: 10px; }
+.modal .px-btn { min-height: 44px; font: 10px/1.4 var(--font-num); color: var(--text); }
+.modal .px-btn.danger { background: #5a2430; box-shadow: inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #3a1820; }
+.modal .gain { color: var(--ok); font: 16px/1.4 var(--font-num); }
+.modal .gold-text { color: var(--gold); }
+.modal .info { color: var(--muted); }
+.modal .name { font: 12px/1.6 var(--font-num); }
+.modal textarea {
+  width: 100%; min-height: 90px; background: var(--void); color: var(--text);
+  border: var(--u) solid var(--edge); font: 12px monospace; user-select: text;
+}
