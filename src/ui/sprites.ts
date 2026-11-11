@@ -1,5 +1,5 @@
-// Pixel art generat per codi: paleta pròpia, rajoles de 16×16 per terreny i sprites dibuixats amb text.
-// Tot es guarda com a Uint32 en l'ordre d'ImageData (0xAABBGGRR en màquines little-endian, és a dir totes).
+// Code-generated pixel art: own palette, 16x16 tiles per terrain and sprites drawn as text.
+// Everything is stored as Uint32 in ImageData order (0xAABBGGRR on little-endian machines, i.e. all of them).
 import { T, TERRAINS } from '../content/world';
 import { hash2 } from '../core/rng';
 
@@ -7,7 +7,7 @@ export const TILE = 16;
 export const VARIANTS = 8;
 export const FRAMES = 2;
 
-/** '#rrggbb' → píxel d'ImageData. */
+/** '#rrggbb' -> ImageData pixel. */
 export function px(hex: string): number {
   const n = parseInt(hex.slice(1), 16);
   return (0xff000000 | ((n & 0xff) << 16) | (n & 0xff00) | (n >> 16)) >>> 0;
@@ -16,25 +16,25 @@ export function px(hex: string): number {
 export const PAL = {
   void: px('#0c0a12'),
   void2: px('#120f1c'),
-  // Aigües fosques i aigua tòxica
+  // Dark water and toxic water
   abyss: px('#141d20'), abyss2: px('#1b2a2b'), oil: px('#3a3550'),
   toxic: px('#355f33'), toxic2: px('#41743a'), glow: px('#9cff57'),
-  // Runa
+  // Rubble
   rubble: px('#7d746a'), rubble2: px('#655d55'), rubble3: px('#a39888'), rust: px('#8a4a2a'),
-  // Carrers
+  // Streets
   asphalt: px('#4a4a54'), asphalt2: px('#3e3e47'), crack: px('#25252b'),
   weed: px('#5d8c3a'), weed2: px('#7cb14a'),
-  // Selva urbana
+  // Urban jungle
   jungle: px('#355e27'), jungle2: px('#2a4c1f'), leaf: px('#2e6d2a'), leaf2: px('#1f4f1c'), leaf3: px('#5e9c3c'), trunk: px('#5a3a22'),
-  // Edificis i gratacels
+  // Blocks and towers
   concrete: px('#9a958c'), concrete2: px('#77726b'), shade: px('#4f4b49'), window: px('#23212a'),
   tower: px('#7c7888'), tower2: px('#5f5b6b'), glass: px('#5f8696'), glass2: px('#88b4c2'),
-  // Abocador
+  // Dump
   dirt: px('#5b4a30'), dirt2: px('#4a3c26'), barrel: px('#c9a227'), barrel2: px('#8c6f16'), sludge: px('#6fd23a'),
-  // Cotxes rovellats
+  // Rusted cars
   car: px('#8c5a3a'), car2: px('#6a3f28'),
   gold: px('#f2c14e'), gold2: px('#b37a2a'),
-  // Bluetreri: el mineral blau inventat (moneda del joc)
+  // Bluetreri: the invented blue mineral (the game's currency)
   blu: px('#5fd0ff'), blu2: px('#2f7fd8'), bluHi: px('#d8f6ff'), wood: px('#7a4a22'), wood2: px('#552f15'),
   stone: px('#9a8f84'), stone2: px('#665c55'),
   ink: px('#1b1420'),
@@ -42,7 +42,7 @@ export const PAL = {
   eye: px('#5ff0ff'), lamp: px('#ff5a4a'), lampOff: px('#6a2a2a'), tread: px('#3a3440'), tread2: px('#6a6474'),
 };
 
-/** Color pla de cada terreny, per als zooms llunyans (dos tons per variar). */
+/** Flat colour of each terrain, for the far zooms (two shades for variety). */
 export const FLAT: readonly [number, number][] = [
   [PAL.abyss, PAL.abyss2],
   [PAL.toxic, PAL.toxic2],
@@ -56,7 +56,7 @@ export const FLAT: readonly [number, number][] = [
 
 type Sprite = { w: number; h: number; px: Uint32Array };
 
-/** Sprite a partir de files de text; cada caràcter és una clau de `keys` ('.' = transparent). */
+/** Sprite from text rows; each character is a key of `keys` ('.' = transparent). */
 function sprite(rows: string[], keys: Record<string, number>): Sprite {
   const h = rows.length;
   const w = rows[0].length;
@@ -65,7 +65,7 @@ function sprite(rows: string[], keys: Record<string, number>): Sprite {
   return { w, h, px: out };
 }
 
-/** Arbre salvatge (selva urbana). */
+/** Wild tree (urban jungle). */
 const TREE = sprite([
   '...gGg...',
   '..gGGGg..',
@@ -78,7 +78,7 @@ const TREE = sprite([
   '....t....',
 ], { g: PAL.leaf2, G: PAL.leaf, t: PAL.trunk });
 
-/** Cotxe rovellat abandonat. */
+/** Abandoned rusted car. */
 const CAR = sprite([
   '..kkkk..',
   '.kwwwwk.',
@@ -87,7 +87,7 @@ const CAR = sprite([
   '.k.kk.k.',
 ], { k: PAL.ink, w: PAL.window, C: PAL.car, c: PAL.car2 });
 
-/** El mateix cotxe, menjat per la vegetació. */
+/** The same car, swallowed by vegetation. */
 const CAR_OVERGROWN = sprite([
   '..lkkL..',
   '.kwLlwk.',
@@ -96,7 +96,7 @@ const CAR_OVERGROWN = sprite([
   '.l.kk.L.',
 ], { k: PAL.ink, w: PAL.window, C: PAL.car, c: PAL.car2, l: PAL.leaf, L: PAL.leaf3 });
 
-/** Edifici baix en ruïnes: façana amb finestres buides i el terrat esbotzat. */
+/** Low ruined building: a facade with empty windows and a caved-in roof. */
 const BUILDING = sprite([
   '.L.....L..',
   '.LL...LLL.',
@@ -111,7 +111,7 @@ const BUILDING = sprite([
   '.rrrrrrrr.',
 ], { L: PAL.concrete, k: PAL.window, d: PAL.shade, r: PAL.rubble3 });
 
-/** El mateix, amb heures enfiladisses. */
+/** The same, with climbing ivy. */
 const BUILDING_VINES = sprite([
   '.L.....l..',
   '.LL...LlL.',
@@ -126,7 +126,7 @@ const BUILDING_VINES = sprite([
   '.rrrrrrrr.',
 ], { L: PAL.concrete, k: PAL.window, d: PAL.shade, r: PAL.rubble3, l: PAL.leaf3 });
 
-/** Gratacels esberlat: finestres de vidre (algunes rebentades) i el capdamunt trencat. */
+/** Cracked tower: glass windows (some blown out) and a broken top. */
 const TOWER = sprite([
   '..T......',
   '..TT..T..',
@@ -145,7 +145,7 @@ const TOWER = sprite([
   'rrrrrrrr.',
 ], { T: PAL.tower, g: PAL.glass, G: PAL.glass2, k: PAL.window, d: PAL.tower2, r: PAL.rubble2 });
 
-/** Bidó de residus tòxics. */
+/** Toxic waste barrel. */
 const BARREL = sprite([
   'kbbk',
   'bBBb',
@@ -155,14 +155,14 @@ const BARREL = sprite([
   'kbbk',
 ], { k: PAL.ink, b: PAL.barrel2, B: PAL.barrel });
 
-/** Bidó bolcat. */
+/** Tipped-over barrel. */
 const BARREL_SIDE = sprite([
   'kbkbbk',
   'bBkBBg',
   'kbkbbk',
 ], { k: PAL.ink, b: PAL.barrel2, B: PAL.barrel, g: PAL.sludge });
 
-/** Tros de runa gros amb ferros rovellats. */
+/** Big slab of rubble with rusted rebar. */
 const SLAB = sprite([
   '..x...',
   '.RRx..',
@@ -170,7 +170,7 @@ const SLAB = sprite([
   'rRRrRr',
 ], { R: PAL.rubble3, r: PAL.rubble2, x: PAL.rust });
 
-/** Dipòsit de bluetreri: cristalls blaus que surten de terra. */
+/** Bluetreri deposit: blue crystals growing out of the ground. */
 const CHEST = sprite([
   '....kk....',
   '...kHbk...',
@@ -190,7 +190,7 @@ const RUINS = sprite([
   'SSSSSSSSSS',
 ], { s: PAL.stone, S: PAL.stone2 });
 
-/** Robot explorador amb erugues, mirant a la dreta (es gira en dibuixar-lo). Dos fotogrames: erugues i llum de l'antena. */
+/** Tracked explorer rover, facing right (flipped when drawn). Two frames: tracks and antenna light. */
 const ROBOT_ROWS = [
   [
     '.....a.....',
@@ -237,7 +237,7 @@ function stamp(dst: Uint32Array, sp: Sprite, ox: number, oy: number): void {
   }
 }
 
-/** Rajola base d'un terreny (sense objectes a sobre). */
+/** Base tile of a terrain (nothing stamped on it). */
 function baseTile(t: number, v: number, frame: number): Uint32Array {
   const tile = new Uint32Array(TILE * TILE);
   const r = (x: number, y: number, k = 0) => hash2(x + v * 31, y + k * 17, 900 + t) / 4294967296;
@@ -247,12 +247,12 @@ function baseTile(t: number, v: number, frame: number): Uint32Array {
       let c: number;
       switch (t) {
         case T.Abyss:
-          // Aigua negra amb taques d'oli que es mouen.
+          // Black water with drifting oil slicks.
           c = q < 0.08 ? PAL.abyss2 : PAL.abyss;
           if ((y + v * 5) % 8 === frame * 4 && (x + y + v) % 9 < 2) c = PAL.oil;
           break;
         case T.Toxic:
-          // Aigua verdosa amb bombolles que brillen (i canvien de lloc a cada fotograma).
+          // Greenish water with glowing bubbles (that move between frames).
           c = q < 0.14 ? PAL.toxic2 : PAL.toxic;
           if (r(x, y, 3 + frame) < 0.025) c = PAL.glow;
           break;
@@ -261,7 +261,7 @@ function baseTile(t: number, v: number, frame: number): Uint32Array {
           if (q > 0.985) c = PAL.rust;
           break;
         case T.Street:
-          // Asfalt amb esquerdes, línies de carril gastades i males herbes.
+          // Cracked asphalt with weeds.
           c = q < 0.12 ? PAL.asphalt2 : PAL.asphalt;
                     break;
         case T.Jungle:
@@ -274,7 +274,7 @@ function baseTile(t: number, v: number, frame: number): Uint32Array {
         case T.Towers:
           c = q < 0.2 ? PAL.rubble2 : q < 0.28 ? PAL.glass : PAL.shade;
           break;
-        default: { // abocador
+        default: { // dump
           c = q < 0.2 ? PAL.dirt2 : PAL.dirt;
           if (q > 0.96) c = PAL.rust;
         }
@@ -283,7 +283,7 @@ function baseTile(t: number, v: number, frame: number): Uint32Array {
     }
   }
   if (t === T.Street && v % 2 === 1) {
-    // Una esquerda que travessa la rajola, amb herba que hi creix.
+    // A crack running across the tile, with grass growing in it.
     let x = Math.floor(r(0, 0, 5) * 12) + 2;
     for (let y = 0; y < TILE; y++) {
       tile[y * TILE + x] = PAL.crack;
@@ -292,7 +292,7 @@ function baseTile(t: number, v: number, frame: number): Uint32Array {
     }
   }
   if (t === T.Dump) {
-    // Bassal de fang tòxic que bateja.
+    // Pulsing puddle of toxic sludge.
     const cx = 4 + (v & 1) * 6;
     const cy = 11 - ((v >> 1) & 3);
     for (let y = -2; y <= 2; y++) for (let x = -3; x <= 3; x++) {
@@ -321,7 +321,7 @@ function decoratedTile(t: number, v: number, frame: number): Uint32Array {
       else if (v !== 6) stamp(tile, TREE, 7 - (v & 1), 6 + ((v >> 1) & 1));
       break;
     case T.Ruins:
-      if (v === 7) { stamp(tile, SLAB, 3, 5); stamp(tile, SLAB, 9, 10); break; } // ja tot a terra
+      if (v === 7) { stamp(tile, SLAB, 3, 5); stamp(tile, SLAB, 9, 10); break; } // already flattened
       stamp(tile, v % 2 ? BUILDING_VINES : BUILDING, 2 + (v & 1) * 3, 3 + ((v >> 1) & 1));
       break;
     case T.Towers:
@@ -336,8 +336,8 @@ function decoratedTile(t: number, v: number, frame: number): Uint32Array {
 }
 
 /**
- * Atles: atlas[frame][index] és una rajola de TILE×TILE.
- * index = t * VARIANTS + v per al terreny, i SPECIAL_BASE + t per al lloc especial sobre el terreny t.
+ * Atlas: atlas[frame][index] is a TILE x TILE tile.
+ * index = t * VARIANTS + v for terrain, and SPECIAL_BASE + t for a deposit on terrain t.
  */
 export const SPECIAL_BASE = TERRAINS.length * VARIANTS;
 
@@ -357,7 +357,7 @@ export function buildAtlas(): Uint32Array[][] {
   return frames;
 }
 
-/** Sprite → canvas (per dibuixar amb drawImage). */
+/** Sprite -> canvas (to draw with drawImage). */
 export function spriteCanvas(sp: Sprite): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = sp.w;
@@ -367,7 +367,7 @@ export function spriteCanvas(sp: Sprite): HTMLCanvasElement {
   return c;
 }
 
-/** Campament base: cúpula amb porta il·luminada i antena (dos fotogrames: el llum de l'antena parpelleja). */
+/** Base camp: a dome with a lit door and an antenna (two frames: the antenna light blinks). */
 const CAMP_ROWS = (lamp: string) => [
   `..........${lamp}...........`,
   '..........k...........',
@@ -387,7 +387,7 @@ export const campFrames = (): HTMLCanvasElement[] => ['a', 'o'].map((l) => sprit
 
 export const robotFrames = (): HTMLCanvasElement[] => ROBOT_ROWS.map((rows) => spriteCanvas(sprite(rows, ROBOT_KEYS)));
 
-/** Icona del bluetreri (moneda): un cristall blau facetat. */
+/** Bluetreri icon (currency): a faceted blue crystal. */
 export const COIN = sprite([
   '...kk...',
   '..kHbk..',
@@ -399,7 +399,7 @@ export const COIN = sprite([
   '...kk...',
 ], { k: PAL.ink, b: PAL.blu, B: PAL.blu2, H: PAL.bluHi });
 
-/** Objectes que es troben pel mapa: pàgina, nota musical i foto (mateix ordre que ITEMS). */
+/** Items found on the map: page, musical note and photo (same order as ITEMS). */
 export const ITEM_SPRITES = [
   sprite([
     '.kkkkk..',

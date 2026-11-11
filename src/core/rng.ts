@@ -1,18 +1,18 @@
-// Atzar determinista: el mateix seed dona sempre el mateix mapa (el mapa no es desa, es regenera).
+// Deterministic randomness: the same seed always gives the same map (the map is regenerated, never saved).
 
-/** Hash enter de 32 bits per a (x, y, seed). */
+/** 32-bit integer hash of (x, y, seed). */
 export function hash2(x: number, y: number, seed: number): number {
   let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-/** Nombre a [0, 1) per a (x, y, seed). */
+/** Number in [0, 1) for (x, y, seed). */
 export const rand2 = (x: number, y: number, seed: number): number => hash2(x, y, seed) / 4294967296;
 
 const smooth = (t: number) => t * t * (3 - 2 * t);
 
-/** Soroll de valor suau a [0, 1). */
+/** Smooth value noise in [0, 1). */
 export function valueNoise(x: number, y: number, seed: number): number {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
@@ -25,7 +25,7 @@ export function valueNoise(x: number, y: number, seed: number): number {
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
 
-/** Soroll fractal (diverses octaves) a [0, 1). `scale` és la mida en caselles de la primera octava. */
+/** Fractal noise (several octaves) in [0, 1). `scale` is the size in cells of the first octave. */
 export function fbm(x: number, y: number, seed: number, scale: number, octaves = 5): number {
   let sum = 0;
   let amp = 1;
@@ -40,7 +40,7 @@ export function fbm(x: number, y: number, seed: number, scale: number, octaves =
   return sum / norm;
 }
 
-/** Seed aleatori per a una partida nova. */
+/** Random seed for a new game. */
 export function randomSeed(): number {
   return (Math.random() * 2 ** 31) | 0;
 }

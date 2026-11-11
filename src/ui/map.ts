@@ -1,31 +1,32 @@
-// Dibuix del mapa en un canvas de baixa resolució, escalat amb píxels nítids.
-// Cada píxel lògic es calcula a mà (ImageData): rajoles a prop, colors plans de lluny i un mipmap 4×4
-// per al zoom més llunyà. La boira depèn del rang de cada casella respecte de les caselles explorades.
+// Map rendering on a low-resolution canvas, scaled up with crisp pixels.
+// Every logical pixel is computed by hand (ImageData): tiles up close, flat colours further out and a 4x4
+// mipmap for the farthest zoom. Fog depends on each cell's rank relative to the explored cells.
 import { ZOOMS } from '../content/world';
 import { hash2 } from '../core/rng';
 import type { Progress } from '../core/game';
-import { itemIndexAt, ringOfRank, type World } from '../core/world';
+import { itemIndexAt, pathCells, ringOfRank, type World } from '../core/world';
 import { buildAtlas, campFrames, FLAT, ITEM_SPRITES, PAL, robotFrames, SPECIAL_BASE, spriteCanvas, TILE, VARIANTS } from './sprites';
 
-/** Píxels lògics que fa una casella a cada zoom (el costat curt del canvas fa ~256 px lògics). */
+/** Logical pixels per cell at each zoom (the canvas's short side is ~256 logical px). */
 export const ZOOM_PX = ZOOMS.map((_, z) => TILE / 4 ** z);
 const LOGICAL_SHORT_SIDE = 256;
-/** Per sota d'això es deixen de dibuixar rajoles i es fa servir un color per casella. */
+/** Below this, tiles are no longer drawn and each cell gets one flat colour. */
 const TILE_MIN_PX = 6;
 const MIP = 4;
-/** Temps que tarda l'agulla del radar a fer una volta, i llargada de l'estela (radiants). */
+/** Time the radar needle takes for one turn, and the length of its trail (radians). */
 const SWEEP_MS = 2600;
 const SWEEP_TRAIL = 1.1;
 
 interface Popup { wx: number; wy: number; text: string; t0: number; }
 
-/** Què fa un robot quan no explora: anar o tornar del campament, o anar a buscar un objecte (`target`, rang). */
-export interface TripView { kind: 'explore' | 'home' | 'out' | 'detour'; f: number; target?: number; }
-/** Objectes que el radar detecta: a partir de l'índex `next` de `itemRanks`, fins a `range` anells més enllà. */
+/** What a rover does when not exploring: going to or from camp, or fetching an item (`target`, a rank, walking
+ *  from the cell of rank `from`). */
+export interface TripView { kind: 'explore' | 'home' | 'out' | 'detour'; f: number; target?: number; from?: number; }
+/** Items the radar detects: from index `next` of `itemRanks`, up to `range` rings further out. */
 export interface RadarView { next: number; range: number; }
 
 const darken = (c: number) => (((c >>> 2) & 0x3f3f3f) | 0xff000000) >>> 0;
-/** Barreja dos colors ABGR (t = 0 → a, t = 1 → b). */
+/** Mixes two ABGR colours (t = 0 -> a, t = 1 -> b). */
 const mix = (a: number, b: number, t: number) => {
   const ch = (sh: number) => Math.round(((a >>> sh) & 0xff) + (((b >>> sh) & 0xff) - ((a >>> sh) & 0xff)) * t) << sh;
   return (0xff000000 | ch(16) | ch(8) | ch(0)) >>> 0;
@@ -46,24 +47,24 @@ export class MapView {
   private robot = robotFrames();
   private camp = campFrames();
   private itemIcons = ITEM_SPRITES.map(spriteCanvas);
-  /** Posició dibuixada de cada robot: segueix la real amb suavitat perquè avanci a poc a poc, sense salts. */
+  /** Drawn position of each rover: follows the real one smoothly so it creeps forward without jumps. */
   private bots: { x: number; y: number; face: 1 | -1 }[] = [];
   private popups: Popup[] = [];
-  /** Centre de la vista, en caselles. El mou el jugador; el mapa no es mou sol. */
+  /** View centre, in cells. The player moves it; the map never moves on its own. */
   camX: number;
   camY: number;
   cellPx: number;
-  /** Píxels lògics per cada píxel CSS (per convertir arrossegaments del ratolí). */
+  /** Logical pixels per CSS pixel (to convert mouse drags). */
   private logicalPerCss = 1;
-  /** Si s'ha demanat anar al robot: la càmera hi vola fins que el jugador la torna a moure. */
+  /** Whether a fly-to-rover was requested: the camera flies there until the player moves it again. */
   private flying = false;
-  /** On s'ha dibuixat la fletxa que apunta al robot quan és fora de la vista (px lògics), per poder-la tocar. */
+  /** Where the arrow pointing to an off-screen rover was drawn (logical px), so it can be tapped. */
   private pointer: { x: number; y: number } | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private w: World, zoom: number) {
     this.ctx = canvas.getContext('2d')!;
     const n = w.size * w.size;
-    // Atles aplanat: atlas[frame][tile * 256 + y * 16 + x].
+    // Flattened atlas: atlas[frame][tile * 256 + y * 16 + x].
     this.atlas = buildAtlas().map((tiles) => {
       const out = new Uint32Array(tiles.length * TILE * TILE);
       tiles.forEach((t, i) => out.set(t, i * TILE * TILE));
@@ -80,7 +81,7 @@ export class MapView {
         this.flat[i] = w.special[i] ? PAL.blu : FLAT[t][(h >>> 8) % 5 === 0 ? 1 : 0];
       }
     }
-    // Mipmap: color mitjà i rang mínim de cada bloc de 4×4.
+    // Mipmap: mean colour and minimum rank of each 4x4 block.
     this.mipSize = w.size / MIP;
     const m = this.mipSize;
     this.mipColor = new Uint32Array(m * m);
@@ -103,7 +104,7 @@ export class MapView {
       }
     }
     this.cellPx = ZOOM_PX[zoom];
-    // En obrir el joc es mira el punt d'inici; després, la vista només es mou quan el jugador vol.
+    // The game opens looking at the start; afterwards the view only moves when the player wants.
     this.camX = w.cx + 0.5;
     this.camY = w.cy + 0.5;
     this.resize();
@@ -123,7 +124,7 @@ export class MapView {
     this.buf = new Uint32Array(this.img.data.buffer);
   }
 
-  /** Casella (índex) sota un punt de la pantalla (coordenades de client), o -1 si és fora del mapa. */
+  /** Cell (index) under a screen point (client coordinates), or -1 if outside the map. */
   cellAt(clientX: number, clientY: number): number {
     const rect = this.canvas.getBoundingClientRect();
     const lx = ((clientX - rect.left) / rect.width) * this.W;
@@ -134,7 +135,7 @@ export class MapView {
     return x < 0 || y < 0 || x >= size || y >= size ? -1 : y * size + x;
   }
 
-  /** Si un toc (coordenades de client) cau sobre la fletxa del robot fora de la vista. */
+  /** Whether a tap (client coordinates) lands on the off-screen rover arrow. */
   hitsPointer(clientX: number, clientY: number): boolean {
     if (!this.pointer) return false;
     const rect = this.canvas.getBoundingClientRect();
@@ -149,7 +150,7 @@ export class MapView {
     if (this.popups.length > 12) this.popups.shift();
   }
 
-  /** Arrossega la vista: el mapa segueix el dit o el ratolí (dx, dy en píxels CSS). */
+  /** Drags the view: the map follows the finger or mouse (dx, dy in CSS pixels). */
   panPixels(dx: number, dy: number): void {
     this.flying = false;
     this.camX -= (dx * this.logicalPerCss) / this.cellPx;
@@ -157,7 +158,7 @@ export class MapView {
     this.clampCam();
   }
 
-  /** Desplaça la vista en la direcció (dx, dy) ∈ [-1, 1] durant dt segons (teclat): ~una pantalla per segon. */
+  /** Moves the view in direction (dx, dy) in [-1, 1] for dt seconds (keyboard): about one screen per second. */
   nudge(dx: number, dy: number, dt: number): void {
     if (!dx && !dy) return;
     this.flying = false;
@@ -167,7 +168,7 @@ export class MapView {
     this.clampCam();
   }
 
-  /** La vista vola fins al robot principal. */
+  /** The view flies to the lead rover. */
   goToRobot(): void {
     this.flying = true;
   }
@@ -178,8 +179,8 @@ export class MapView {
     this.camY = Math.min(size, Math.max(0, this.camY));
   }
 
-  /** Posició (en caselles, centre) del robot que va per la posició `r` de l'ordre: durant la primera meitat
-   *  del pas camina des de la casella r - 1 fins a la r, i la segona meitat s'hi queda explorant-la. */
+  /** Position (in cells, centre) of the rover at position `r` of the order: during the first half of the
+   *  step it walks from cell r - 1 to cell r, and during the second half it stays there exploring it. */
   private walkerPos(r: number): [number, number] {
     const { order, size } = this.w;
     const n = order.length;
@@ -195,25 +196,44 @@ export class MapView {
     return [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
   }
 
-  /** `prog`: com va l'anell (arcs i fins on ha arribat cada robot); `trips[j]`: què fa el robot j. */
-  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { next: 0, range: 0 }): void {
+  /** `prog`: ring progress (arcs and how far each rover has got); `trips[j]`: what rover j is doing. */
+  /** Cells revealed by finished detours (rebuilt when `scouted` changes). */
+  private scoutKey = '';
+  private scoutCells = new Set<number>();
+
+  /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState). */
+  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { next: 0, range: 0 }, scouted: number[] = []): void {
     const { w, W, H, buf } = this;
     const size = w.size;
     const n = size * size;
-    // Fins on ha arribat cada robot dins de l'anell actual: només hi ha descobert el que ja ha trepitjat.
+    // How far each rover has got on the current ring: it has only revealed what it has stepped on.
     const ringA = prog.a;
     const ringB = prog.b;
     const arcStart = prog.starts;
     const arcEnd = prog.reach.map((x, k) => arcStart[k] + Math.floor(x));
     const arcs = arcEnd.length;
     const explored = ringA + prog.reach.reduce((x, y) => x + y, 0);
-    // Casella que explora cada robot ara mateix: va agafant color (0 → 1) mentre el robot hi és.
+    // Cell each rover is exploring right now: it gains colour (0 -> 1) while the rover is on it.
     const exploring = new Map<number, number>();
     prog.reach.forEach((x, k) => {
       const r = arcStart[k] + Math.floor(x);
       const t = Math.min(1, Math.max(0, (x - Math.floor(x)) * 2 - 1));
       if (r < arcStart[k + 1] && t > 0 && trips[prog.robotOf[k]]?.kind === 'explore') exploring.set(r, t);
     });
+    // Cells revealed on radar detours: finished paths, plus the walked part of the ones under way.
+    const key = scouted.join(',');
+    if (key !== this.scoutKey) {
+      this.scoutKey = key;
+      this.scoutCells = new Set();
+      for (let q = 0; q < scouted.length; q += 3) for (const i of pathCells(w, scouted[q], scouted[q + 1])) this.scoutCells.add(i);
+    }
+    const scout = new Set(this.scoutCells);
+    for (const t of trips) {
+      if (t.kind !== 'detour' || t.from === undefined || t.target === undefined) continue;
+      const path = pathCells(w, t.from, t.target);
+      const upTo = Math.floor(Math.min(1, t.f * 2) * (path.length - 1) + 0.5);
+      for (let q = 0; q <= upTo; q++) scout.add(path[q]);
+    }
     const seen = (r: number): boolean => {
       if (r < ringA) return true;
       if (r >= ringB) return false;
@@ -222,14 +242,14 @@ export class MapView {
       return r < arcEnd[k];
     };
 
-    // Zoom suau (interpolació logarítmica cap al nivell triat).
+    // Smooth zoom (logarithmic interpolation towards the chosen level).
     const target = ZOOM_PX[zoom];
     const k = 1 - Math.exp(-dt * 7);
     this.cellPx = Math.exp(Math.log(this.cellPx) + (Math.log(target) - Math.log(this.cellPx)) * k);
     if (Math.abs(this.cellPx / target - 1) < 0.002) this.cellPx = target;
     const cp = this.cellPx;
 
-    // On és cada robot: al seu arc (si explora), de camí al campament o tornant-ne, o anant a buscar un objecte.
+    // Where each rover is: on its arc (exploring), on the way to or from camp, or fetching an item.
     const band = 2 * Math.sqrt(Math.PI * Math.max(1, explored)) + 8;
     const hx = w.cx + 0.5;
     const hy = w.cy + 0.5;
@@ -252,13 +272,13 @@ export class MapView {
     this.bots.length = Math.min(this.bots.length, walkers.length);
     walkers.forEach(([x, y], e) => {
       const b = this.bots[e];
-      // Cada robot nou surt del campament i va fins al seu arc.
+      // Every new rover leaves camp and travels to its arc.
       if (!b) { this.bots[e] = { x: hx, y: hy, face: x >= w.cx ? 1 : -1 }; return; }
       const dx = x - b.x;
       const dy = y - b.y;
       const d = Math.hypot(dx, dy);
-      // A prop, el robot és exactament on toca (així descobreix en arribar); lluny (acaba de sortir del
-      // campament), hi va rodant.
+      // Up close the rover is exactly where it should be (so it reveals on arrival); far away (it has just
+      // left camp) it rolls there.
       const move = d < 1.5 ? d : Math.max(1.5, Math.min(d, (6 + d * 2) * dt));
       if (d > 0) { b.x += (dx / d) * move; b.y += (dy / d) * move; }
       if (Math.abs(dx) > 0.01) b.face = dx > 0 ? 1 : -1;
@@ -291,7 +311,8 @@ export class MapView {
           if (cx < 0 || cx >= size) { buf[row + pxl] = VOID; continue; }
           const i = cy * size + cx;
           const r = rank[i];
-          if (r >= fogEnd) { buf[row + pxl] = VOID; continue; }
+          const scouted = scout.has(i);
+          if (r >= fogEnd && !scouted) { buf[row + pxl] = VOID; continue; }
           let c: number;
           if (useTiles) {
             const sx = Math.floor((wx - cx) * TILE);
@@ -299,7 +320,7 @@ export class MapView {
           } else {
             c = this.flat[i];
           }
-          if (!seen(r)) {
+          if (!seen(r) && !scouted) {
             const t = exploring.get(r);
             c = t !== undefined ? mix(darken(c), c, t) : ((pxl + py) & 1) === 0 && !special[i] ? darken(c) : VOID;
           }
@@ -325,7 +346,7 @@ export class MapView {
     ctx.putImageData(this.img, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
-    // Campament base (a la casella inicial).
+    // Base camp (on the starting cell).
     {
       const sx = Math.round((w.cx + 0.5 - left) * cp);
       const sy = Math.round((w.cy + 0.5 - top) * cp);
@@ -342,7 +363,7 @@ export class MapView {
       }
     }
 
-    // Objectes que algun robot està anant a buscar: marc fix al voltant, perquè es vegi cap on va.
+    // Items some rover is fetching: a fixed frame around them, so you can see where it is heading.
     const fetching = new Set<number>();
     for (const t of trips) if (t.kind === 'detour' && t.target !== undefined) fetching.add(t.target);
     for (const r of fetching) {
@@ -355,8 +376,8 @@ export class MapView {
       ctx.strokeRect(sx - hs - 0.5, sy - hs - 0.5, hs * 2 + 1, hs * 2 + 1);
       if (cp >= TILE_MIN_PX) ctx.drawImage(this.itemIcons[w.item[i] - 1], sx - 4, sy - 4);
     }
-    // Radar de submarí al voltant de cada robot: radi = abast del radar en caselles, una agulla que gira amb
-    // una estela que s'esvaeix, i els objectes detectats s'encenen quan l'agulla hi passa per sobre.
+    // Submarine-style radar around each rover: radius = radar range in cells, a rotating needle with a fading
+    // trail, and detected items light up as the needle sweeps over them.
     const sweep = ((now / SWEEP_MS) % 1) * Math.PI * 2;
     if (radar.range > 0) {
       const R = radar.range * cp;
@@ -369,7 +390,7 @@ export class MapView {
         ctx.beginPath();
         ctx.arc(bx, by, R, 0, Math.PI * 2);
         ctx.fill();
-        // Cercles de distància i creu.
+        // Range rings and crosshair.
         ctx.strokeStyle = 'rgba(110, 255, 140, 0.35)';
         ctx.lineWidth = 1;
         for (const f of [1, 2 / 3, 1 / 3]) {
@@ -382,7 +403,7 @@ export class MapView {
         ctx.moveTo(bx - R, by); ctx.lineTo(bx + R, by);
         ctx.moveTo(bx, by - R); ctx.lineTo(bx, by + R);
         ctx.stroke();
-        // Estela: falques cada cop més transparents darrere de l'agulla.
+        // Trail: wedges that get more transparent behind the needle.
         const steps = 12;
         for (let k = 0; k < steps; k++) {
           ctx.fillStyle = `rgba(90, 255, 130, ${0.28 * (1 - k / steps)})`;
@@ -400,7 +421,7 @@ export class MapView {
       }
       ctx.restore();
 
-      // Objectes detectats (els que els robots aniran a buscar): s'encenen quan l'agulla els toca i s'esvaeixen.
+      // Detected items (the ones rovers will fetch): they light up when the needle hits them and fade out.
       const maxRing = prog.ring + radar.range;
       for (let k = Math.max(radar.next, itemIndexAt(w, ringA)); k < w.itemRanks.length; k++) {
         const r = w.itemRanks[k];
@@ -412,11 +433,11 @@ export class MapView {
         const sx = Math.round((ix - left) * cp);
         const sy = Math.round((iy - top) * cp);
         if (sx < -8 || sy < -8 || sx > W + 8 || sy > H + 8) continue;
-        // Robot més proper: el seu radar és el que el veu.
+        // Nearest rover: its radar is the one that sees it.
         let near = this.bots[0];
         for (const b of this.bots) if (near && Math.hypot(b.x - ix, b.y - iy) < Math.hypot(near.x - ix, near.y - iy)) near = b;
         const behind = near ? (((sweep - Math.atan2(iy - near.y, ix - near.x)) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) : 0;
-        const glow = 1 - behind / (Math.PI * 2); // 1 just quan hi passa l'agulla, 0 just abans de tornar-hi
+        const glow = 1 - behind / (Math.PI * 2); // 1 right as the needle passes, 0 right before it comes back
         ctx.globalAlpha = 0.25 + 0.75 * glow * glow;
         if (glow > 0.85) {
           ctx.fillStyle = 'rgba(120, 255, 150, 0.5)';
@@ -432,7 +453,7 @@ export class MapView {
       }
     }
 
-    // Robots.
+    // Rovers.
     const step = Math.floor(now / 220) % 2;
     this.bots.forEach((b, e) => {
       const sx = Math.round((b.x - left) * cp);
@@ -452,7 +473,7 @@ export class MapView {
       }
     });
 
-    // Si el robot surt de la vista, una fletxa a la vora indica cap on és (tocant-la, s'hi va).
+    // If the rover leaves the view, an arrow at the edge points to it (tapping it goes there).
     this.pointer = null;
     const lead = this.bots[0];
     if (lead) {
@@ -460,7 +481,7 @@ export class MapView {
       const ry = (lead.y - top) * cp;
       const m = 4;
       if (rx < m || ry < m || rx > W - m || ry > H - m) {
-        // Zona on pot anar la fletxa: lluny dels botons de zoom (dreta) i dels panells de baix.
+        // Where the arrow may go: away from the zoom buttons (right) and the panels at the bottom.
         const css = this.logicalPerCss;
         const x0 = 18, y0 = 18, x1 = W - Math.max(18, 60 * css), y1 = H - Math.max(18, 60 * css);
         const cx0 = (x0 + x1) / 2;
@@ -475,7 +496,7 @@ export class MapView {
         const pulse = Math.floor(now / 350) % 2;
         ctx.save();
         ctx.translate(ax, ay);
-        // Fons rodó amb el robot petit a dins
+        // Box with the small rover inside
         ctx.fillStyle = '#1b1420';
         ctx.fillRect(-10, -10, 20, 20);
         ctx.fillStyle = pulse ? '#f2c14e' : '#b37a2a';
@@ -484,7 +505,7 @@ export class MapView {
         ctx.fillRect(-8, -8, 16, 16);
         const icon = this.robot[0];
         ctx.drawImage(icon, -(icon.width >> 1), -(icon.height >> 1));
-        // Fletxa cap al robot
+        // Arrow towards the rover
         ctx.rotate(ang);
         ctx.fillStyle = pulse ? '#f2c14e' : '#b37a2a';
         ctx.beginPath();
@@ -497,8 +518,8 @@ export class MapView {
       }
     }
 
-    // Textos flotants (or dels llocs especials).
-    ctx.font = '8px "Press Start 2P", monospace'; // font de 8 px: queda nítida al canvas lògic
+    // Floating texts (bluetreri from deposits, items, unloads).
+    ctx.font = '8px "Press Start 2P", monospace'; // 8 px font: stays crisp on the logical canvas
     ctx.textAlign = 'center';
     this.popups = this.popups.filter((p) => now - p.t0 < 1800);
     for (const p of this.popups) {

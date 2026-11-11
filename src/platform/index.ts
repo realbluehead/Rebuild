@@ -1,4 +1,4 @@
-// Adaptadors de plataforma: la resta del joc no sap si corre a la web o a Android.
+// Platform adapters: the rest of the game does not know whether it runs on the web or on Android.
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { App } from '@capacitor/app';
@@ -17,10 +17,10 @@ const webStore: KeyValueStore = {
     try { return localStorage.getItem(k); } catch { return null; }
   },
   async set(k, v) {
-    try { localStorage.setItem(k, v); } catch { /* mode privat o quota plena */ }
+    try { localStorage.setItem(k, v); } catch { /* private mode or quota full */ }
   },
   async remove(k) {
-    try { localStorage.removeItem(k); } catch { /* ignorar */ }
+    try { localStorage.removeItem(k); } catch { /* ignore */ }
   },
 };
 
@@ -32,7 +32,7 @@ const nativeStore: KeyValueStore = {
 
 export const store: KeyValueStore = isNative ? nativeStore : webStore;
 
-/** Crida `cb(true)` quan l'app passa a segon pla i `cb(false)` quan torna. */
+/** Calls `cb(true)` when the app goes to the background and `cb(false)` when it comes back. */
 export function onBackground(cb: (hidden: boolean) => void): void {
   if (isNative) {
     void App.addListener('appStateChange', ({ isActive }) => cb(!isActive));
@@ -44,7 +44,7 @@ export function onBackground(cb: (hidden: boolean) => void): void {
 
 const NOTIF_ID = 1;
 
-/** Programa (o reprograma) un avís local. Només a Android; a la web no fa res. */
+/** Schedules (or reschedules) a local notification. Android only; a no-op on the web. */
 export async function scheduleReminder(title: string, body: string, inSec: number): Promise<void> {
   if (!isNative || inSec <= 0) return;
   const perm = await LocalNotifications.checkPermissions();

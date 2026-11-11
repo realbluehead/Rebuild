@@ -3,9 +3,9 @@ import { explored, tick } from '../core/game';
 import type { GameState } from '../core/state';
 import type { World } from '../core/world';
 
-/** Màxim de temps offline que es compta (segons). */
+/** Longest offline time that counts (seconds). */
 export const OFFLINE_CAP_SEC = 24 * 3600;
-/** Mida de cada tram de simulació offline: prou petit perquè les mecàniques no lineals siguin correctes. */
+/** Size of each offline simulation chunk: small enough for the non-linear mechanics to stay correct. */
 const CHUNK_SEC = 60;
 
 export interface OfflineReport {
@@ -13,12 +13,12 @@ export interface OfflineReport {
   gold: Decimal;
   cells: number;
   specials: number;
-  /** Pàgines, notes i fotos recollides. */
+  /** Pages, notes and photos collected. */
   items: number;
   zoomUnlocked?: number;
 }
 
-/** Simula el temps que el jugador no hi era. Retorna null si és massa poc per ensenyar-ho. */
+/** Simulates the time the player was away. Returns null if it is too little to be worth showing. */
 export function applyOffline(s: GameState, w: World, savedAt: number, now: number): OfflineReport | null {
   const seconds = Math.min(Math.max(0, (now - savedAt) / 1000), OFFLINE_CAP_SEC);
   if (seconds < 10) {

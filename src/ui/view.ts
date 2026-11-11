@@ -1,4 +1,4 @@
-// Interfície: el mapa (canvas) i un HUD amb DOM. Es construeix un cop; render() només actualitza textos.
+// Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, workCost, workTitle, type WorkId } from '../content/collection';
 import { TERRAINS } from '../content/world';
@@ -27,10 +27,10 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: s
   return el;
 };
 
-/** Assigna text només si ha canviat (evita feina al navegador a cada frame). */
+/** Sets text only if it changed (saves the browser work on every frame). */
 const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el.textContent = text; };
 
-/** Efecte curt (ara → següent nivell), perquè càpiga a les targetes estretes del mòbil. */
+/** Short effect text (now -> next level), so it fits the narrow mobile cards. */
 function effectText(id: StatId, a: Stats, b: Stats): string {
   switch (id) {
     case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)} steps/s`;
@@ -45,7 +45,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   document.documentElement.style.setProperty('--robot', `url(${robotFrames()[0].toDataURL()})`);
   root.replaceChildren();
 
-  // Barra de dalt: or i ritme a l'esquerra, menú a la dreta.
+  // Top bar: bluetreri and rate on the left, menu on the right.
   const topbar = h('header', 'topbar');
   const gold = h('span', 'gold');
   const rate = h('span', 'rate');
@@ -53,7 +53,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const stats0 = h('div', 'stats');
   const goldLine = h('div', 'gold-line');
   goldLine.append(h('i', 'coin'), gold, rate);
-  // Càrrega dels robots: l'or no és teu fins que el porten al campament.
+  // Rovers' load: the bluetreri is not yours until they bring it to camp.
   const cargoLine = h('div', 'cargo-line');
   const cargoBar = h('div', 'bar cargo-bar');
   const cargoFill = h('i');
@@ -96,22 +96,22 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
 
   const toast = h('div', 'toast px-box');
 
-  // Multiplicador de velocitat del joc, per provar (es recorda en aquest navegador).
+  // Game speed multiplier, for testing (remembered in this browser).
   const SPEEDS = [1, 2, 5, 10, 50, 100];
   let speed = 1;
-  try { speed = SPEEDS.includes(Number(localStorage.getItem('rebuild:speed'))) ? Number(localStorage.getItem('rebuild:speed')) : 1; } catch { /* sense storage */ }
+  try { speed = SPEEDS.includes(Number(localStorage.getItem('rebuild:speed'))) ? Number(localStorage.getItem('rebuild:speed')) : 1; } catch { /* no storage */ }
   const speedBtn = h('button', 'px-btn speed-ctl');
   speedBtn.title = 'Game speed (for testing)';
   const showSpeed = () => { speedBtn.textContent = `Speed ×${speed}`; speedBtn.classList.toggle('can', speed > 1); };
   showSpeed();
   speedBtn.addEventListener('click', () => {
     speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
-    try { localStorage.setItem('rebuild:speed', String(speed)); } catch { /* sense storage */ }
+    try { localStorage.setItem('rebuild:speed', String(speed)); } catch { /* no storage */ }
     showSpeed();
   });
   mapWrap.append(canvas, zoomCtl, zoomInfo, speedBtn, toast);
 
-  // Controls de la vista: arrossegar (ratolí o dit) per moure, roda o pessic per fer zoom.
+  // View controls: drag (mouse or finger) to move, wheel or pinch to zoom.
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (Math.abs(e.deltaY) > 4) actions.zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
   const pointers = new Map<number, { x: number; y: number }>();
   let pinch0 = 0;
@@ -136,7 +136,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
   });
   const up = (e: PointerEvent) => {
-    // Un toc sense arrossegar: què hi ha en aquesta casella.
+    // A tap without dragging: what is on this cell.
     if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 6) cellInfo(e.clientX, e.clientY);
     tap = null;
     pointers.delete(e.pointerId);
@@ -146,7 +146,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
 
-  // Teclat: fletxes o WASD per moure, +/− per al zoom, espai per anar al robot.
+  // Keyboard: arrows or WASD to move, +/- to zoom, space to go to the rover.
   const keys = new Set<string>();
   const typing = (e: KeyboardEvent) => e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
   window.addEventListener('keydown', (e) => {
@@ -154,7 +154,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const k = e.key.toLowerCase();
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(k)) {
       e.preventDefault();
-      // Un toc curt també mou una mica la vista; si es manté premuda, el bucle de render continua movent.
+      // A short press also nudges the view; held down, the render loop keeps moving it.
       if (!keys.has(k)) { keys.add(k); map.nudge(...keyDir(), 0.15); }
     }
     else if (k === '+' || k === '=') actions.zoom(-1);
@@ -182,7 +182,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
 
   const panel = h('aside', 'panel');
-  // Pestanyes: millores (amb or) i obres (amb pàgines, notes i fotos).
+  // Tabs: upgrades (bought with bluetreri) and works (made from pages, notes and photos).
   const tabs = h('div', 'tabs');
   const tabUpg = h('button', 'px-btn tab on', 'Upgrades');
   const tabWorks = h('button', 'px-btn tab', 'Works');
@@ -196,7 +196,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   tabUpg.addEventListener('click', () => showTab(false));
   tabWorks.addEventListener('click', () => showTab(true));
   const list = h('div', 'list');
-  // Millores en una graella de 2×2: tot a l'abast del polze, sense haver de desplaçar.
+  // Upgrades in a 2x2 grid: everything within thumb reach, no scrolling.
   const rows = UPGRADES.map((u) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
@@ -240,7 +240,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   worksList.append(shelfCard);
   panel.append(tabs, list, worksList);
 
-  /** Vitrina: totes les obres creades i el bonus que donen. */
+  /** Shelf: every work made and the bonus it gives. */
   function openShelf() {
     const s = current;
     if (!s) return;
@@ -258,7 +258,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     m.addClose('Close');
   }
 
-  // Què ha descobert el jugador (per anar omplint l'ajuda). Es repassen les caselles noves a cada frame, de mica en mica.
+  // What the player has discovered (to fill in the field notes). New cells are scanned a few per frame.
   const seenTerrain = new Set<number>();
   let seenSpecial = false;
   let scanned = 0;
@@ -271,7 +271,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
   }
 
-  /** Entrades de l'ajuda: cadascuna surt quan el jugador ja ha trobat allò que explica. */
+  /** Field-note entries: each appears once the player has found what it explains. */
   function helpEntries(s: GameState) {
     const u = s.upgrades;
     const itemsFound = s.items.page + s.items.note + s.items.photo + s.works.book + s.works.cd + s.works.album > 0;
@@ -313,9 +313,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   const HELP_SEEN_KEY = 'rebuild:help-seen';
   let helpSeen = 0;
-  try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* sense storage */ }
+  try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* no storage */ }
 
-  /** Pàgina d'ajuda: només hi ha el que ja has descobert; la resta queda per descobrir. */
+  /** Field notes: only what you have already discovered; the rest stays to be discovered. */
   function openHelp() {
     const s = current;
     const m = modal('help');
@@ -344,7 +344,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const locked = entries.length - unlocked + (TERRAINS.length - seenTerrain.size > 0 ? 1 : 0);
     if (locked > 0) body.append(h('p', 'locked', `??? ${locked} more ${locked === 1 ? 'thing' : 'things'} to discover. Keep exploring.`));
     helpSeen = unlocked + seenTerrain.size;
-    try { localStorage.setItem(HELP_SEEN_KEY, String(helpSeen)); } catch { /* sense storage */ }
+    try { localStorage.setItem(HELP_SEEN_KEY, String(helpSeen)); } catch { /* no storage */ }
     helpBtn.classList.remove('alert');
     m.box.append(body);
     m.addClose('Got it');
@@ -361,7 +361,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     item('Field notes', '', () => openHelp());
     item('Export game', '', () => textModal('Copy this text to save your game:', actions.exportText(), true));
     item('Import game', '', () => textModal('Paste an exported game:', '', false, actions.importText));
-    item('Restart (new map)', 'danger', () => { if (confirm('Erase this game and start a new map?')) { try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* sense storage */ } actions.reset(); } });
+    item('Restart (new map)', 'danger', () => { if (confirm('Erase this game and start a new map?')) { try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* no storage */ } actions.reset(); } });
     m.box.append(h('div', 'info', `Version ${__APP_VERSION__}`));
     m.addClose('Close');
   }
@@ -374,7 +374,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const n = totalCells(world);
   let toastTimer = 0;
   let lastFrame = performance.now();
-  /** Últim estat dibuixat (per als tocs al mapa i la vitrina). */
+  /** Last state drawn (for map taps and the shelf). */
   let current: GameState | null = null;
   let lastHelpCheck = 0;
 
@@ -399,8 +399,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         helpBtn.classList.toggle('alert', count > helpSeen);
       }
       const prog = progress(s, world);
-      const trips: TripView[] = s.bots.map((b) => ({ kind: b.trip, f: b.travelLen > 0 ? b.travel / b.travelLen : 1, target: b.target >= 0 ? world.itemRanks[b.target] : undefined }));
-      map.render(prog, s.zoom, now, dt, trips, { next: s.radarNext, range: st.radar });
+      const trips: TripView[] = s.bots.map((b) => ({
+        kind: b.trip,
+        f: b.travelLen > 0 ? b.travel / b.travelLen : 1,
+        target: b.target >= 0 ? world.itemRanks[b.target] : undefined,
+        from: b.from >= 0 ? b.from : undefined,
+      }));
+      map.render(prog, s.zoom, now, dt, trips, { next: s.radarNext, range: st.radar }, s.scouted);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
       set(gold, fmt(s.gold));
@@ -452,28 +457,28 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       tabWorks.classList.toggle('alert', ready);
       set(shelfInfo, `${s.works.book + s.works.cd + s.works.album} works`);
     },
-    /** Or d'un lloc especial descobert, flotant sobre el mapa. */
+    /** Bluetreri from a revealed deposit, floating over the map. */
     specialFound(rank: number, amount: string, now: number) {
       map.popup(rank, `+${amount}`, now);
     },
-    /** Objecte recollit (pàgina, nota o foto), flotant sobre la seva casella. */
+    /** Collected item (page, note or photo), floating over its cell. */
     itemFound(rank: number, now: number) {
       const it = ITEMS[world.item[world.order[rank]] - 1];
       map.popup(rank, `+1 ${it.name}`, now);
     },
-    /** Or descarregat al campament. */
+    /** Bluetreri unloaded at camp. */
     deposited(amount: string, now: number) {
       map.popup(0, `+${amount}`, now);
     },
-    /** Ajuda a la primera partida. */
+    /** Field notes on the first game. */
     openHelp: () => openHelp(),
     toast: (text: string) => showToast(text),
-    /** Obra nova creada. */
+    /** A new work was made. */
     crafted(id: WorkId, n: number) {
       const wd = WORKS.find((x) => x.id === id)!;
       showToast(`New: ${workTitle(wd, n - 1)}`);
     },
-    /** Multiplicador de velocitat triat (1 = normal). */
+    /** Chosen speed multiplier (1 = normal). */
     gameSpeed: () => speed,
     showUpdate(version: string, notes: string, onInstall: () => void) {
       const m = modal();
@@ -500,7 +505,7 @@ function modal(cls = '') {
   const wrap = h('div', `modal ${cls}`);
   const box = h('div', 'box px-box');
   wrap.append(box);
-  // Dins del "telèfon", no a tota la finestra.
+  // Inside the "phone", not the whole window.
   (document.getElementById('app') ?? document.body).append(wrap);
   return {
     box,

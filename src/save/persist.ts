@@ -11,7 +11,7 @@ export async function saveGame(s: GameState, now = Date.now()): Promise<void> {
   await store.set(KEY, JSON.stringify(serialize(s, now)));
 }
 
-/** Carrega la partida; si la principal és corrupta prova la còpia. */
+/** Loads the game; if the main copy is corrupt, tries the backup. */
 export async function loadGame(): Promise<{ state: GameState; savedAt: number } | null> {
   for (const key of [KEY, BACKUP_KEY]) {
     const raw = await store.get(key);
@@ -19,7 +19,7 @@ export async function loadGame(): Promise<{ state: GameState; savedAt: number } 
     try {
       return deserialize(JSON.parse(raw));
     } catch (e) {
-      console.error(`Partida ${key} il·legible`, e);
+      console.error(`Unreadable save ${key}`, e);
     }
   }
   return null;

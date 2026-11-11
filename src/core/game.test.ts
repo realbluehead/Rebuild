@@ -5,15 +5,15 @@ import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
-import { createWorld, goldBetween, totalCells, totalSteps, unlockAt, zoomFraction } from './world';
+import { createWorld, goldBetween, pathCells, totalCells, totalSteps, unlockAt, zoomFraction } from './world';
 
-// Mapa petit perquè els tests vagin de pressa (el de veritat és de MAP_SIZE).
+// Small map so the tests run fast (the real one is MAP_SIZE).
 const SIZE = 128;
 const world = createWorld(42, SIZE);
 const botes = UPGRADES.find((u) => u.id === 'speed')!;
 
-describe('món', () => {
-  it('reparteix pàgines, notes i fotos segons els pesos', () => {
+describe('world', () => {
+  it('scatters pages, notes and photos by weight', () => {
     const counts = [0, 0, 0];
     for (const r of world.itemRanks) counts[world.item[world.order[r]] - 1]++;
     const total = counts.reduce((a, b) => a + b, 0);
@@ -23,13 +23,13 @@ describe('món', () => {
     expect(counts[2] / total).toBeCloseTo(0.35, 1);
   });
 
-  it('és determinista amb el mateix seed', () => {
+  it('is deterministic for the same seed', () => {
     const other = createWorld(42, SIZE);
     expect(other.terrain).toEqual(world.terrain);
     expect(other.order).toEqual(world.order);
   });
 
-  it("l'ordre és una permutació i comença al centre", () => {
+  it('the order is a permutation and starts at the centre', () => {
     const seen = new Uint8Array(totalCells(world));
     for (const i of world.order) seen[i]++;
     expect(seen.every((v) => v === 1)).toBe(true);
@@ -37,14 +37,14 @@ describe('món', () => {
     for (let r = 0; r < 50; r++) expect(world.rank[world.order[r]]).toBe(r);
   });
 
-  it('un robot només descobreix la casella contigua: si la següent és lluny, hi ha de caminar', () => {
+  it('a rover only reveals the adjacent cell: if the next one is far, it has to walk', () => {
     expect(world.steps[1]).toBe(1);
     let far = 0;
     for (let r = 1; r < totalCells(world); r++) {
       const a = world.order[r - 1];
       const b = world.order[r];
       const king = Math.max(Math.abs((a % SIZE) - (b % SIZE)), Math.abs(Math.floor(a / SIZE) - Math.floor(b / SIZE)));
-      // Una casella contigua costa un pas per la seva rugositat; una de més lluny, un per casella de camí.
+      // An adjacent cell costs one step times its roughness; a farther one, one per cell of the way.
       expect(world.steps[r + 1] - world.steps[r]).toBeCloseTo(king * TERRAINS[world.terrain[b]].rough, 9);
       if (king > 1) far++;
     }
@@ -52,16 +52,16 @@ describe('món', () => {
     expect(totalSteps(world)).toBeGreaterThan(totalCells(world));
   });
 
-  it('els terrenys rugosos costen més passos', () => {
+  it('rough terrain costs more steps', () => {
     const rough = TERRAINS.map((t) => t.rough);
     expect(Math.min(...rough)).toBe(1);
     expect(Math.max(...rough)).toBeGreaterThan(2);
   });
 
-  it('la zona explorada és sempre una sola taca connectada (sense illes)', () => {
+  it('the explored area is always one connected patch (no islands)', () => {
     const n = totalCells(world);
     for (const explored of [2, 10, 77, 500, 1234, 4000, 9999, n - 100]) {
-      // BFS des del campament (8 veïns) només per caselles ja explorades: les ha de trobar totes.
+      // BFS from camp (8 neighbours) over explored cells only: it must find all of them.
       const seen = new Uint8Array(n);
       const queue = [world.order[0]];
       seen[world.order[0]] = 1;
@@ -83,7 +83,7 @@ describe('món', () => {
     }
   });
 
-  it('la fracció de zoom creix fins a 1', () => {
+  it('the zoom fraction grows up to 1', () => {
     expect(zoomFraction(world, 0, 0)).toBe(0);
     expect(zoomFraction(world, 0, totalCells(world))).toBe(1);
     const at = unlockAt(world, 0);
@@ -92,7 +92,7 @@ describe('món', () => {
   });
 });
 
-describe('joc', () => {
+describe('game', () => {
   const run = (s: ReturnType<typeof newGame>, seconds: number, dt = 0.5) => {
     const ev = { specials: 0, items: new Set<number>(), deposited: 0 };
     for (let t = 0; t < seconds && !isComplete(s, world); t += dt) {
@@ -104,19 +104,19 @@ describe('joc', () => {
     return ev;
   };
 
-  it('els passos avancen proporcionalment al temps i el campament es descobreix al primer pas', () => {
+  it('steps advance with time and the camp is revealed on the first step', () => {
     const s = newGame(42);
-    // Prou poc temps perquè no acabi l'anell del campament (i no comenci el viatge de tornada).
+    // Short enough that the camp ring does not finish (and the return trip does not start).
     const sec = 0.5 / stats(s).speed;
     tick(s, world, sec);
     expect(s.bots[0].prog).toBeCloseTo(0.5);
     expect(s.bots[0].trip).toBe('explore');
     expect(explored(s, world)).toBeGreaterThan(0);
-    // El bluetreri el porten els robots fins que el descarreguen al campament.
+    // Rovers carry the bluetreri until they unload it at camp.
     expect(s.gold.toNumber() + carried(s)).toBeCloseTo(goldBetween(world, 0, explored(s, world)));
   });
 
-  it('amb la bodega plena el robot torna al campament, descarrega i torna a sortir', () => {
+  it('with a full hold the rover returns to camp, unloads and heads out again', () => {
     const s = newGame(42);
     s.upgrades.speed = 10;
     const cap = stats(s).cargo;
@@ -128,14 +128,14 @@ describe('joc', () => {
     const prog = s.bots[0].prog;
     let deposited = 0;
     while (s.bots[0].trip !== 'explore' && k++ < 100000) deposited += tick(s, world, 0.1).deposited;
-    // Mentre va i ve no explora: com a molt, el tros de l'últim tick ja tornat a l'arc.
+    // While travelling it does not explore: at most the bit of the last tick once back on its arc.
     expect(s.bots[0].prog).toBeGreaterThanOrEqual(prog - 1e-9);
     expect(s.bots[0].prog - prog).toBeLessThanOrEqual(stats(s).speed * 0.1 + 1e-9);
     expect(deposited).toBeCloseTo(cap, 6);
     expect(s.gold.toNumber()).toBeGreaterThanOrEqual(cap - 1e-6);
   });
 
-  it('amb diversos robots, cadascun va i torna pel seu compte (no sincronitzats)', () => {
+  it('with several rovers, each goes and returns on its own (not synchronised)', () => {
     const s = newGame(42);
     s.upgrades.explorers = 2;
     s.upgrades.speed = 12;
@@ -144,7 +144,7 @@ describe('joc', () => {
     for (let k = 0; k < 20000 && explored(s, world) < 3000; k++) {
       tick(s, world, 0.2);
       if (s.bots.length !== 3) continue;
-      // En molts moments no tots fan el mateix, i cadascun porta la seva càrrega.
+      // Much of the time they are not all doing the same thing, and each carries its own cargo.
       if (new Set(s.bots.map((b) => b.trip)).size > 1) staggered++;
       if (new Set(s.bots.map((b) => b.cargo.toFixed(6))).size > 1) cargoDiffers++;
     }
@@ -153,7 +153,7 @@ describe('joc', () => {
     expect(cargoDiffers).toBeGreaterThan(50);
   });
 
-  it('un tick llarg dona el mateix que molts de curts (offline exacte)', () => {
+  it('one long tick gives the same as many short ones (exact offline)', () => {
     const a = newGame(42);
     const b = newGame(42);
     a.upgrades.speed = b.upgrades.speed = 12;
@@ -170,7 +170,7 @@ describe('joc', () => {
   });
 
   for (const [robots, radar] of [[1, 0], [3, 0], [1, 2], [3, 4]]) {
-    it(`amb ${robots} robot(s) i radar ${radar}, tot el bluetreri, els dipòsits i els objectes arriben exactament un cop`, () => {
+    it(`with ${robots} rover(s) and radar ${radar}, all bluetreri, deposits and items arrive exactly once`, () => {
       const s = newGame(42);
       s.upgrades.explorers = robots - 1;
       s.upgrades.speed = 40;
@@ -186,7 +186,7 @@ describe('joc', () => {
     });
   }
 
-  it('un robot comprat a mig anell comença a treballar a l\'anell següent', () => {
+  it('a rover bought mid-ring starts working on the next ring', () => {
     const s = newGame(42);
     s.upgrades.speed = 20;
     s.upgrades.cargo = 20;
@@ -198,10 +198,10 @@ describe('joc', () => {
     while (s.ring === ring) tick(s, world, 0.1);
     expect(s.bots.length).toBe(3);
     expect(s.ringRobots).toBe(3);
-    expect(s.bots[1].trip).toBe('out'); // surt del campament
+    expect(s.bots[1].trip).toBe('out'); // leaves camp
   });
 
-  it('el radar porta els robots a buscar objectes dins la foscor, abans que s\'hi arribi explorant', () => {
+  it('the radar sends rovers to fetch items in the dark, before exploring reaches them', () => {
     const s = newGame(42);
     s.upgrades.speed = 10;
     s.upgrades.cargo = 20;
@@ -214,7 +214,23 @@ describe('joc', () => {
     expect(early).toBeGreaterThan(0);
   });
 
-  it('una partida antiga (passos totals) es converteix en anell i robots', () => {
+  it('a detour reveals the path it walked, which is dropped once exploring catches up', () => {
+    const s = newGame(42);
+    s.upgrades.speed = 10;
+    s.upgrades.cargo = 20;
+    s.upgrades.radar = 3;
+    for (let k = 0; k < 20000 && s.scouted.length === 0; k++) tick(s, world, 0.2);
+    expect(s.scouted.length).toBe(3);
+    const [from, to, max] = s.scouted;
+    const path = pathCells(world, from, to);
+    expect(path[0]).toBe(world.order[from]);
+    expect(path[path.length - 1]).toBe(world.order[to]);
+    expect(max).toBe(Math.max(...path.map((i) => world.rank[i])));
+    run(s, 100000);
+    expect(s.scouted).toEqual([]);
+  });
+
+  it('an old save (total steps) is converted into a ring and rovers', () => {
     const s = newGame(42);
     s.upgrades.explorers = 1;
     s.upgrades.speed = 40;
@@ -230,7 +246,7 @@ describe('joc', () => {
     expect(ev.deposited).toBeGreaterThan(0);
   });
 
-  it('amb prou objectes es crea una obra, i la següent costa més', () => {
+  it('with enough items a work is made, and the next costs more', () => {
     const s = newGame(42);
     expect(canCraft(s, 'book')).toBe(false);
     s.items.page = 10;
@@ -242,13 +258,13 @@ describe('joc', () => {
     expect(nextWorkCost(s, 'book')).toBeGreaterThan(10);
   });
 
-  it('no es pot comprar sense or', () => {
+  it('cannot buy without bluetreri', () => {
     const s = newGame(42);
     expect(buy(s, 'speed')).toBe(false);
     expect(s.upgrades.speed).toBe(0);
   });
 
-  it('comprar resta el cost i millora la velocitat', () => {
+  it('buying subtracts the cost and raises the speed', () => {
     const s = newGame(42);
     s.gold = D(botes.baseCost);
     const before = stats(s).stepsPerSec;
@@ -257,13 +273,13 @@ describe('joc', () => {
     expect(stats(s).stepsPerSec).toBeGreaterThan(before);
   });
 
-  it('el cost de N nivells és la suma dels individuals', () => {
+  it('the cost of N levels is the sum of the individual ones', () => {
     let sum = D(0);
     for (let i = 0; i < 5; i++) sum = sum.add(costOf(botes, 3 + i));
     expect(costOf(botes, 3, 5).toNumber()).toBeCloseTo(sum.toNumber(), 6);
   });
 
-  it('desbloqueja zooms en ordre i no passa del final del mapa', () => {
+  it('unlocks zooms in order and does not go past the end of the map', () => {
     const s = newGame(42);
     s.upgrades.speed = 60;
     s.upgrades.cargo = 30;
@@ -277,7 +293,7 @@ describe('joc', () => {
     expect(s.zoomUnlocked).toBe(ZOOMS.length);
   });
 
-  it('el zoom triat queda dins dels desbloquejats', () => {
+  it('the chosen zoom stays within the unlocked ones', () => {
     const s = newGame(42);
     setZoom(s, 3);
     expect(s.zoom).toBe(0);

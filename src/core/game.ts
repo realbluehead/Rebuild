@@ -1,34 +1,34 @@
-// Simulació pura: cap accés a DOM, rellotge ni emmagatzematge. Tot és testable.
+// Pure simulation: no DOM, clock or storage access. Everything is testable.
 //
-// Cada robot va per lliure. Quan comença un anell, es reparteix en arcs (un per robot) i cada robot explora el seu
-// al seu ritme (la rugositat del terreny el frena). Quan té la bodega plena, o acaba el seu arc amb càrrega, torna
-// al campament a descarregar i torna a sortir. L'anell següent comença quan tots els arcs estan fets. Així els
-// robots surten i tornen en moments diferents. `tick` processa els esdeveniments (bodega plena, arc acabat, viatge
-// acabat…) en ordre de temps, i per això dona el mateix amb un pas llarg (offline) que amb molts de curts.
+// Each rover works on its own. When a ring starts it is split into arcs (one per rover) and each rover explores
+// its arc at its own pace (terrain roughness slows it down). When its hold is full, or it finishes its arc with
+// cargo, it returns to camp to unload and heads out again. The next ring starts once every arc is done. That is
+// why rovers leave and return at different times. `tick` processes events (hold full, arc done, trip done...)
+// in time order, so one long step (offline) gives the same result as many short ones.
 import { D, Decimal } from './decimal';
 import { newBot, type Bot, type GameState } from './state';
 import { BASE_CARGO, BASE_SPEED, CARGO_MULT, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
 import { workById, workCost, ITEMS, type WorkId } from '../content/collection';
-import { arcOf, arcStarts, cellsReached, itemsBetween, prefixAt, ringAt, ringCount, ringOfRank, specialsBetween, totalCells, unlockAt, type World } from './world';
+import { arcOf, arcStarts, cellsReached, itemsBetween, pathCells, prefixAt, ringAt, ringCount, ringOfRank, specialsBetween, totalCells, unlockAt, type World } from './world';
 
-export const TICK_RATE = 10; // ticks per segon
+export const TICK_RATE = 10; // ticks per second
 export const TICK_SEC = 1 / TICK_RATE;
 const EPS = 1e-9;
 
 export interface Stats {
-  /** Passos per segon de cada robot explorant. */
+  /** Steps per second of each rover while exploring. */
   speed: number;
-  /** Passos per segon de cada robot pel terreny ja descobert (anant o tornant del campament). */
+  /** Steps per second of each rover over known ground (going to or from camp). */
   travelSpeed: number;
-  /** Multiplicador de bluetreri (discos). */
+  /** Bluetreri multiplier (records). */
   loot: number;
-  /** Abast del radar en anells (0 = sense radar). */
+  /** Radar range in rings (0 = no radar). */
   radar: number;
-  /** Bluetreri que pot carregar cada robot. */
+  /** Bluetreri each rover can carry. */
   cargo: number;
   explorers: number;
-  /** Passos d'exploració per segon de tots els robots junts. */
+  /** Exploring steps per second of all rovers together. */
   stepsPerSec: number;
 }
 
@@ -42,25 +42,25 @@ export function stats(s: GameState): Stats {
   return { speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: radarRange(u.radar), cargo, explorers, stepsPerSec: speed * explorers };
 }
 
-/** Bluetreri que poden carregar entre tots els robots. */
+/** Bluetreri all rovers can carry together. */
 export const capacity = (s: GameState): number => stats(s).cargo * s.bots.length;
 
-/** Bluetreri que porten ara entre tots els robots. */
+/** Bluetreri all rovers are carrying right now. */
 export const carried = (s: GameState): number => s.bots.reduce((a, b) => a + b.cargo, 0);
 
-/** Passos del campament fins a la frontera (distància de camí de l'anell). */
+/** Steps from camp to the frontier (the ring's path distance). */
 export const homeDistance = (s: GameState): number => s.ring + 1;
 
-/** Com va l'anell actual: on comença i acaba, l'inici de cada arc i fins on ha arribat el robot de cada arc. */
+/** Progress of the current ring: where it starts and ends, where each arc starts and how far its rover has got. */
 export interface Progress {
   ring: number;
   a: number;
   b: number;
-  /** starts[k] = primer rang de l'arc k (un valor més: el final de l'anell). */
+  /** starts[k] = first rank of arc k (one extra value: the ring's end). */
   starts: number[];
-  /** reach[k] = caselles recorregudes (amb fracció) dins de l'arc k. */
+  /** reach[k] = cells covered (with fraction) inside arc k. */
   reach: number[];
-  /** robotOf[k] = índex (a `bots`) del robot que fa l'arc k. */
+  /** robotOf[k] = index (into `bots`) of the rover working arc k. */
   robotOf: number[];
 }
 
@@ -82,13 +82,13 @@ export function progress(s: GameState, w: World): Progress {
   return { ring: s.ring, a: w.rings[s.ring], b: w.rings[s.ring + 1], starts, reach, robotOf };
 }
 
-/** Caselles descobertes (amb fracció). */
+/** Cells revealed (with fraction). */
 export function explored(s: GameState, w: World): number {
   const p = progress(s, w);
   return p.a + p.reach.reduce((x, y) => x + y, 0);
 }
 
-/** Si la casella de rang r ja l'ha trepitjada algun robot. */
+/** Whether some rover has already stepped on the cell of rank r. */
 export function revealed(s: GameState, w: World, r: number, p = progress(s, w)): boolean {
   if (r < p.a) return true;
   if (r >= p.b) return false;
@@ -100,19 +100,19 @@ export function revealed(s: GameState, w: World, r: number, p = progress(s, w)):
 export const isComplete = (s: GameState, w: World): boolean =>
   s.ring >= ringCount(w) && s.bots.every((b) => b.trip === 'explore' && b.cargo <= 0);
 
-/** Bluetreri per segon que arriba al campament de mitjana (cada robot: explorar fins a omplir la bodega + anar i tornar). */
+/** Average bluetreri per second reaching camp (per rover: explore until the hold is full + the round trip). */
 export function goldPerSec(s: GameState, w: World): number {
   if (s.ring >= ringCount(w)) return 0;
   const st = stats(s);
   const a = w.rings[s.ring];
   const b = w.rings[s.ring + 1];
-  const g = ((w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, w.steps[b] - w.steps[a])) * st.loot; // per pas
+  const g = ((w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, w.steps[b] - w.steps[a])) * st.loot; // per step
   if (!(g > 0)) return 0;
   const perBot = st.cargo / (st.cargo / (g * st.speed) + (2 * homeDistance(s)) / st.travelSpeed);
   return perBot * s.bots.length;
 }
 
-/** Cost de comprar `qty` nivells tenint-ne ja `owned` (suma geomètrica). */
+/** Cost of buying `qty` levels when `owned` are already owned (geometric sum). */
 export function costOf(def: UpgradeDef, owned: number, qty = 1): Decimal {
   const r = D(def.costGrowth);
   const first = D(def.baseCost).mul(r.pow(owned));
@@ -120,17 +120,17 @@ export function costOf(def: UpgradeDef, owned: number, qty = 1): Decimal {
 }
 
 export interface TickEvents {
-  /** Rangs dels llocs especials descoberts en aquest pas. */
+  /** Ranks of the deposits revealed in this step. */
   specials: number[];
-  /** Rangs de les caselles d'on s'han recollit objectes en aquest pas. */
+  /** Ranks of the cells whose items were collected in this step. */
   items: number[];
-  /** Bluetreri descarregat al campament en aquest pas (0 si cap). */
+  /** Bluetreri unloaded at camp in this step (0 if none). */
   deposited: number;
-  /** Zoom desbloquejat en aquest pas (nombre de nivells), si n'hi ha. */
+  /** Zoom unlocked in this step (number of levels), if any. */
   zoomUnlocked?: number;
 }
 
-/** Arc que fa el robot j a l'anell actual: [inici, final) i quants passos té; null si no en té. */
+/** Arc rover j works on the current ring: [start, end) and its length in steps; null if it has none. */
 function arcOfBot(s: GameState, w: World, j: number, starts: number[]): { lo: number; hi: number; len: number } | null {
   const arcs = starts.length - 1;
   if (s.ring >= ringCount(w) || j >= arcs) return null;
@@ -140,22 +140,27 @@ function arcOfBot(s: GameState, w: World, j: number, starts: number[]): { lo: nu
   return { lo, hi, len: w.steps[hi] - w.steps[lo] };
 }
 
-/** Caselles (amb fracció) recorregudes dins d'un arc després de `prog` passos. Si l'arc és acabat, totes
- *  (sense dependre d'arrodoniments en sumar passos). */
+/** Cells (with fraction) covered inside an arc after `prog` steps. If the arc is done, all of them
+ *  (without depending on rounding when adding steps). */
 const arcReach = (w: World, a: { lo: number; hi: number; len: number }, prog: number): number =>
   prog >= a.len - EPS ? a.hi - a.lo : cellsReached(w, a.lo, a.hi, w.steps[a.lo] + prog);
 
-/** Bluetreri (sense multiplicadors) recollit dins d'un arc després de `prog` passos. */
+/** Bluetreri (before multipliers) collected inside an arc after `prog` steps. */
 const arcGold = (w: World, arc: { lo: number; hi: number }, prog: number): number =>
   prefixAt(w, arc.lo + cellsReached(w, arc.lo, arc.hi, w.steps[arc.lo] + prog)) - w.goldPrefix[arc.lo];
 
-/** Comença l'anell següent: es reparteix entre tots els robots, i els robots nous surten del campament. */
+/** Starts the next ring: it is split between all rovers, and new rovers leave camp. */
 function nextRing(s: GameState, w: World, explorers: number): void {
   s.ring++;
   while (s.ring < ringCount(w) && w.rings[s.ring + 1] === w.rings[s.ring]) s.ring++;
   while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s)));
   s.ringRobots = s.bots.length;
   for (const b of s.bots) b.prog = 0;
+  // Detour paths that exploring has caught up with are no longer needed.
+  const a = s.ring < ringCount(w) ? w.rings[s.ring] : totalCells(w);
+  const kept: number[] = [];
+  for (let i = 0; i < s.scouted.length; i += 3) if (s.scouted[i + 2] >= a) kept.push(s.scouted[i], s.scouted[i + 1], s.scouted[i + 2]);
+  s.scouted = kept;
 }
 
 function goHome(s: GameState, b: Bot): void {
@@ -164,7 +169,7 @@ function goHome(s: GameState, b: Bot): void {
   b.travelLen = homeDistance(s);
 }
 
-/** Avança la simulació `dt` segons. */
+/** Advances the simulation by `dt` seconds. */
 export function tick(s: GameState, w: World, dt: number): TickEvents {
   const ev: TickEvents = { specials: [], items: [], deposited: 0 };
   if (dt <= 0) return ev;
@@ -176,10 +181,10 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     const starts = live ? arcStarts(w, s.ring, s.ringRobots) : [totalCells(w)];
     const arcs = s.bots.map((_, j) => arcOfBot(s, w, j, starts));
 
-    // Anell acabat (tots els arcs fets): el següent.
+    // Ring done (every arc finished): on to the next.
     if (live && arcs.every((a, j) => !a || s.bots[j].prog >= a.len - EPS)) { nextRing(s, w, st.explorers); continue; }
 
-    // Decisions instantànies: bodega plena, o arc acabat amb càrrega → cap al campament.
+    // Instant decisions: hold full, or arc done with cargo -> head to camp.
     let changed = false;
     s.bots.forEach((b, j) => {
       if (b.trip !== 'explore') return;
@@ -189,7 +194,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     });
     if (changed) continue;
 
-    // Radar: el primer objecte pendent, si ja el detecta, el va a buscar un robot que estigui explorant.
+    // Radar: if the first pending item is already in range, an exploring rover goes to fetch it.
     if (live && st.radar > 0) {
       const p = progress(s, w);
       while (s.radarNext < w.itemRanks.length && revealed(s, w, w.itemRanks[s.radarNext], p)) s.radarNext++;
@@ -200,6 +205,8 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           const b = s.bots[j];
           b.trip = 'detour';
           b.target = s.radarNext++;
+          const arc = arcs[j]!;
+          b.from = Math.min(arc.hi - 1, arc.lo + Math.floor(arcReach(w, arc, b.prog)));
           b.travel = 0;
           b.travelLen = 2 * (itemRing - s.ring + 1);
           continue;
@@ -207,18 +214,18 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       }
     }
 
-    // Quan passa el proper esdeveniment de cada robot.
+    // When each rover's next event happens.
     let step = left;
     const fullAt: (number | undefined)[] = [];
     s.bots.forEach((b, j) => {
       const a = arcs[j];
       if (b.trip === 'explore') {
-        if (!a || b.prog >= a.len - EPS) return; // espera que acabin els altres
+        if (!a || b.prog >= a.len - EPS) return; // waits for the others to finish
         let t = (a.len - b.prog) / st.speed;
         const room = st.cargo - b.cargo;
         const g0 = arcGold(w, a, b.prog);
         if ((arcGold(w, a, a.len) - g0) * st.loot >= room) {
-          // On s'omple la bodega: es busca el punt exacte (el bluetreri creix de manera contínua amb els passos).
+          // Where the hold fills up: find the exact point (bluetreri grows continuously with the steps).
           let lo = b.prog;
           let hi = a.len;
           for (let i = 0; i < 50; i++) {
@@ -235,10 +242,10 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         step = Math.min(step, (b.travelLen - b.travel) / v);
       }
     });
-    if (!live && s.bots.every((b) => b.trip === 'explore')) break; // mapa acabat i tothom descarregat
+    if (!live && s.bots.every((b) => b.trip === 'explore')) break; // map done and everyone unloaded
     step = Math.max(0, step);
 
-    // Tothom avança `step` segons.
+    // Everyone advances `step` seconds.
     s.bots.forEach((b, j) => {
       const a = arcs[j];
       if (b.trip === 'explore') {
@@ -250,7 +257,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         const g = (arcGold(w, a, to) - arcGold(w, a, from)) * st.loot;
         b.prog = to;
         b.cargo = full !== undefined && to === full ? st.cargo : Math.min(st.cargo, b.cargo + g);
-        // Caselles a les quals ha arribat: llocs especials i objectes.
+        // Cells it has reached: deposits and items.
         const r0 = a.lo + Math.floor(arcReach(w, a, from));
         const r1 = a.lo + Math.floor(arcReach(w, a, to));
         if (r1 > r0) {
@@ -272,7 +279,14 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           if (s.ring >= ringCount(w)) b.trip = 'explore';
         } else if (b.trip === 'detour') {
           collect(s, w, b.target, ev);
+          if (b.from >= 0) {
+            const to = w.itemRanks[b.target];
+            let max = 0;
+            for (const i of pathCells(w, b.from, to)) max = Math.max(max, w.rank[i]);
+            s.scouted.push(b.from, to, max);
+          }
           b.target = -1;
+          b.from = -1;
           b.trip = 'explore';
         } else {
           b.trip = 'explore';
@@ -290,7 +304,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
   return ev;
 }
 
-/** Converteix una partida antiga (passos totals de la flota) al model de robots independents. */
+/** Converts an old save (total fleet steps) to the independent-rover model. */
 export function fromLegacy(s: GameState, w: World): void {
   if (s.legacyWalked === undefined) return;
   s.ring = Math.min(ringCount(w), ringAt(w, s.legacyWalked));
@@ -305,12 +319,12 @@ function collect(s: GameState, w: World, k: number, ev: TickEvents): void {
   ev.items.push(r);
 }
 
-/** Objectes que costa la propera obra d'aquesta mena. */
+/** Items the next work of this kind costs. */
 export const nextWorkCost = (s: GameState, id: WorkId): number => workCost(workById(id), s.works[id]);
 
 export const canCraft = (s: GameState, id: WorkId): boolean => s.items[workById(id).item] >= nextWorkCost(s, id);
 
-/** Crea la propera obra (llibre, disc o àlbum) amb els objectes recollits. */
+/** Crafts the next work (book, record or album) from the collected items. */
 export function craft(s: GameState, id: WorkId): boolean {
   if (!canCraft(s, id)) return false;
   s.items[workById(id).item] -= nextWorkCost(s, id);

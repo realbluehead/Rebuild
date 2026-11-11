@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 
-// BASE_PATH el posa la CI per a GitHub Pages (/<repo>/). En local i a Android és './'.
+// BASE_PATH is set by the CI for GitHub Pages (/<repo>/). Locally and on Android it is './'.
 export default defineConfig({
   base: process.env.BASE_PATH ?? './',
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
@@ -10,7 +10,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
-      // La font de píxels també ha de funcionar sense connexió.
+      // The pixel fonts must work offline too.
       workbox: { globPatterns: ['**/*.{js,css,html,svg,woff2}'] },
       manifest: {
         name: 'Rebuild',

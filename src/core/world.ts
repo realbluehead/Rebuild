@@ -1,17 +1,17 @@
-// El món es genera a partir del seed i no es desa mai. L'exploració està precalculada com un ordre:
-// la casella de rang r es descobreix després de les r anteriors. L'estat de la partida és un sol número
-// (`walked`, passos fets pels robots) i el progrés offline és exacte i instantani.
+// The world is generated from the seed and never saved. Exploration is precomputed as an order: the cell of
+// rank r is revealed after the r cells before it. Game progress is just a ring number plus, per rover, how many
+// steps it has made along its arc of that ring, so offline progress is exact.
 //
-// L'ordre surt d'una expansió des del campament (Dijkstra): cada casella té un cost segons el terreny i una
-// mica de soroll, i la "distància de camí" D creix des del centre. Es recorre per franges de D (anells) i,
-// dins de cada franja, per angle, en sentit alternat perquè els robots caminin. Com que travessar una casella
-// costa ≥ 1, el predecessor de qualsevol casella és d'una franja anterior: la zona explorada sempre és
-// una sola taca connectada, sense illes ni forats negres.
+// The order comes from an expansion from the camp (Dijkstra): each cell has a cost by terrain plus a little
+// noise, and the "path distance" D grows from the centre. It is walked in bands of D (rings) and, inside each
+// band, by angle, alternating direction so the rovers keep walking. Since crossing a cell costs >= 1, every
+// cell's predecessor lies in an earlier band: the explored area is always one connected patch, with no islands
+// and no black holes.
 //
-// Amb diversos robots, cada anell es reparteix en arcs (un per robot) i tots avancen alhora pel seu arc.
-// Un robot només pot descobrir la casella del costat: si la següent de l'ordre no és contigua, primer hi
-// camina per terra ja coneguda (passos sense descobrir res). El temps es compta en passos, i una casella
-// compta com a descoberta quan el robot hi ha arribat (no quan hi comença a anar).
+// With several rovers, each ring is split into arcs (one per rover) and each rover works its own arc at its own
+// pace. A rover can only reveal the neighbouring cell: if the next cell in the order is not adjacent, it first
+// walks there over known ground (steps that reveal nothing). Time is counted in steps, and a cell counts as
+// revealed once the rover has reached it (not when it sets off).
 import { DIST_VALUE_SCALE, MAP_SIZE, SPECIAL_CHANCE, SPECIAL_MULT, T, TERRAINS, ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
 import { ITEM_CHANCE, ITEMS } from '../content/collection';
 import { fbm, rand2 } from './rng';
@@ -19,37 +19,37 @@ import { fbm, rand2 } from './rng';
 export interface World {
   seed: number;
   size: number;
-  /** Casella inicial (centre del mapa). */
+  /** Starting cell (map centre). */
   cx: number;
   cy: number;
-  /** Terreny de cada casella (índex a TERRAINS), per files: i = y * size + x. */
+  /** Terrain of each cell (index into TERRAINS), row-major: i = y * size + x. */
   terrain: Uint8Array;
-  /** 1 si la casella té un lloc especial. */
+  /** 1 if the cell holds a deposit. */
   special: Uint8Array;
-  /** Objecte amagat a cada casella: 0 = cap, k + 1 = ITEMS[k]. */
+  /** Item hidden in each cell: 0 = none, k + 1 = ITEMS[k]. */
   item: Uint8Array;
-  /** Rangs (ordenats) de les caselles amb objecte. */
+  /** Ranks (sorted) of the cells that hold an item. */
   itemRanks: Uint32Array;
-  /** order[r] = casella que es descobreix en la posició r. */
+  /** order[r] = cell revealed at position r. */
   order: Uint32Array;
-  /** rank[i] = posició en què es descobreix la casella i. */
+  /** rank[i] = position at which cell i is revealed. */
   rank: Uint32Array;
-  /** goldPrefix[r] = or de les r primeres caselles (sense multiplicadors). */
+  /** goldPrefix[r] = bluetreri of the first r cells (before multipliers). */
   goldPrefix: Float64Array;
-  /** rings[k] = primer rang de l'anell k; l'últim element és el total de caselles. */
+  /** rings[k] = first rank of ring k; the last element is the total cell count. */
   rings: Uint32Array;
-  /** steps[r] = passos necessaris per tenir descobertes les r primeres caselles (n + 1 valors). */
+  /** steps[r] = steps needed to have the first r cells revealed (n + 1 values). */
   steps: Float64Array;
-  /** ringSteps[k] = steps[rings[k]]: passos on comença cada anell. */
+  /** ringSteps[k] = steps[rings[k]]: the step count at which each ring starts. */
   ringSteps: Float64Array;
-  /** Per a cada zoom: rangs ordenats de les caselles del seu quadrat (per saber-ne el % descobert). */
+  /** Per zoom level: sorted ranks of the cells in its square (to know how much of it is revealed). */
   zoomRanks: Uint32Array[];
 }
 
-/** Mida de les illes de cases: hi ha un carrer cada BLOCK caselles. */
+/** City block size: there is a street every BLOCK cells. */
 const BLOCK = 7;
 
-/** Quant varia el cost de travessar (soroll), perquè el contorn sigui orgànic. */
+/** How much the crossing cost varies (noise), so the outline looks organic. */
 const COST_NOISE = 0.7;
 
 export function createWorld(seed: number, size = MAP_SIZE): World {
@@ -72,15 +72,15 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
       const dy = y - cy;
       const d = Math.hypot(dx, dy);
 
-      // Terreny: "alçada" amb una ciutat al mig (terra ferma a l'inici, aigües fosques a les vores). Com més alt,
-      // més dens: carrers, edificis en ruïnes i gratacels; on és humit, la natura s'ho ha menjat (selva urbana).
+      // Terrain: a "height" with a city in the middle (solid ground at the start, dark water at the edges). The
+      // higher, the denser: streets, ruined blocks and towers; where it is wet, nature has taken over (urban jungle).
       let h = fbm(x, y, seed, 160, 5);
-      // Al voltant de l'inici s'estira l'alçada cap a carrers, perquè es comenci en terra amable.
+      // Around the start the height is pulled towards streets, so the game begins on friendly ground.
       const home = Math.max(0, 1 - d / 36);
       h += (0.47 - h) * home * home;
       h -= 0.9 * Math.max(0, d / half - 0.72);
       const wet = fbm(x, y, seed + 99, 90, 3);
-      // Quadrícula de carrers (cada BLOCK caselles, amb el campament en un encreuament); entre carrers, illes de cases.
+      // Street grid (every BLOCK cells, with the camp at a crossing); between streets, city blocks.
       const onGrid = (((dx % BLOCK) + BLOCK) % BLOCK === 0) || (((dy % BLOCK) + BLOCK) % BLOCK === 0);
       const block = rand2(Math.floor((dx + 1000 * BLOCK) / BLOCK), Math.floor((dy + 1000 * BLOCK) / BLOCK), seed + 21);
       let t: number =
@@ -90,14 +90,14 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
         h < 0.55 ? (wet > 0.53 ? T.Jungle : onGrid ? T.Street : block < 0.3 ? T.Rubble : block < 0.4 ? T.Jungle : T.Ruins) :
         h < 0.61 ? (wet > 0.6 ? T.Jungle : onGrid ? T.Street : T.Ruins) :
         onGrid ? T.Street : T.Towers;
-      // Abocadors tòxics: taques escampades per terra ferma (no al costat del campament).
+      // Toxic dumps: patches scattered over solid ground (not right next to the camp).
       if (t >= T.Rubble && d > 12 && fbm(x, y, seed + 55, 28, 2) > 0.7) t = T.Dump;
       terrain[i] = t;
       const sp = t >= T.Rubble && rand2(x, y, seed + 7) < SPECIAL_CHANCE && d > 3;
       special[i] = sp ? 1 : 0;
       const ir = rand2(x, y, seed + 11);
       if (!sp && d > 2 && ir < ITEM_CHANCE) {
-        // La mena surt del mateix número (reescalat): dos números del mateix hash amb seeds veïns no són independents.
+        // The kind comes from the same number (rescaled): two draws of the same hash with neighbouring seeds are not independent.
         let u = (ir / ITEM_CHANCE) * itemWeight;
         let k = 0;
         while (k < ITEMS.length - 1 && u >= ITEMS[k].weight) u -= ITEMS[k++].weight;
@@ -119,8 +119,8 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     if (ring > maxRing) maxRing = ring;
   }
 
-  // Ordenació per comptatge d'anells i, dins de cada anell, per angle. L'anell es recorre en sentit
-  // alternat perquè el final d'un quedi a prop del començament del següent (l'explorador camina).
+  // Counting sort by ring and, inside each ring, by angle. Rings alternate direction so the end of one
+  // lies near the start of the next (the rover walks).
   const count = new Uint32Array(maxRing + 2);
   for (let i = 0; i < n; i++) count[ringOf[i] + 1]++;
   for (let r = 1; r < count.length; r++) count[r] += count[r - 1];
@@ -149,15 +149,15 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
 
   if (order[0] !== cy * size + cx) throw new Error('El campament ha de ser la primera casella');
 
-  // Passos: per arribar a la casella r cal anar des de la r - 1 (distància de rei: 1 si és contigua), multiplicat
-  // per la rugositat de la casella.
+  // Steps: reaching cell r means coming from cell r - 1 (king distance: 1 if adjacent), multiplied by the
+  // cell's roughness.
   const steps = new Float64Array(n + 1);
-  steps[1] = 1; // el campament mateix
+  steps[1] = 1; // the camp itself
   for (let r = 1; r < n; r++) {
     const p = order[r - 1];
     const q = order[r];
     const d = Math.max(Math.abs((p % size) - (q % size)), Math.abs(Math.floor(p / size) - Math.floor(q / size)));
-    // Entrar i explorar la casella costa segons la rugositat del terreny (carrers ràpids, selva i runa lents).
+    // Entering and exploring the cell costs by terrain roughness (streets are fast, jungle and rubble slow).
     steps[r + 1] = steps[r] + d * TERRAINS[terrain[q]].rough;
   }
   const ringSteps = new Float64Array(count.length);
@@ -181,7 +181,7 @@ const SQRT2 = Math.SQRT2;
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];
 const DY = [0, 0, 1, -1, 1, -1, 1, -1];
 
-/** Distància de camí (Dijkstra, 8 veïns) des de (cx, cy); travessar entre dues caselles costa la mitjana dels seus costos. */
+/** Path distance (Dijkstra, 8 neighbours) from (cx, cy); moving between two cells costs the mean of their costs. */
 function pathDistance(size: number, cx: number, cy: number, cost: Float32Array): Float64Array {
   const n = size * size;
   const dist = new Float64Array(n).fill(Infinity);
@@ -192,7 +192,7 @@ function pathDistance(size: number, cx: number, cy: number, cost: Float32Array):
   while (heap.size) {
     const d = heap.topKey();
     const i = heap.pop();
-    if (d > dist[i]) continue; // entrada antiga
+    if (d > dist[i]) continue; // stale entry
     const x = i % size;
     const y = (i - x) / size;
     for (let k = 0; k < 8; k++) {
@@ -210,7 +210,7 @@ function pathDistance(size: number, cx: number, cy: number, cost: Float32Array):
   return dist;
 }
 
-/** Cua de prioritat binària amb arrays tipats (creix si cal). */
+/** Binary priority queue on typed arrays (grows when needed). */
 class MinHeap {
   private keys: Float64Array;
   private vals: Uint32Array;
@@ -254,15 +254,15 @@ class MinHeap {
 }
 
 export const totalCells = (w: World): number => w.size * w.size;
-/** Passos que calen per explorar tot el mapa. */
+/** Steps needed to explore the whole map. */
 export const totalSteps = (w: World): number => w.steps[totalCells(w)];
 
-/** Or (sense multiplicadors) de les caselles entre les posicions a i b (fraccions incloses). */
+/** Bluetreri (before multipliers) of the cells between positions a and b (fractions included). */
 export function goldBetween(w: World, a: number, b: number): number {
   return prefixAt(w, b) - prefixAt(w, a);
 }
 
-/** Anell on són els robots després de `walked` passos (el darrer si ja s'ha acabat). */
+/** Ring reached after `walked` total steps (the last one if finished). Used to convert old saves. */
 export function ringAt(w: World, walked: number): number {
   const rs = w.ringSteps;
   let lo = 0;
@@ -275,10 +275,10 @@ export function ringAt(w: World, walked: number): number {
   return lo;
 }
 
-/** Caselles (amb fracció) recorregudes dins de l'arc [lo, hi) quan el robot porta `t` passos del total. */
+/** Cells (with fraction) covered inside the arc [lo, hi) when the rover is at `t` total steps. */
 export function cellsReached(w: World, lo: number, hi: number, t: number): number {
   const st = w.steps;
-  // m més gran amb steps[m] <= t: les caselles < m ja estan descobertes.
+  // Largest m with steps[m] <= t: cells < m are already revealed.
   let a = lo;
   let b = hi;
   while (a < b) {
@@ -290,10 +290,10 @@ export function cellsReached(w: World, lo: number, hi: number, t: number): numbe
   return a - lo + Math.max(0, (t - st[a]) / (st[a + 1] - st[a]));
 }
 
-/** Nombre d'anells (l'últim índex vàlid és ringCount - 1). */
+/** Number of rings (the last valid index is ringCount - 1). */
 export const ringCount = (w: World): number => w.rings.length - 1;
 
-/** Primer rang de cada arc de l'anell `ring` repartit entre `robots` (n + 1 valors: l'últim és el final de l'anell). */
+/** First rank of each arc of ring `ring` split between `robots` (n + 1 values: the last is the ring's end). */
 export function arcStarts(w: World, ring: number, robots: number): number[] {
   const a = w.rings[ring];
   const len = w.rings[ring + 1] - a;
@@ -303,82 +303,20 @@ export function arcStarts(w: World, ring: number, robots: number): number[] {
   return starts;
 }
 
-/** Quin arc fa el robot j. Els anells es recorren en sentit alternat: a l'anell senar el robot j agafa l'arc del
- *  costat contrari, i així continua des d'on havia acabat. (És la seva pròpia inversa: també dona el robot d'un arc.) */
+/** Which arc rover j works. Rings alternate direction: on an odd ring rover j takes the arc from the opposite
+ *  side, so it carries on from where it finished. (It is its own inverse: it also gives the rover of an arc.) */
 export const arcOf = (ring: number, j: number, arcs: number): number => (ring % 2 === 0 ? j : arcs - 1 - j);
 
-/** Com va l'anell actual: on comença i acaba, i fins on ha arribat cada arc (un per robot). */
-export interface RingProgress {
-  ring: number;
-  a: number;
-  b: number;
-  /** starts[k] = primer rang de l'arc k (n + 1 valors: l'últim és b). */
-  starts: number[];
-  /** reach[k] = caselles recorregudes (amb fracció) dins de l'arc k. */
-  reach: number[];
+/** Prefix sum of bluetreri up to position r (with fraction), clamped to the map. */
+export function prefixAt(w: World, r: number): number {
+  const n = totalCells(w);
+  if (r <= 0) return 0;
+  if (r >= n) return w.goldPrefix[n];
+  const i = Math.floor(r);
+  return w.goldPrefix[i] + (w.goldPrefix[i + 1] - w.goldPrefix[i]) * (r - i);
 }
 
-export function ringProgress(w: World, walked: number, robots: number): RingProgress {
-  const ring = ringAt(w, walked);
-  const a = w.rings[ring];
-  const b = w.rings[ring + 1];
-  const len = b - a;
-  const arcs = Math.max(1, Math.min(robots, len));
-  // Tots els robots fan la mateixa fracció dels passos del seu arc.
-  const A = w.ringSteps[ring];
-  const B = w.ringSteps[ring + 1];
-  const frac = B > A ? Math.min(1, Math.max(0, (walked - A) / (B - A))) : 1;
-  const starts: number[] = [];
-  for (let k = 0; k <= arcs; k++) starts.push(a + Math.floor((k * len) / arcs));
-  const reach = starts.slice(0, -1).map((st, k) => {
-    const s0 = w.steps[st];
-    return cellsReached(w, st, starts[k + 1], s0 + frac * (w.steps[starts[k + 1]] - s0));
-  });
-  return { ring, a, b, starts, reach };
-}
-
-/** Caselles descobertes (amb fracció) després de `walked` passos. */
-export function cellsExplored(w: World, walked: number, robots: number): number {
-  const p = ringProgress(w, walked, robots);
-  return p.a + p.reach.reduce((x, y) => x + y, 0);
-}
-
-/** Or (sense multiplicadors) de tot el que s'ha recorregut: anells sencers + el tros de cada arc. */
-export function revealedGold(w: World, walked: number, robots: number): number {
-  const p = ringProgress(w, walked, robots);
-  let g = w.goldPrefix[p.a];
-  for (let k = 0; k < p.reach.length; k++) g += prefixAt(w, p.starts[k] + p.reach[k]) - w.goldPrefix[p.starts[k]];
-  return g;
-}
-
-/** Trams de rangs [a, b) als quals algun robot ha arribat entre dos moments (robots0 a l'anell inicial, robots1 al final). */
-export function revealedRanges(w: World, e0: number, e1: number, robots0: number, robots1: number): [number, number][] {
-  const p0 = ringProgress(w, e0, robots0);
-  const p1 = ringProgress(w, e1, robots1);
-  const out: [number, number][] = [];
-  const arcs = (p: RingProgress, from: (k: number) => number, to: (k: number) => number) => {
-    for (let k = 0; k < p.reach.length; k++) {
-      const a = p.starts[k] + from(k);
-      const b = p.starts[k] + to(k);
-      if (b > a) out.push([a, b]);
-    }
-  };
-  if (p0.ring === p1.ring) {
-    arcs(p1, (k) => Math.floor(p0.reach[k] ?? 0), (k) => Math.floor(p1.reach[k]));
-  } else {
-    arcs(p0, (k) => Math.floor(p0.reach[k]), (k) => p0.starts[k + 1] - p0.starts[k]);
-    if (p1.a > p0.b) out.push([p0.b, p1.a]);
-    arcs(p1, () => 0, (k) => Math.floor(p1.reach[k]));
-  }
-  return out;
-}
-
-/** Llocs especials als quals un robot ha arribat entre dos moments. */
-export function revealedSpecials(w: World, e0: number, e1: number, robots0: number, robots1: number): number[] {
-  return revealedRanges(w, e0, e1, robots0, robots1).flatMap(([a, b]) => specialsBetween(w, a, b));
-}
-
-/** Índex (a `itemRanks`) del primer objecte amb rang >= r. */
+/** Index (into `itemRanks`) of the first item with rank >= r. */
 export function itemIndexAt(w: World, r: number): number {
   const ir = w.itemRanks;
   let lo = 0;
@@ -391,14 +329,33 @@ export function itemIndexAt(w: World, r: number): number {
   return lo;
 }
 
-/** Índexs (a `itemRanks`) dels objectes amb rang a [a, b). */
+/** Indices (into `itemRanks`) of the items with rank in [a, b). */
 export function itemsBetween(w: World, a: number, b: number): number[] {
   const out: number[] = [];
   for (let k = itemIndexAt(w, a); k < w.itemRanks.length && w.itemRanks[k] < b; k++) out.push(k);
   return out;
 }
 
-/** Anell on és la casella de rang r. */
+/** Cells (map indices) on a straight 8-connected line from the cell of rank `from` to the cell of rank `to`,
+ *  both included, in walking order. */
+export function pathCells(w: World, from: number, to: number): number[] {
+  const { order, size } = w;
+  const a = order[from];
+  const b = order[to];
+  const x0 = a % size;
+  const y0 = Math.floor(a / size);
+  const dx = (b % size) - x0;
+  const dy = Math.floor(b / size) - y0;
+  const n = Math.max(Math.abs(dx), Math.abs(dy));
+  const out: number[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = n ? i / n : 0;
+    out.push(Math.round(y0 + dy * t) * size + Math.round(x0 + dx * t));
+  }
+  return out;
+}
+
+/** Ring that holds the cell of rank r. */
 export function ringOfRank(w: World, r: number): number {
   const rs = w.rings;
   let lo = 0;
@@ -411,25 +368,7 @@ export function ringOfRank(w: World, r: number): number {
   return lo;
 }
 
-/** Si la casella de rang r ja l'ha trepitjada algun robot. */
-export function isRevealed(w: World, walked: number, robots: number, r: number): boolean {
-  const p = ringProgress(w, walked, robots);
-  if (r < p.a) return true;
-  if (r >= p.b) return false;
-  let k = p.reach.length - 1;
-  while (k > 0 && p.starts[k] > r) k--;
-  return r < p.starts[k] + Math.floor(p.reach[k]);
-}
-
-export function prefixAt(w: World, r: number): number {
-  const n = totalCells(w);
-  if (r <= 0) return 0;
-  if (r >= n) return w.goldPrefix[n];
-  const i = Math.floor(r);
-  return w.goldPrefix[i] + (w.goldPrefix[i + 1] - w.goldPrefix[i]) * (r - i);
-}
-
-/** Fracció descoberta del quadrat del zoom `z` (0-based) quan s'han explorat `explored` caselles. */
+/** Revealed fraction of zoom `z`'s square (0-based) once `explored` cells are explored. */
 export function zoomFraction(w: World, z: number, explored: number): number {
   const ranks = w.zoomRanks[z];
   let lo = 0;
@@ -442,13 +381,13 @@ export function zoomFraction(w: World, z: number, explored: number): number {
   return lo / ranks.length;
 }
 
-/** Caselles explorades necessàries per desbloquejar el zoom z + 1. */
+/** Explored cells needed to unlock zoom z + 1. */
 export function unlockAt(w: World, z: number): number {
   const ranks = w.zoomRanks[z];
   return ranks[Math.max(0, Math.ceil(ranks.length * ZOOM_UNLOCK_FRACTION) - 1)] + 1;
 }
 
-/** Posicions (rangs) de llocs especials entre a (inclòs) i b (exclòs). */
+/** Positions (ranks) of deposits between a (inclusive) and b (exclusive). */
 export function specialsBetween(w: World, a: number, b: number): number[] {
   const out: number[] = [];
   const end = Math.min(Math.floor(b), totalCells(w));

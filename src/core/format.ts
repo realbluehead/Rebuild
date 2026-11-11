@@ -2,7 +2,7 @@ import { D, type DecimalSource } from './decimal';
 
 const SUFFIXES = ['', 'k', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
 
-/** 1234 → "1.23k", 1e40 → "1.00e40". */
+/** 1234 -> "1.23k", 1e40 -> "1.00e40". */
 export function fmt(v: DecimalSource): string {
   const d = D(v);
   if (d.lt(1000)) {

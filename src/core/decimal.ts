@@ -1,4 +1,4 @@
-// Punt únic d'entrada per als números grans: si mai canviem de llibreria, només es toca aquí.
+// Single entry point for big numbers: if we ever swap the library, only this file changes.
 import Decimal from 'break_eternity.js';
 
 export { Decimal };

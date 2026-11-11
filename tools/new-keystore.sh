@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Crea la clau de signatura de release (UN SOL COP) i mostra com posar-la als secrets de GitHub.
-# Guarda el .jks i les contrasenyes en un lloc segur: si es perden, els mòbils no podran actualitzar.
+# Creates the release signing key (ONCE) and shows how to put it in the GitHub secrets.
+# Keep the .jks and the passwords somewhere safe: if they are lost, phones cannot update.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=${1:-$HOME/.android-keys/rebuild.jks}

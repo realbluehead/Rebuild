@@ -1,5 +1,5 @@
-/* Estil retro pixelat de metall rovellat (ciutat postapocalíptica): plaques d'òxid amb reblons, botons de coure,
-   i detalls de perill en groc i negre. Font de píxels, vores dures sense arrodonir, ombres "esglaonades". */
+/* Retro pixel style in rusted metal (post-apocalyptic city): oxidised plates with rivets, copper buttons,
+   and yellow-and-black hazard details. Pixel fonts, hard square edges, "stepped" shadows. */
 :root {
   --void: #120c08;
   --bg: #24170f;
@@ -11,19 +11,19 @@
   --text: #f3e2c6;
   --muted: #cfae88;
   --rivet: #d9ad80;
-  /* Botons que es poden prémer: coure */
+  /* Buttons you can press: copper */
   --gold: #e07a22;
   --gold-2: #8a3e0e;
-  /* Bluetreri, el mineral blau (moneda) */
+  /* Bluetreri, the blue mineral (currency) */
   --blu: #5fd0ff;
   --ok: #b5dc62;
   --red: #c63d2f;
-  /* Perill */
+  /* Hazard */
   --haz: #f2c400;
   --haz-k: #15110a;
   --stripes: repeating-linear-gradient(135deg, var(--haz) 0 6px, var(--haz-k) 6px 12px);
-  --u: 3px; /* mida d'un "píxel" de la interfície */
-  /* Dues fonts de píxels: una de molt clara per a números i títols, i una de compacta per al text. */
+  --u: 3px; /* size of one interface "pixel" */
+  /* Two pixel fonts: a very clear one for numbers and titles, and a compact one for text. */
   --font-num: 'Press Start 2P', monospace;
   --font-text: 'VT323', monospace;
   color-scheme: dark;
@@ -40,8 +40,8 @@ body {
 }
 button { font: inherit; color: inherit; }
 
-/* El joc sempre és un telèfon en vertical: al mòbil ocupa tota la pantalla; a l'ordinador és un
-   "telèfon" centrat amb proporció 9:19,5, perquè es vegi i es jugui igual que a Android. */
+/* The game is always a portrait phone: on mobile it fills the screen; on desktop it is a centred
+   "phone" with a 9:19.5 ratio, so it looks and plays the same as on Android. */
 #app {
   position: relative;
   height: 100dvh;
@@ -51,7 +51,7 @@ button { font: inherit; color: inherit; }
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--bg);
   overflow: hidden;
-  /* Zones segures d'Android (retall de càmera, barra de gestos) */
+  /* Android safe areas (camera cutout, gesture bar) */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 @media (min-aspect-ratio: 2/3) {
@@ -74,7 +74,7 @@ button { font: inherit; color: inherit; }
 .splash { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 26px; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: .4; } }
 
-/* Plaques de metall amb un rebló a cada cantonada, i botons de xapa */
+/* Metal plates with a rivet in each corner, and sheet-metal buttons */
 .px-box {
   --r: linear-gradient(var(--rivet), var(--rivet));
   background:
@@ -104,16 +104,16 @@ button { font: inherit; color: inherit; }
   background: var(--coin) center / contain no-repeat; image-rendering: pixelated;
 }
 
-/* Mapa */
+/* Map */
 .map-wrap { position: relative; min-height: 0; background: var(--void); overflow: hidden; }
 .map { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: grab; }
 .map.dragging { cursor: grabbing; }
 
-/* Barra de dalt */
+/* Top bar */
 .topbar {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; background: var(--panel);
-  /* Franja de perill sota la barra de dalt */
+  /* Hazard stripe under the top bar */
   border-bottom: 6px solid var(--haz);
   border-image: var(--stripes) 6;
   box-shadow: inset 0 var(--u) 0 var(--hi);
@@ -125,7 +125,7 @@ button { font: inherit; color: inherit; }
 .cargo-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .cargo-bar { flex: 0 0 64px; margin: 0; height: 10px; }
 .cargo-bar i { background: var(--blu); }
-/* Bodega plena: franges de perill que corren */
+/* Hold full: running hazard stripes */
 .cargo-bar.full i { background: var(--stripes); background-size: 17px 17px; animation: haz-run .6s steps(4) infinite; }
 @keyframes haz-run { to { background-position: 17px 0; } }
 .cargo-text { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -164,7 +164,7 @@ button { font: inherit; color: inherit; }
 }
 .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
-/* Panell de millores: graella 2×2 a baix, a l'abast del polze */
+/* Upgrade panel: a 2x2 grid at the bottom, within thumb reach */
 .panel {
   background: var(--bg);
   border-top: var(--u) solid var(--edge);
@@ -181,7 +181,7 @@ button { font: inherit; color: inherit; }
   min-height: 40px; padding: 4px; font: 10px/1 var(--font-num);
 }
 
-/* Finestres */
+/* Dialogs */
 .modal { position: absolute; inset: 0; background: #0a0604cc; display: grid; place-items: center; padding: 16px; z-index: 10; }
 .modal .box { padding: 18px; max-width: 360px; width: 100%; text-align: center; display: grid; gap: 10px; }
 .modal .px-btn { min-height: 44px; font: 10px/1.4 var(--font-num); color: var(--text); }
@@ -195,7 +195,7 @@ button { font: inherit; color: inherit; }
   border: var(--u) solid var(--edge); font: 12px monospace; user-select: text;
 }
 
-/* Ajuda: text llarg amb desplaçament dins del telèfon */
+/* Field notes: long text that scrolls inside the phone */
 .modal.help { grid-template-rows: minmax(0, 1fr); }
 .modal.help .box { max-height: 100%; min-height: 0; overflow: hidden; text-align: left; grid-template-rows: auto minmax(0, 1fr) auto; }
 .modal.help .name { text-align: center; }
@@ -204,7 +204,7 @@ button { font: inherit; color: inherit; }
 .help-body h3:first-child { margin-top: 0; }
 .help-body p { margin: 0 0 6px; color: var(--text); font-size: 19px; line-height: 1.05; }
 
-/* Pestanyes del panell de baix */
+/* Tabs of the bottom panel */
 .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .tab { font: 9px/1 var(--font-num); padding: 8px 4px; }
 .tab.on { background: var(--panel); color: var(--text); box-shadow: inset 0 var(--u) 0 var(--hi); }
@@ -213,12 +213,12 @@ button { font: inherit; color: inherit; }
 .item-icon { width: 16px; height: 16px; image-rendering: pixelated; flex: none; }
 .shelf .buy { font: 10px/1 var(--font-num); color: var(--text); }
 
-/* Llegenda de terrenys a l'ajuda */
+/* Terrain legend in the field notes */
 .legend { display: grid; gap: 2px; margin: 4px 0 8px; }
 .legend-row { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; font-size: 19px; }
 .swatch { width: 14px; height: 14px; border: 2px solid var(--edge); }
 .legend-val { color: var(--blu); }
 
-/* Ajuda que es va omplint: el que falta, i el botó ? quan hi ha coses noves */
+/* Field notes that fill in: what is missing, and the ? button when there is something new */
 .help-body .locked { color: var(--muted); margin-top: 10px; }
 .help-btn.alert { color: var(--haz); background: var(--stripes); text-shadow: 2px 2px 0 var(--haz-k), -2px -2px 0 var(--haz-k), 2px -2px 0 var(--haz-k), -2px 2px 0 var(--haz-k); animation: blink 1s steps(2) infinite; }

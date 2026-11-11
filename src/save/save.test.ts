@@ -9,7 +9,7 @@ import { applyOffline, OFFLINE_CAP_SEC } from './offline';
 const world = createWorld(7, 128);
 
 describe('save', () => {
-  it('serialitza i deserialitza sense perdre res', () => {
+  it('serialises and deserialises without losing anything', () => {
     const s = newGame(7);
     s.gold = D('1.5e300');
     s.ring = 12;
@@ -37,12 +37,12 @@ describe('save', () => {
     expect(state.legacyWalked).toBeUndefined();
   });
 
-  it('export/import en text', () => {
+  it('export/import as text', () => {
     const data = serialize(newGame(), 5);
     expect(importSave(exportSave(data))).toEqual(data);
   });
 
-  it('migra una partida v1 (abans de la bodega) i la converteix en robots en carregar el món', () => {
+  it('migrates a v1 save (before the hold) and converts it into rovers when the world loads', () => {
     const v1 = { v: 1, savedAt: 9, seed: 3, walked: 50, gold: '12', totalGold: '40', upgrades: { speed: 4, radius: 2, loot: 3, explorers: 1 }, ringRobots: 2, zoomUnlocked: 2, zoom: 1, playTime: 99 };
     const { state } = deserialize(v1);
     expect(state.upgrades).toEqual({ speed: 4, radar: 3, cargo: 0, explorers: 1 });
@@ -56,7 +56,7 @@ describe('save', () => {
     expect(state.ring).toBeGreaterThan(0);
   });
 
-  it('migra una partida v3 (flota amb una sola càrrega)', () => {
+  it('migrates a v3 save (fleet with a single cargo)', () => {
     const v3 = { v: 3, savedAt: 9, seed: 3, walked: 500, cargo: '4.5', trip: 'home', travel: 2, travelLen: 9, gold: '12', totalGold: '40', upgrades: { speed: 4, radar: 1, cargo: 2, explorers: 0 }, items: { page: 3 }, works: { book: 1 }, radarNext: 2, ringRobots: 1, zoomUnlocked: 2, zoom: 1, playTime: 99 };
     const { state } = deserialize(v3);
     expect(state.bots.length).toBe(1);
@@ -67,11 +67,22 @@ describe('save', () => {
     expect(state.works.book).toBe(1);
   });
 
-  it('rebutja versions del futur', () => {
+  it('migrates a v4 save (a rover already on a detour reveals no path)', () => {
+    const bots = [{ trip: 'detour', prog: 3, cargo: 1, travel: 1, travelLen: 6, target: 4 }];
+    const v4 = { v: 4, savedAt: 9, seed: 3, ring: 5, ringRobots: 1, bots, gold: '1', totalGold: '2', upgrades: { radar: 1 }, items: {}, works: {}, radarNext: 5, zoomUnlocked: 1, zoom: 0, playTime: 9 };
+    const { state } = deserialize(v4);
+    expect(state.scouted).toEqual([]);
+    expect(state.bots[0].trip).toBe('detour');
+    expect(state.bots[0].from).toBe(-1);
+    const back = deserialize({ ...serialize({ ...state, scouted: [1, 9, 12, 7] }, 0) }).state;
+    expect(back.scouted).toEqual([1, 9, 12]);
+  });
+
+  it('rejects versions from the future', () => {
     expect(() => migrate({ v: 999 })).toThrow();
   });
 
-  it('ignora millores que ja no existeixen i corregeix zooms fora de rang', () => {
+  it('ignores upgrades that no longer exist and clamps out-of-range zooms', () => {
     const data = { ...serialize(newGame(1), 0), upgrades: { speed: 2, vella: 9 }, zoomUnlocked: 99, zoom: 99 };
     const { state } = deserialize(data);
     expect(state.upgrades.speed).toBe(2);
@@ -82,7 +93,7 @@ describe('save', () => {
 });
 
 describe('offline', () => {
-  it('explora pel temps absent', () => {
+  it('explores for the time away', () => {
     const s = newGame(7);
     const r = applyOffline(s, world, 0, 600_000);
     expect(r?.seconds).toBe(600);
@@ -91,13 +102,13 @@ describe('offline', () => {
     expect(r?.cells).toBeCloseTo(explored(s, world));
   });
 
-  it('té un límit', () => {
+  it('has a cap', () => {
     const s = newGame(7);
     const r = applyOffline(s, world, 0, (OFFLINE_CAP_SEC + 5000) * 1000);
     expect(r?.seconds).toBe(OFFLINE_CAP_SEC);
   });
 
-  it('ignora rellotges endarrerits', () => {
+  it('ignores clocks that went backwards', () => {
     const s = newGame(7);
     expect(applyOffline(s, world, 10_000, 0)).toBeNull();
     expect(s.bots[0].prog).toBe(0);

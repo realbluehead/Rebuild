@@ -1,5 +1,5 @@
-// Objectes que els robots troben pel mapa (pàgines, notes, fotos) i les obres que se'n fan (llibres, discos, àlbums).
-// Cada obra costa més que l'anterior i dona un bonus permanent.
+// Items rovers find on the map (pages, notes, photos) and the works made from them (books, records, albums).
+// Each work costs more than the last and gives a permanent bonus.
 
 export type ItemId = 'page' | 'note' | 'photo';
 export type WorkId = 'book' | 'cd' | 'album';
@@ -8,7 +8,7 @@ export interface ItemDef {
   id: ItemId;
   name: string;
   plural: string;
-  /** Pes relatiu a l'hora de repartir objectes pel mapa. */
+  /** Relative weight when scattering items over the map. */
   weight: number;
 }
 
@@ -17,19 +17,19 @@ export const ITEMS: readonly ItemDef[] = [
   { id: 'note', name: 'note', plural: 'notes', weight: 0.2 },
   { id: 'photo', name: 'photo', plural: 'photos', weight: 0.35 },
 ];
-/** Probabilitat que una casella (que no sigui el campament ni un cofre) amagui un objecte. */
+/** Chance that a cell (other than the camp or a deposit) hides an item. */
 export const ITEM_CHANCE = 1 / 90;
 
 export interface WorkDef {
   id: WorkId;
-  /** Nom de la col·lecció. */
+  /** Name of the collection. */
   name: string;
-  /** Què es fa servir per crear-ne. */
+  /** What it is made from. */
   item: ItemId;
-  /** Objectes per a la primera obra; cada obra següent en demana `costGrowth` vegades més. */
+  /** Items for the first work; each following work asks for `costGrowth` times more. */
   baseCost: number;
   costGrowth: number;
-  /** Bonus de cada obra (multiplicador) i a què s'aplica. */
+  /** Bonus of each work (multiplier) and what it applies to. */
   bonus: number;
   effect: string;
   titles: readonly string[];
@@ -62,9 +62,9 @@ export const WORKS: readonly WorkDef[] = [
 
 export const workById = (id: WorkId): WorkDef => WORKS.find((w) => w.id === id)!;
 
-/** Objectes que costa la obra número `made` (0 = la primera). */
+/** Items that work number `made` costs (0 = the first). */
 export const workCost = (def: WorkDef, made: number): number => Math.round(def.baseCost * def.costGrowth ** made);
 
-/** Títol de l'obra número `made`; quan s'acaben els noms, es numeren. */
+/** Title of work number `made`; when the names run out, they get numbered. */
 export const workTitle = (def: WorkDef, made: number): string =>
   def.titles[made] ?? `${def.titles[made % def.titles.length]} (vol. ${Math.floor(made / def.titles.length) + 1})`;

@@ -1,6 +1,6 @@
 name: Android (release APK)
 
-# Es dispara amb una etiqueta vX.Y.Z (la crea `npm run release`).
+# Triggered by a vX.Y.Z tag (created by `npm run release`).
 on:
   push:
     tags: ['v*']
