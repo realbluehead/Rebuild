@@ -5,8 +5,9 @@ Nom: **Rebuild** (repo realbluehead/Rebuild, web a https://realbluehead.github.i
 `android/` (namespace/applicationId, millor regenerar-lo) i `GITHUB_REPO` a `src/platform/update.ts`. Fer-ho **abans** de la primera release.
 
 ## El joc
-Idle d'exploració amb estètica **retro pixelada**. Vista aèria d'un mapa 2D (1024×1024 caselles) que comença tot fosc;
-un robot el va descobrint sol, a poc a poc, amb el temps. 4 nivells de zoom (Camí 16 → Comarca 64 → Regió 256 → Continent 1024
+Idle d'exploració amb estètica **retro pixelada**, en una **ciutat postapocalíptica** (carrers en quadrícula, edificis en ruïnes,
+gratacels, runa, abocadors tòxics, aigua tòxica i selva urbana). Vista aèria d'un mapa 2D (1024×1024 caselles) que comença tot fosc;
+un robot el va descobrint sol, a poc a poc, amb el temps. 4 nivells de zoom (Carrer 16 → Barri 64 → Ciutat 256 → Metròpoli 1024
 caselles de costat); es comença al més proper i el següent es desbloqueja en descobrir el 80% del quadrat del zoom actual.
 - Stats (`content/upgrades.ts`, efecte a `core/game.ts` `stats()`): Motor (velocitat), Radar (abast en anells), Bodega (capacitat de càrrega),
   Robots. Passos/s = velocitat × robots. L'or ve de cada casella (terreny × distància) i dels llocs especials (cofres/ruïnes).
@@ -18,6 +19,8 @@ caselles de costat); es comença al més proper i el següent es desbloqueja en 
 - Radar: els objectes fins a `radar` anells més enllà els va a buscar un robot (`trip` 'detour', al pas d'explorar; la casella queda fosca).
   `radarNext` és l'índex del primer objecte que el radar no ha repassat. Al mapa parpellegen fins al doble de l'abast.
 - Si el robot surt de la vista, una fletxa a la vora (lluny dels botons) hi apunta; tocant-la s'hi va. El mapa mai es mou sol.
+- Terrenys (`content/world.ts` `T`): l'alçada tria aigua/runa/ciutat; a la ciutat, carrers cada 7 caselles (`BLOCK`, campament en un encreuament)
+  i illes de cases; la humitat fa selva urbana; un soroll a part fa taques d'abocador. Rajoles a `ui/sprites.ts` (8 variants).
 - Or per terreny: llegenda a l'ajuda i un toc al mapa diu el terreny i quant val la casella.
 - La casella que un robot explora va agafant color (segona meitat del pas; la primera hi camina). Ajuda: botó ? i menú; surt sola a la primera partida.
 - Regles dels robots: surten del campament (casella inicial); **només descobreixen la casella contigua** i una casella

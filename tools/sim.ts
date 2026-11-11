@@ -17,7 +17,7 @@ const counts = new Array(TERRAINS.length).fill(0);
 let specials = 0;
 for (let i = 0; i < w.terrain.length; i++) { counts[w.terrain[i]]++; specials += w.special[i]; }
 console.log('Terrenys:', TERRAINS.map((t, i) => `${t.name} ${(100 * counts[i] / w.terrain.length).toFixed(1)}%`).join(', '));
-console.log(`Llocs especials: ${specials}. Terreny inicial: ${TERRAINS[w.terrain[w.cy * w.size + w.cx]].name}${w.terrain[w.cy * w.size + w.cx] < T.Sand ? ' (!)' : ''}\n`);
+console.log(`Llocs especials: ${specials}. Terreny inicial: ${TERRAINS[w.terrain[w.cy * w.size + w.cx]].name}${w.terrain[w.cy * w.size + w.cx] < T.Rubble ? ' (!)' : ''}\n`);
 
 const s = newGame(seed);
 const n = totalCells(w);

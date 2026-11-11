@@ -46,6 +46,9 @@ export interface World {
   zoomRanks: Uint32Array[];
 }
 
+/** Mida de les illes de cases: hi ha un carrer cada BLOCK caselles. */
+const BLOCK = 7;
+
 /** Quant varia el cost de travessar (soroll), perquè el contorn sigui orgànic. */
 const COST_NOISE = 0.7;
 
@@ -69,22 +72,28 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
       const dy = y - cy;
       const d = Math.hypot(dx, dy);
 
-      // Terreny: alçada amb un continent al mig (terra a l'inici, mar a les vores).
+      // Terreny: "alçada" amb una ciutat al mig (terra ferma a l'inici, aigües fosques a les vores). Com més alt,
+      // més dens: carrers, edificis en ruïnes i gratacels; on és humit, la natura s'ho ha menjat (selva urbana).
       let h = fbm(x, y, seed, 160, 5);
-      // Al voltant de l'inici s'estira l'alçada cap a prat, perquè es comenci en terra amable.
+      // Al voltant de l'inici s'estira l'alçada cap a carrers, perquè es comenci en terra amable.
       const home = Math.max(0, 1 - d / 36);
       h += (0.47 - h) * home * home;
       h -= 0.9 * Math.max(0, d / half - 0.72);
       const wet = fbm(x, y, seed + 99, 90, 3);
-      const t =
-        h < 0.31 ? T.Deep :
-        h < 0.385 ? T.Water :
-        h < 0.41 ? T.Sand :
-        h < 0.55 ? (wet > 0.53 ? T.Forest : T.Grass) :
-        h < 0.61 ? (wet > 0.6 ? T.Forest : T.Hill) :
-        h < 0.67 ? T.Mountain : T.Snow;
+      // Quadrícula de carrers (cada BLOCK caselles, amb el campament en un encreuament); entre carrers, illes de cases.
+      const onGrid = (((dx % BLOCK) + BLOCK) % BLOCK === 0) || (((dy % BLOCK) + BLOCK) % BLOCK === 0);
+      const block = rand2(Math.floor((dx + 1000 * BLOCK) / BLOCK), Math.floor((dy + 1000 * BLOCK) / BLOCK), seed + 21);
+      let t: number =
+        h < 0.31 ? T.Abyss :
+        h < 0.385 ? T.Toxic :
+        h < 0.41 ? T.Rubble :
+        h < 0.55 ? (wet > 0.53 ? T.Jungle : onGrid ? T.Street : block < 0.3 ? T.Rubble : block < 0.4 ? T.Jungle : T.Ruins) :
+        h < 0.61 ? (wet > 0.6 ? T.Jungle : onGrid ? T.Street : T.Ruins) :
+        onGrid ? T.Street : T.Towers;
+      // Abocadors tòxics: taques escampades per terra ferma (no al costat del campament).
+      if (t >= T.Rubble && d > 12 && fbm(x, y, seed + 55, 28, 2) > 0.7) t = T.Dump;
       terrain[i] = t;
-      const sp = t >= T.Sand && rand2(x, y, seed + 7) < SPECIAL_CHANCE && d > 3;
+      const sp = t >= T.Rubble && rand2(x, y, seed + 7) < SPECIAL_CHANCE && d > 3;
       special[i] = sp ? 1 : 0;
       const ir = rand2(x, y, seed + 11);
       if (!sp && d > 2 && ir < ITEM_CHANCE) {

@@ -3,8 +3,8 @@
 /** Costat del mapa en caselles. El zoom més llunyà el veu sencer. */
 export const MAP_SIZE = 1024;
 
-/** Índexs de terreny (a `TERRAINS`). */
-export const T = { Deep: 0, Water: 1, Sand: 2, Grass: 3, Forest: 4, Hill: 5, Mountain: 6, Snow: 7 } as const;
+/** Índexs de terreny (a `TERRAINS`). El món és una ciutat postapocalíptica. */
+export const T = { Abyss: 0, Toxic: 1, Rubble: 2, Street: 3, Jungle: 4, Ruins: 5, Towers: 6, Dump: 7 } as const;
 
 export interface TerrainDef {
   name: string;
@@ -15,14 +15,14 @@ export interface TerrainDef {
 }
 
 export const TERRAINS: readonly TerrainDef[] = [
-  { name: 'Mar profund', value: 0.2, cost: 1.6 },
-  { name: 'Aigua', value: 0.4, cost: 1.3 },
-  { name: 'Sorra', value: 1, cost: 1.1 },
-  { name: 'Prat', value: 1, cost: 1 },
-  { name: 'Bosc', value: 2, cost: 1.3 },
-  { name: 'Turons', value: 2, cost: 1.4 },
-  { name: 'Muntanya', value: 3, cost: 1.9 },
-  { name: 'Neu', value: 2.5, cost: 1.7 },
+  { name: 'Aigües fosques', value: 0.2, cost: 1.6 },
+  { name: 'Aigua tòxica', value: 0.4, cost: 1.3 },
+  { name: 'Runa', value: 1, cost: 1.1 },
+  { name: 'Carrers', value: 1, cost: 1 },
+  { name: 'Selva urbana', value: 2, cost: 1.3 },
+  { name: 'Edificis en ruïnes', value: 2, cost: 1.4 },
+  { name: 'Gratacels', value: 3, cost: 1.9 },
+  { name: 'Abocador tòxic', value: 2.5, cost: 1.7 },
 ];
 
 /** Probabilitat que una casella de terra tingui un lloc especial (cofre o ruïnes). */
@@ -40,10 +40,10 @@ export interface ZoomDef {
 
 /** Del més proper (1) al més llunyà (4). Cada nivell veu 4× més de costat. */
 export const ZOOMS: readonly ZoomDef[] = [
-  { name: 'Camí', view: 16 },
-  { name: 'Comarca', view: 64 },
-  { name: 'Regió', view: 256 },
-  { name: 'Continent', view: 1024 },
+  { name: 'Carrer', view: 16 },
+  { name: 'Barri', view: 64 },
+  { name: 'Ciutat', view: 256 },
+  { name: 'Metròpoli', view: 1024 },
 ];
 
 /** Fracció del quadrat d'un zoom que cal descobrir per desbloquejar el següent. */

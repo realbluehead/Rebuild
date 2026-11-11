@@ -348,13 +348,25 @@ export class MapView {
       }
     }
 
-    // Objectes que detecta el radar dins la foscor (parpellegen).
+    // Objecte que un robot està anant a buscar: marc fix al voltant, perquè es vegi cap on va.
+    const fetching = trip?.kind === 'detour' ? trip.target : undefined;
+    if (fetching !== undefined) {
+      const i = w.order[fetching];
+      const sx = Math.round(((i % size) + 0.5 - left) * cp);
+      const sy = Math.round((Math.floor(i / size) + 0.5 - top) * cp);
+      const hs = cp >= TILE_MIN_PX ? 7 : 3;
+      ctx.strokeStyle = Math.floor(now / 250) % 2 ? '#f2c14e' : '#ff7ad9';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx - hs - 0.5, sy - hs - 0.5, hs * 2 + 1, hs * 2 + 1);
+      if (cp >= TILE_MIN_PX) ctx.drawImage(this.itemIcons[w.item[i] - 1], sx - 4, sy - 4);
+    }
+    // Objectes que detecta el radar dins la foscor (parpellegen): els que els robots aniran a buscar.
     if (radar.range > 0 && Math.floor(now / 400) % 3 !== 0) {
       const maxRing = prog.ring + radar.range;
       for (let k = Math.max(radar.next, itemIndexAt(w, ringA)); k < w.itemRanks.length; k++) {
         const r = w.itemRanks[k];
         if (ringOfRank(w, r) > maxRing) break;
-        if (seen(r)) continue;
+        if (seen(r) || r === fetching) continue;
         const i = w.order[r];
         const sx = Math.round(((i % size) + 0.5 - left) * cp);
         const sy = Math.round((Math.floor(i / size) + 0.5 - top) * cp);
