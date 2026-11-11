@@ -33,7 +33,9 @@ export const PAL = {
   dirt: px('#5b4a30'), dirt2: px('#4a3c26'), barrel: px('#c9a227'), barrel2: px('#8c6f16'), sludge: px('#6fd23a'),
   // Cotxes rovellats
   car: px('#8c5a3a'), car2: px('#6a3f28'),
-  gold: px('#f2c14e'), gold2: px('#b37a2a'), wood: px('#7a4a22'), wood2: px('#552f15'),
+  gold: px('#f2c14e'), gold2: px('#b37a2a'),
+  // Bluetreri: el mineral blau inventat (moneda del joc)
+  blu: px('#5fd0ff'), blu2: px('#2f7fd8'), bluHi: px('#d8f6ff'), wood: px('#7a4a22'), wood2: px('#552f15'),
   stone: px('#9a8f84'), stone2: px('#665c55'),
   ink: px('#1b1420'),
   metal: px('#a9b4c2'), metalHi: px('#dde4ee'), hull: px('#6c7a8c'), hullHi: px('#93a2b6'),
@@ -168,17 +170,16 @@ const SLAB = sprite([
   'rRRrRr',
 ], { R: PAL.rubble3, r: PAL.rubble2, x: PAL.rust });
 
-/** Cofre obert (ja descobert). */
+/** Dipòsit de bluetreri: cristalls blaus que surten de terra. */
 const CHEST = sprite([
+  '....kk....',
+  '...kHbk...',
+  '.k.kbBk.k.',
+  'kHkkbBkkbk',
+  'kbBkbBkHBk',
+  'kbBkBBkbBk',
   '.kkkkkkkk.',
-  'kyyyyyyyyk',
-  'kwYYYYYYwk',
-  'kkkkkkkkkk',
-  'kwwwyywwwk',
-  'kwwwkkwwwk',
-  'kwwwwwwwwk',
-  '.kkkkkkkk.',
-], { k: PAL.ink, y: PAL.gold, Y: PAL.gold2, w: PAL.wood });
+], { k: PAL.ink, b: PAL.blu, B: PAL.blu2, H: PAL.bluHi });
 
 const RUINS = sprite([
   's.......s.',
@@ -347,7 +348,7 @@ export function buildAtlas(): Uint32Array[][] {
     for (let t = 0; t < TERRAINS.length; t++) for (let v = 0; v < VARIANTS; v++) tiles.push(decoratedTile(t, v, f));
     for (let t = 0; t < TERRAINS.length; t++) {
       const tile = baseTile(t, 0, f);
-      if (t >= T.Ruins) stamp(tile, RUINS, 3, 6);
+      if (t >= T.Ruins) { stamp(tile, RUINS, 3, 8); stamp(tile, CHEST, 3, 2); }
       else stamp(tile, CHEST, 3, 5);
       tiles.push(tile);
     }
@@ -386,16 +387,17 @@ export const campFrames = (): HTMLCanvasElement[] => ['a', 'o'].map((l) => sprit
 
 export const robotFrames = (): HTMLCanvasElement[] => ROBOT_ROWS.map((rows) => spriteCanvas(sprite(rows, ROBOT_KEYS)));
 
+/** Icona del bluetreri (moneda): un cristall blau facetat. */
 export const COIN = sprite([
-  '..kkkk..',
-  '.kyyyyk.',
-  'kyYyyyyk',
-  'kyYyyYyk',
-  'kyYyyYyk',
-  'kyyyyYyk',
-  '.kyyyyk.',
-  '..kkkk..',
-], { k: PAL.ink, y: PAL.gold, Y: PAL.gold2 });
+  '...kk...',
+  '..kHbk..',
+  '.kHbbBk.',
+  'kHbbbBBk',
+  'kbbbBBBk',
+  '.kbbBBk.',
+  '..kbBk..',
+  '...kk...',
+], { k: PAL.ink, b: PAL.blu, B: PAL.blu2, H: PAL.bluHi });
 
 /** Objectes que es troben pel mapa: pàgina, nota musical i foto (mateix ordre que ITEMS). */
 export const ITEM_SPRITES = [

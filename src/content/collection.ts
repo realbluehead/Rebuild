@@ -45,7 +45,7 @@ export const WORKS: readonly WorkDef[] = [
     ],
   },
   {
-    id: 'cd', name: 'Discos', item: 'note', baseCost: 5, costGrowth: 1.9, bonus: 1.1, effect: 'or',
+    id: 'cd', name: 'Discos', item: 'note', baseCost: 5, costGrowth: 1.9, bonus: 1.1, effect: 'bluetreri',
     titles: [
       'Abbey Road', 'Kind of Blue', 'Revolver', 'The Dark Side of the Moon', 'Rumours', 'Thriller', 'Blue Train',
       'Pet Sounds', 'London Calling', 'Nevermind', 'OK Computer', 'Back in Black', 'Purple Rain', 'Graceland', 'Blue',

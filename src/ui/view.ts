@@ -178,7 +178,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const r = world.rank[i];
     if (!isRevealed(world, s.walked, s.ringRobots, r)) { showToast('Encara per explorar'); return; }
     const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * stats(s).loot;
-    showToast(`${world.special[i] ? 'Cofre' : TERRAINS[world.terrain[i]].name}: ${fmt(value)} or`);
+    showToast(`${world.special[i] ? 'Dipòsit' : TERRAINS[world.terrain[i]].name}: ${fmt(value)} bluetreri`);
   }
 
   const panel = h('aside', 'panel');
@@ -258,52 +258,94 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     m.addClose('Tancar');
   }
 
-  /** Pàgina d'ajuda: per a què serveix cada cosa. */
+  // Què ha descobert el jugador (per anar omplint l'ajuda). Es repassen les caselles noves a cada frame, de mica en mica.
+  const seenTerrain = new Set<number>();
+  let seenSpecial = false;
+  let scanned = 0;
+  function scanDiscoveries(s: GameState) {
+    const upto = Math.min(totalCells(world), Math.floor(exploredCells(s, world)));
+    for (; scanned < upto; scanned++) {
+      const i = world.order[scanned];
+      seenTerrain.add(world.terrain[i]);
+      if (world.special[i]) seenSpecial = true;
+    }
+  }
+
+  /** Entrades de l'ajuda: cadascuna surt quan el jugador ja ha trobat allò que explica. */
+  function helpEntries(s: GameState) {
+    const u = s.upgrades;
+    const itemsFound = s.items.page + s.items.note + s.items.photo + s.works.book + s.works.cd + s.works.album > 0;
+    const crafted = s.works.book + s.works.cd + s.works.album > 0;
+    const deposited = s.totalGold.gt(0);
+    const entries: { on: boolean; title: string; lines: string[]; legend?: boolean }[] = [
+      { on: true, title: 'L\'objectiu', lines: [
+        'El mapa comença fosc. Els robots surten del campament i el van descobrint sols, casella a casella, encara que no hi siguis.',
+        'Un robot només pot explorar la casella del costat. Mentre hi és, la casella va agafant color; quan l\'acaba, queda descoberta.'] },
+      { on: true, title: 'El mapa', lines: [
+        'Arrossega el mapa amb el dit o el ratolí, o mou-te amb les fletxes o WASD.',
+        'El botó del robot (o l\'espai) porta la vista on és el robot. Si el robot surt de la pantalla, una fletxa a la vora indica cap on és: toca-la per anar-hi.',
+        'Toca una casella descoberta per veure què és i quant bluetreri val.'] },
+      { on: deposited, title: 'El bluetreri i la bodega', lines: [
+        'El bluetreri és un mineral blau que ha aparegut entre les ruïnes, i és el que fas servir per pagar les millores.',
+        'Els robots carreguen el bluetreri que troben, però només en poden dur una quantitat. Quan la bodega és plena, tornen al campament a descarregar-lo i després tornen on ho havien deixat. No es pot gastar fins que arriba al campament.',
+        'A dalt: el número blau és el que tens per gastar i, al costat, el que hi arriba de mitjana per segon. La barra de sota és la càrrega dels robots; quan és plena, es posa de franges de perill.'] },
+      { on: seenTerrain.size > 0 && deposited, title: 'Terrenys', legend: true, lines: [
+        'Cada casella dona bluetreri segons el terreny (i com més lluny del campament, més). Els que ja has trobat:'] },
+      { on: seenSpecial, title: 'Dipòsits', lines: ['Les caselles amb cristalls blaus són dipòsits de bluetreri: en donen molt més que la resta.'] },
+      { on: u.speed > 0, title: 'Motor', lines: ['Els robots exploren i caminen més de pressa. El preu de cada millora puja a cada nivell; el botó s\'encén quan la pots comprar.'] },
+      { on: u.cargo > 0, title: 'Bodega', lines: ['Cada robot pot carregar més bluetreri, i torna menys sovint al campament.'] },
+      { on: s.zoomUnlocked > 1, title: 'Zoom', lines: [
+        'Botons + i −, la roda del ratolí o pessigant. Hi ha 4 zooms; el següent s\'obre quan has explorat el 80% del que es veu (la barra de baix a l\'esquerra).'] },
+      { on: itemsFound, title: 'Pàgines, notes i fotos', lines: [
+        'Algunes caselles amaguen una pàgina, una nota musical o una foto. Els robots les recullen quan hi arriben.',
+        'A la pestanya Obres les fas servir per crear llibres (amb pàgines), discos (amb notes) i àlbums (amb fotos). Cada obra costa més que l\'anterior.'] },
+      { on: crafted, title: 'Obres', lines: [
+        'Cada obra dona un bonus per sempre: els llibres, velocitat; els discos, més bluetreri; els àlbums, més bodega. A la Vitrina hi ha totes les que has fet.'] },
+      { on: u.radar > 0, title: 'Radar', lines: [
+        'Al voltant de cada robot gira un radar de submarí que arriba tantes caselles com el seu abast. Detecta pàgines, notes i fotos dins la foscor: s\'encenen quan l\'agulla hi passa.',
+        'Un robot deixa l\'exploració, va a buscar-les d\'una en una (la que va a buscar té un marc) i torna on era. Es perd una mica d\'exploració, però els objectes arriben abans.'] },
+      { on: u.explorers > 0, title: 'Robots', lines: ['Surt un robot més. Comença a treballar quan els altres comencen una volta nova al voltant del campament; cada anell es reparteix entre tots.'] },
+      { on: true, title: 'Altres', lines: [
+        'Si tanques el joc, els robots continuen (fins a 24 hores) i en tornar veus què han trobat.',
+        'Menú ≡: exportar i importar la partida (per passar-la a un altre aparell) o reiniciar amb un mapa nou. Vel ×N accelera el temps per provar.'] },
+    ];
+    return entries;
+  }
+  const HELP_SEEN_KEY = 'rebuild:help-seen';
+  let helpSeen = 0;
+  try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* sense storage */ }
+
+  /** Pàgina d'ajuda: només hi ha el que ja has descobert; la resta queda per descobrir. */
   function openHelp() {
+    const s = current;
     const m = modal('help');
-    m.box.append(h('div', 'name', 'Com es juga'));
+    m.box.append(h('div', 'name', 'Quadern de camp'));
     const body = h('div', 'help-body');
-    const sec = (title: string, ...lines: string[]) => {
-      body.append(h('h3', '', title));
-      for (const l of lines) body.append(h('p', '', l));
-    };
-    sec('L\'objectiu',
-      'El mapa comença fosc. Els robots surten del campament i el van descobrint sols, casella a casella, encara que no hi siguis.',
-      'Un robot només pot explorar la casella del costat. Mentre hi és, la casella va agafant color; quan l\'acaba, queda descoberta.');
-    sec('L\'or i la bodega',
-      'Cada casella dona or segons el terreny (i com més lluny del campament, més). Toca una casella del mapa per veure quant val.');
-    const legend = h('div', 'legend');
+    const entries = s ? helpEntries(s) : [];
     const css = (c: number) => `rgb(${c & 255},${(c >>> 8) & 255},${(c >>> 16) & 255})`;
-    TERRAINS.map((t, i) => ({ t, i })).sort((a, b) => b.t.value - a.t.value).forEach(({ t, i }) => {
-      const row = h('div', 'legend-row');
-      const sw = h('i', 'swatch');
-      sw.style.background = css(FLAT[i][0]);
-      row.append(sw, h('span', '', t.name), h('span', 'legend-val', `${t.value} or`));
-      legend.append(row);
-    });
-    body.append(legend);
-    body.append(
-      h('p', '', 'Els cofres i les ruïnes (caselles daurades) en donen molt.'),
-      h('p', '', 'Els robots carreguen l\'or que troben, però només en poden dur una quantitat. Quan la bodega és plena, tornen al campament a descarregar-lo i després tornen on ho havien deixat. L\'or no es pot gastar fins que arriba al campament.'),
-    );
-    sec('Pàgines, notes i fotos',
-      'Algunes caselles amaguen una pàgina, una nota musical o una foto. Els robots les recullen quan hi arriben.',
-      'A la pestanya Obres les fas servir per crear llibres (amb pàgines), discos (amb notes) i àlbums (amb fotos). Cada obra costa més que l\'anterior.',
-      'Cada obra dona un bonus per sempre: els llibres, velocitat; els discos, més or; els àlbums, més bodega. A la Vitrina hi ha totes les que has fet.');
-    sec('Les millores',
-      'Motor: els robots exploren i caminen més de pressa.',
-      'Radar: al voltant de cada robot gira un radar de submarí que arriba tantes caselles com el seu abast. Detecta pàgines, notes i fotos dins la foscor: s\'encenen quan l\'agulla hi passa. Un robot deixa l\'exploració, va a buscar-les d\'una en una (la que va a buscar té un marc) i torna on era. Es perd una mica d\'exploració, però els objectes arriben abans. Com més nivell, més lluny arriba.',
-      'Bodega: cada robot pot carregar més or, i torna menys sovint al campament.',
-      'Robots: surt un robot més. Comença a treballar quan els altres comencen una volta nova al voltant del campament.',
-      'El preu de cada millora puja a cada nivell. El botó es posa groc quan la pots comprar.');
-    sec('El mapa',
-      'Arrossega el mapa amb el dit o el ratolí, o mou-te amb les fletxes o WASD.',
-      'Zoom: botons + i −, la roda del ratolí o pessigant. Hi ha 4 zooms; el següent s\'obre quan has explorat el 80% del que es veu (la barra de baix a l\'esquerra).',
-      'El botó del robot (o l\'espai) porta la vista on és el robot. Si el robot surt de la pantalla, una fletxa a la vora indica cap on és: toca-la per anar-hi.');
-    sec('Altres',
-      'Vel ×N: accelera el temps del joc per provar-lo.',
-      'Si tanques el joc, els robots continuen (fins a 24 hores) i en tornar veus què han trobat.',
-      'Menú ≡: exportar i importar la partida (per passar-la a un altre aparell) o reiniciar amb un mapa nou.');
+    let unlocked = 0;
+    for (const e of entries) {
+      if (!e.on) continue;
+      unlocked++;
+      body.append(h('h3', '', e.title));
+      for (const l of e.lines) body.append(h('p', '', l));
+      if (e.legend) {
+        const legend = h('div', 'legend');
+        TERRAINS.map((t, i) => ({ t, i })).filter(({ i }) => seenTerrain.has(i)).sort((a, b) => b.t.value - a.t.value).forEach(({ t, i }) => {
+          const row = h('div', 'legend-row');
+          const sw = h('i', 'swatch');
+          sw.style.background = css(FLAT[i][0]);
+          row.append(sw, h('span', '', t.name), h('span', 'legend-val', `${t.value}`));
+          legend.append(row);
+        });
+        body.append(legend);
+      }
+    }
+    const locked = entries.length - unlocked + (TERRAINS.length - seenTerrain.size > 0 ? 1 : 0);
+    if (locked > 0) body.append(h('p', 'locked', `??? Encara hi ha ${locked} coses per descobrir. Continua explorant.`));
+    helpSeen = unlocked + seenTerrain.size;
+    try { localStorage.setItem(HELP_SEEN_KEY, String(helpSeen)); } catch { /* sense storage */ }
+    helpBtn.classList.remove('alert');
     m.box.append(body);
     m.addClose('Entesos');
   }
@@ -319,7 +361,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     item('Ajuda', '', () => openHelp());
     item('Exportar partida', '', () => textModal('Copia aquest text per guardar la partida:', actions.exportText(), true));
     item('Importar partida', '', () => textModal('Enganxa una partida exportada:', '', false, actions.importText));
-    item('Reiniciar (mapa nou)', 'danger', () => { if (confirm('Segur que vols esborrar la partida i començar un mapa nou?')) actions.reset(); });
+    item('Reiniciar (mapa nou)', 'danger', () => { if (confirm('Segur que vols esborrar la partida i començar un mapa nou?')) { try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* sense storage */ } actions.reset(); } });
     m.box.append(h('div', 'info', `Versió ${__APP_VERSION__}`));
     m.addClose('Tancar');
   }
@@ -334,6 +376,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   let lastFrame = performance.now();
   /** Últim estat dibuixat (per als tocs al mapa i la vitrina). */
   let current: GameState | null = null;
+  let lastHelpCheck = 0;
 
   function showToast(text: string) {
     toast.textContent = text;
@@ -349,6 +392,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const st = stats(s);
       map.nudge(...keyDir(), dt);
       current = s;
+      scanDiscoveries(s);
+      if (now - lastHelpCheck > 1000) {
+        lastHelpCheck = now;
+        const count = helpEntries(s).filter((e) => e.on).length + seenTerrain.size;
+        helpBtn.classList.toggle('alert', count > helpSeen);
+      }
       map.render(s.walked, s.ringRobots, s.zoom, now, dt,
         s.trip === 'explore' ? null : { kind: s.trip, f: s.travelLen > 0 ? s.travel / s.travelLen : 1, target: world.itemRanks[s.radarNext] },
         { next: s.radarNext, range: st.radar }); // només els que es van a buscar
@@ -433,7 +482,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       m.box.append(
         h('div', '', `Mentre eres fora (${fmtTime(r.seconds)}) has explorat`),
         h('div', 'gain', `${fmt(r.cells)} caselles`),
-        h('div', 'gain gold-text', `+${fmt(r.gold)} or`),
+        h('div', 'gain gold-text', `+${fmt(r.gold)} bluetreri`),
       );
       if (r.specials) m.box.append(h('div', 'info', `${r.specials} llocs especials trobats`));
       if (r.items) m.box.append(h('div', 'info', `${r.items} pàgines, notes i fotos recollides`));

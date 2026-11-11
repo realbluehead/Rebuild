@@ -12,7 +12,7 @@ export interface UpgradeDef {
 export const UPGRADES: readonly UpgradeDef[] = [
   { id: 'speed', name: 'Motor', desc: 'Els robots caminen i exploren més de pressa', baseCost: 6, costGrowth: 1.9 },
   { id: 'radar', name: 'Radar', desc: 'Detecta pàgines, notes i fotos dins la foscor i els robots s\'hi desvien a buscar-les', baseCost: 40, costGrowth: 3 },
-  { id: 'cargo', name: 'Bodega', desc: 'Cada robot pot carregar més or abans de tornar a la base', baseCost: 25, costGrowth: 2.2 },
+  { id: 'cargo', name: 'Bodega', desc: 'Cada robot pot carregar més bluetreri abans de tornar a la base', baseCost: 25, costGrowth: 2.2 },
   { id: 'explorers', name: 'Robots', desc: 'Surt un robot més del campament', baseCost: 1000, costGrowth: 9 },
 ];
 

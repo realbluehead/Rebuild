@@ -48,7 +48,7 @@ async function boot() {
     reset: () => { locked = true; void wipeGame().then(() => location.reload()); },
   });
 
-  if (!loaded) view.openHelp();
+  if (!loaded) setTimeout(() => view.openHelp(), 300); // quan ja s'ha dibuixat un cop (l'ajuda llegeix l'estat)
   if (loaded) {
     const report = applyOffline(state, world, loaded.savedAt, Date.now());
     if (report) view.showOffline(report);

@@ -22,7 +22,11 @@ caselles de costat); es comença al més proper i el següent es desbloqueja en 
 - Si el robot surt de la vista, una fletxa a la vora (lluny dels botons) hi apunta; tocant-la s'hi va. El mapa mai es mou sol.
 - Terrenys (`content/world.ts` `T`): l'alçada tria aigua/runa/ciutat; a la ciutat, carrers cada 7 caselles (`BLOCK`, campament en un encreuament)
   i illes de cases; la humitat fa selva urbana; un soroll a part fa taques d'abocador. Rajoles a `ui/sprites.ts` (8 variants).
-- Or per terreny: llegenda a l'ajuda i un toc al mapa diu el terreny i quant val la casella.
+- La moneda es diu **bluetreri** (mineral blau inventat; al codi continua sent `gold`). Llegenda a l'ajuda i un toc al mapa diu el terreny i quant val.
+- Estil de la interfície: metall rovellat (plaques amb reblons, botons de coure) amb detalls de perill groc i negre (`--stripes`):
+  sota la barra de dalt, bodega plena, avisos, reiniciar i el botó ? quan hi ha ajuda nova.
+- Ajuda = «Quadern de camp» (`helpEntries` a `ui/view.ts`): cada entrada surt quan el jugador ja ha trobat allò que explica
+  (primer dipòsit, primera millora de cada mena, objectes, obres, terrenys vistos…); la resta surt com a «??? per descobrir».
 - La casella que un robot explora va agafant color (segona meitat del pas; la primera hi camina). Ajuda: botó ? i menú; surt sola a la primera partida.
 - Regles dels robots: surten del campament (casella inicial); **només descobreixen la casella contigua** i una casella
   compta com a descoberta quan hi arriben. Si la següent de l'ordre no és contigua, hi caminen (passos sense descobrir).

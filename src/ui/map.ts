@@ -76,7 +76,7 @@ export class MapView {
         const t = w.terrain[i];
         const h = hash2(x, y, w.seed + 5);
         this.tileOf[i] = w.special[i] ? SPECIAL_BASE + t : t * VARIANTS + (h % VARIANTS);
-        this.flat[i] = w.special[i] ? PAL.gold : FLAT[t][(h >>> 8) % 5 === 0 ? 1 : 0];
+        this.flat[i] = w.special[i] ? PAL.blu : FLAT[t][(h >>> 8) % 5 === 0 ? 1 : 0];
       }
     }
     // Mipmap: color mitjà i rang mínim de cada bloc de 4×4.
@@ -97,7 +97,7 @@ export class MapView {
           }
         }
         const k = MIP * MIP;
-        this.mipColor[by * m + bx] = special ? PAL.gold : (0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0;
+        this.mipColor[by * m + bx] = special ? PAL.blu : (0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0;
         this.mipMin[by * m + bx] = min;
       }
     }
@@ -516,7 +516,7 @@ export class MapView {
       ctx.globalAlpha = Math.min(1, 2 - age * 2);
       ctx.fillStyle = '#1b1420';
       ctx.fillText(p.text, sx + 1, sy + 1);
-      ctx.fillStyle = '#f2c14e';
+      ctx.fillStyle = '#5fd0ff';
       ctx.fillText(p.text, sx, sy);
     }
     ctx.globalAlpha = 1;
