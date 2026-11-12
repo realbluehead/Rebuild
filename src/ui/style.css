@@ -182,6 +182,11 @@ button { font: inherit; color: inherit; }
 .list.rover { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 .list.rover .upg { padding: 6px; gap: 2px; }
 .list.rover .upg .eff { font-size: 16px; }
+.level-bar { height: 4px; margin-top: 2px; }
+.fleet h3 { margin-top: 10px; }
+.fleet .fleet-line { display: flex; justify-content: space-between; gap: 8px; margin: 0; }
+.fleet .fleet-val { color: var(--text); font-family: var(--font-num); font-size: 9px; align-self: center; }
+.upg .gain-line { font-size: 15px; line-height: 1; color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list.rover .upg .buy { min-height: 34px; }
 .routes .upg .buy { flex-wrap: wrap; gap: 2px 6px; font-size: 8px; padding: 3px; }
 .routes .upg .buy .part { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
@@ -233,3 +238,5 @@ button { font: inherit; color: inherit; }
 /* Field notes that fill in: what is missing, and the ? button when there is something new */
 .help-body .locked { color: var(--muted); margin-top: 10px; }
 .help-btn.alert { color: var(--haz); background: var(--stripes); text-shadow: 2px 2px 0 var(--haz-k), -2px -2px 0 var(--haz-k), 2px -2px 0 var(--haz-k), -2px 2px 0 var(--haz-k); animation: blink 1s steps(2) infinite; }
+.upg[hidden], .routes-more[hidden] { display: none; }
+.routes-more { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }

@@ -4,7 +4,7 @@ import { UPGRADES } from '../src/content/upgrades';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { WORKS_MAX } from '../src/content/collection';
-import { buy, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
+import { buy, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -54,25 +54,29 @@ const useRoutes = !process.env.NOROUTES;
 /** Big advances, for the timeline at the end: route unlocks and levels, new rovers, zooms, finished collections. */
 const big: [number, string][] = [];
 const mark = (t: number, what: string) => {
-  big.push([t, what]);
-  console.log(`${fmtTime(t).padStart(12)}  * ${what}`);
+  const lv = explorerLevel(explored(s, w), n).level;
+  big.push([t, `${what} (Lv ${lv})`]);
+  console.log(`${fmtTime(t).padStart(12)}  * ${what} (Lv ${lv})`);
 };
 
 for (let t = 0; t < hours * 3600; t += DT) {
   if (useRoutes) {
     const next = ROUTES.find((r) => !s.routes.includes(r.id));
-    if (next && canUnlockRoute(s, next.id)) {
-      unlockRoute(s, next.id);
+    if (next && canUnlockRoute(s, w, next.id)) {
+      unlockRoute(s, w, next.id);
       chooseRoute(s, next.id);
       mark(t, `route ${next.name}`);
     }
-    if (canUpgradeRoute(s, s.route)) {
-      upgradeRoute(s, s.route);
+    if (canUpgradeRoute(s, w, s.route)) {
+      upgradeRoute(s, w, s.route);
       mark(t, `route ${s.route} lv${routeLevel(s, s.route)}`);
     }
   }
   for (const id of ['book', 'cd', 'album'] as const) {
-    while (craft(s, w, id)) if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
+    while (craft(s, w, id)) {
+      if (process.env.WORKLOG) console.log(`  ${id} #${s.works[id]} at Lv ${explorerLevel(explored(s, w), n).level}`);
+      if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
+    }
   }
   for (;;) {
     let best = UPGRADES[0].id;

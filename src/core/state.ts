@@ -28,9 +28,34 @@ export interface Bot {
   found: number;
   /** On a detour: cells of its path reached so far (each one mined on arrival). */
   walked: number;
+  /** Its record since it joined (for the fleet screen). */
+  log: BotLog;
 }
 
-export const newBot = (trip: Trip = 'explore', travelLen = 0): Bot => ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, walked: 0 });
+/** A rover's lifetime record. Saves from before it existed start at 0, with `since` -1 (unknown). */
+export interface BotLog {
+  /** Play time when it left camp for the first time (-1: before records were kept). */
+  since: number;
+  /** Cells it explored or mined on detours. */
+  cells: number;
+  /** Steps it walked (exploring, detours and trips). */
+  steps: number;
+  /** Bluetreri it brought to camp, and its biggest single load. */
+  gold: number;
+  best: number;
+  /** Pages, notes and photos it picked up. */
+  items: number;
+  /** Trips to camp to unload. */
+  trips: number;
+  /** Radar detours finished, and given up because the hold filled. */
+  detours: number;
+  gaveUp: number;
+}
+
+export const newLog = (since = 0): BotLog => ({ since, cells: 0, steps: 0, gold: 0, best: 0, items: 0, trips: 0, detours: 0, gaveUp: 0 });
+
+export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0): Bot =>
+  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, walked: 0, log: newLog(since) });
 
 /** A storm drifting over the map: an irregular blob of about `r` cells around (x, y). */
 export interface Storm {

@@ -53,12 +53,12 @@ async function boot() {
       void save();
     },
     unlockRoute: (id) => {
-      if (!unlockRoute(state, id)) return;
+      if (!unlockRoute(state, world, id)) return;
       view.toast(`Route unlocked: ${routeById(id)!.name}`);
       void save();
     },
     upgradeRoute: (id) => {
-      if (!upgradeRoute(state, id)) return;
+      if (!upgradeRoute(state, world, id)) return;
       const lv = routeLevel(state, id);
       view.toast(`${routeById(id)!.name} lv${lv}: less entropy${state.route === id ? '\nfrom the next ring' : ''}`);
       void save();

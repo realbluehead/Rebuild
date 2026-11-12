@@ -22,6 +22,11 @@ export const ITEMS: readonly ItemDef[] = [
 /** Chance that a cell (other than the camp or a deposit) hides an item. */
 export const ITEM_CHANCE = 1 / 90;
 
+/** Explorer level needed for the k-th work (0-based) of any collection: from WORK_LEVEL_FIRST to WORK_LEVEL_LAST, evenly.
+ * The last one stays below the top level so the library can be finished before the map. */
+export const WORK_LEVEL_FIRST = 18;
+export const WORK_LEVEL_LAST = 42;
+
 export interface WorkDef {
   id: WorkId;
   /** Name of the collection. */

@@ -4,7 +4,7 @@ import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '..
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -79,7 +79,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   cargoBar.append(cargoFill);
   const cargoText = h('span', 'cargo-text');
   cargoLine.append(cargoBar, cargoText);
-  stats0.append(goldLine, cargoLine, explored);
+  // Thin bar under the explorer level text: progress to the next level.
+  const levelTrack = h('div', 'bar slim level-bar');
+  const levelBar = h('i');
+  levelTrack.append(levelBar);
+  let shownLevel = -1;
+  stats0.append(goldLine, cargoLine, explored, levelTrack);
   const menuBtn = h('button', 'px-btn menu-btn');
   menuBtn.title = 'Menu';
   menuBtn.append(h('i'), h('i'), h('i'));
@@ -109,7 +114,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   cellBox.append(cellTitle, cellLine, cellSky);
   /** Cell (map index) the player tapped, or -1. */
   let selected = -1;
-  cellBox.addEventListener('click', () => { selected = -1; });
+  // Tapping the box clears a selection; with nothing selected (the rovers' haul) it opens the fleet screen.
+  cellBox.addEventListener('click', () => { if (selected < 0) openFleet(); selected = -1; });
 
   const toast = h('div', 'toast px-box');
 
@@ -249,9 +255,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const fill = h('i');
     bar.append(fill);
     bar.hidden = true;
-    card.append(head, eff, bar, btn);
+    // Estimated gain in bluetreri per second from one more level.
+    const gain = h('div', 'gain-line');
+    card.append(head, eff, gain, bar, btn);
     list.append(card);
-    return { def: u, lvl, eff, btn, cost, bar, fill };
+    return { def: u, lvl, eff, btn, cost, bar, fill, gain };
   });
   // Exploration routes: unlock with bluetreri + items, then pick the one the rovers follow from the next ring.
   const routesList = h('div', 'list rover routes');
@@ -275,8 +283,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     card.title = rd.desc;
     card.append(head, eff, btn, up);
     routesList.append(card);
-    return { rd, state, eff, btn, up, btnKey: '', upKey: '' };
+    return { rd, card, state, eff, btn, up, btnKey: '', upKey: '' };
   });
+  // Only the next locked route is shown; the rest stay a mystery.
+  const routesMore = h('p', 'info routes-more');
+  routesList.append(routesMore);
   const worksList = h('div', 'list');
   worksList.hidden = true;
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
@@ -340,6 +351,47 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return 0.5 + (back > 0 ? Math.min(1, (b.travel - plan.out) / back) : 1) / 2;
   }
 
+  /** Fleet: every rover, what it is doing and its record so far. Refreshed while open. */
+  let fleetBody: HTMLElement | null = null;
+  let fleetAt = 0;
+  const TRIP_NAMES: Record<Bot['trip'], string> = { explore: 'Exploring', home: 'Driving to camp', out: 'Heading out', detour: 'Fetching an item' };
+  function openFleet() {
+    const m = modal('help');
+    m.box.append(h('div', 'name', 'Fleet'));
+    fleetBody = h('div', 'help-body fleet');
+    m.box.append(fleetBody);
+    m.addClose('Close', () => { fleetBody = null; });
+    fillFleet();
+  }
+  function fillFleet() {
+    const s = current;
+    if (!s || !fleetBody) return;
+    if (!fleetBody.isConnected) { fleetBody = null; return; }
+    const st = stats(s);
+    const body = fleetBody;
+    body.replaceChildren();
+    const line = (label: string, value: string) => {
+      const p = h('p', 'fleet-line');
+      p.append(h('span', '', label), h('span', 'fleet-val', value));
+      body.append(p);
+    };
+    s.bots.forEach((b, j) => {
+      body.append(h('h3', '', `Rover #${j + 1} · ${TRIP_NAMES[b.trip]}`));
+      line('Hold', `${fmt(b.cargo)} / ${fmt(st.cargo)} (${whole(Math.min(1, b.cargo / st.cargo))})`);
+      line('On the job', b.log.since < 0 ? 'since before records' : fmtTime(Math.max(0, s.playTime - b.log.since)));
+      line('Cells explored', fmt(b.log.cells));
+      line('Distance', `${fmt(b.log.steps)} steps`);
+      line('Bluetreri delivered', fmt(b.log.gold));
+      line('Biggest load', fmt(b.log.best));
+      line('Pages, notes, photos', fmt(b.log.items));
+      line('Trips to camp', fmt(b.log.trips));
+      line('Detours', `${fmt(b.log.detours)} done · ${fmt(b.log.gaveUp)} given up`);
+    });
+    const waiting = st.explorers - s.bots.length;
+    if (waiting > 0) body.append(h('p', 'info', `${waiting} more ${waiting === 1 ? 'rover leaves' : 'rovers leave'} camp when the current ring is done.`));
+    if (s.bots.some((b) => b.log.since < 0)) body.append(h('p', 'info', 'Records started with this version: older rovers count from now.'));
+  }
+
   /** Shelf: every work made and the bonus it gives. */
   function openShelf() {
     const s = current;
@@ -352,7 +404,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       body.append(h('h3', '', `${wd.name} ${n}/${WORKS_MAX}: ${wd.effect} ×${fmt(wd.bonus ** n)}`));
       if (!n) body.append(h('p', 'info', 'None yet.'));
       for (let k = 0; k < n; k++) body.append(h('p', '', `${k + 1}. ${workTitle(wd, k)}`));
-      if (n < WORKS_MAX) body.append(h('p', 'info', `Next: ${workTitle(wd, n)} (${workCost(world, wd.id, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
+      if (n < WORKS_MAX) {
+        const need = workLevelNeeded(world, n);
+        body.append(h('p', 'info', levelOf(s, world) < need ? `Next: ??? (explorer Lv ${need})` : `Next: ${workTitle(wd, n)} (${workCost(world, wd.id, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
+      }
     }
     m.box.append(body);
     m.addClose('Close');
@@ -413,9 +468,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'The rover that spots an item leaves its exploring and goes for it (the one it is after is framed), as slowly as if it were exploring, and mines the bluetreri of every cell on its way. Then it comes back the same way.',
         'If its hold fills before it gets there, bad luck: it leaves the item for later and heads to camp.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
-        'The Routes tab sets how the rovers push into the dark. They start out wandering at random; the upgrades, from the least to the most efficient, are Circular, Trail, Prospector and Survey.',
+        'The Routes tab sets how the rovers push into the dark. They start out wandering at random; each new route is more efficient than the last, and only the next one shows until you unlock it.',
         'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
         'The route you pick (or a new level) shows as Queued and takes over when the rovers finish the ring they are on (the card shows how much of it is done); what is already explored stays as it is.'] },
+      { on: levelOf(s, world) >= 2, title: 'Explorer level', lines: [
+        'Under the top bar: your explorer level and how far you are to the next. It grows with the cells explored, and each level asks for about a third more ground than the one before, so the first come fast and the last take hours.',
+        'New routes, route levels and library works each need an explorer level; until you reach it, they stay hidden behind ???.'] },
       { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring (the next band of dark ground); each ring is split between all of them, and each works at its own pace.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
@@ -471,6 +529,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       m.box.append(b);
     };
     item('Field notes', '', () => openHelp());
+    item('Fleet', '', () => openFleet());
     item('Export game', '', () => textModal('Copy this text to save your game:', actions.exportText(), true));
     item('Import game', '', () => textModal('Paste an exported game:', '', false, actions.importText));
     item('Restart (new map)', 'danger', () => confirmModal('Erase this game and start a new map?', 'Erase and restart', () => {
@@ -508,6 +567,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       map.nudge(...keyDir(), dt);
       current = s;
       scanDiscoveries(s);
+      if (fleetBody && now - fleetAt > 500) { fleetAt = now; fillFleet(); }
       if (now - lastHelpCheck > 1000) {
         lastHelpCheck = now;
         const count = helpEntries(s).filter((e) => e.on).length + seenTerrain.size;
@@ -536,8 +596,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const fetching = s.bots.filter((b) => b.trip === 'detour').length;
       const doing = home ? `· ${home} returning` : out ? `· ${out} heading out` : fetching ? `· ${fetching} fetching` : load >= cap - 1e-6 ? '· full!' : '';
       set(cargoText, `${fmt(load)}/${fmt(cap)} ${doing}`);
-      const pct = (100 * cells) / n;
-      set(explored, `${pct < 10 ? pct.toFixed(2) : pct.toFixed(1)}% explored · ${fmt(st.stepsPerSec)} steps/s · ${s.bots.length}R`);
+      const lv = explorerLevel(cells, n);
+      const lvText = lv.level >= lv.max ? `Lv ${lv.level} MAX` : `Lv ${lv.level}/${lv.max} · ${Math.floor(lv.frac * 100)}%`;
+      set(explored, `${lvText} · ${fmt(st.stepsPerSec)} steps/s · ${s.bots.length}R`);
+      levelBar.style.width = `${(lv.frac * 100).toFixed(1)}%`;
+      if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nNext at ${fmt(Math.ceil(lv.to))} cells`);
+      shownLevel = lv.level;
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });
       zin.disabled = s.zoom <= 0;
@@ -562,27 +626,39 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         } else set(r.eff, effectText(r.def.id, st, next));
         set(r.cost, fmt(costOf(r.def, lvl)));
         r.btn.classList.toggle('can', canBuy(s, r.def.id));
+        const g = upgradeGain(s, world, r.def.id);
+        set(r.gain, g === null ? (r.def.id === 'radar' ? 'finds items' : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}% bluetreri/s`);
       }
+      const myLevel = levelOf(s, world);
       for (const x of works) {
         const n = s.works[x.wd.id];
+        const need = workLevelNeeded(world, n);
+        const early = n < WORKS_MAX && myLevel < need;
         set(x.lvl, `${n}/${WORKS_MAX} · ${whole(libraryShare(s, x.wd.id))}`);
-        set(x.next, n >= WORKS_MAX ? 'Complete!' : workTitle(x.wd, n));
-        set(x.cost, n >= WORKS_MAX ? 'done' : `${s.items[x.wd.item]}/${nextWorkCost(s, world, x.wd.id)}`);
+        set(x.next, n >= WORKS_MAX ? 'Complete!' : early ? `??? · needs explorer Lv ${need}` : workTitle(x.wd, n));
+        set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${s.items[x.wd.item]}/${nextWorkCost(s, world, x.wd.id)}`);
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
       tabLibrary.classList.toggle('alert', ready);
       const active = activeRoute(s);
       const activeLv = activeLevel(s);
+      const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
+      const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
+      set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
+      routesMore.hidden = hiddenRoutes <= 0;
       for (const c of routeCards) {
         const id = c.rd.id;
         const owned = s.routes.includes(id);
         const lv = routeLevel(s, id);
+        c.card.hidden = !owned && c.rd !== nextRoute;
         if (!owned) {
+          const need = routeLevelNeeded(world, id);
           set(c.state, '');
-          set(c.eff, c.rd.short);
-          price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items);
-          c.btn.classList.toggle('can', canUnlockRoute(s, id));
+          set(c.eff, myLevel < need ? `needs explorer Lv ${need}` : c.rd.short);
+          if (myLevel < need) label(c, 'btnKey', c.btn, `Lv ${need}`);
+          else price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items);
+          c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
           c.up.style.display = 'none'; // (the hidden attribute loses to the button's display rule)
         } else {
           const running = active === id && activeLv === lv;
@@ -593,12 +669,14 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           c.btn.classList.toggle('can', s.route !== id);
           const next = routeUpgradeCost(s, id);
           c.up.style.display = c.rd.maxLevel ? '' : 'none'; // Random has no levels
-          if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`);
+          const upNeed = routeLevelNeeded(world, id, lv + 1);
+          if (next && myLevel < upNeed) label(c, 'upKey', c.up, `lv${lv + 1} · needs Lv ${upNeed}`);
+          else if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`);
           else label(c, 'upKey', c.up, `lv${c.rd.maxLevel} max`);
-          c.up.classList.toggle('can', canUpgradeRoute(s, id));
+          c.up.classList.toggle('can', canUpgradeRoute(s, world, id));
         }
       }
-      tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, rd.id) || canUpgradeRoute(s, rd.id)));
+      tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
       set(shelfInfo, `Library ${whole(libraryShare(s))} complete`);
     },
     /** Bluetreri from a revealed deposit, floating over the map. */

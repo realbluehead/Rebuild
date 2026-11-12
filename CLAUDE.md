@@ -48,6 +48,18 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `TickEvents` report map cells. Home distance comes from `w.road` (the circular field). Measure efficiency with
   `npx vite-node tools/routes.ts -- <warmHours> <runHours>` (bluetreri and cells per algorithm at levels 0/1/max from the
   same mid-game state) whenever `ALGOS` or prices change; keep prices rising with efficiency (there is a test for prices).
+- **Explorer level** (`explorerLevel(cells, total)` in `core/game.ts`, `levelOf(s, w)`): XP = cells explored, level 1 at
+  `LEVEL_FIRST` (10) cells and each level ×`LEVEL_GROWTH` (1.3) more; the whole map is the top level (45 on 1024²). Shown
+  under the top bar (`Lv N/max · %` + thin bar, toast on level up) instead of "% explored". **Gates**: a route needs
+  `RouteDef.minLevel` (Circular 6, Trail 24, Prospector 32, Survey 38) and its level k `minLevel + ROUTE_LEVEL_STEP (2) × k`
+  (`routeLevelNeeded`); the k-th work of a collection needs `WORK_LEVEL_FIRST` (18) … `WORK_LEVEL_LAST` (42) evenly
+  (`workLevelNeeded`); both are capped at the map's top level (small test maps). `canUnlockRoute`/`unlockRoute`/
+  `canUpgradeRoute`/`upgradeRoute` take the world for this. The Routes tab shows only the owned routes and the **next**
+  locked one (the rest as "??? N more routes"); a work or level still out of reach shows as ??? with the level needed.
+  The gates sit just below where the sim's greedy player gets there (`npm run sim` prints the level at each advance).
+- **Fleet** screen (≡ menu, or tapping the haul box with nothing selected): each rover's trip, hold and `Bot.log`
+  (`BotLog`: since, cells, steps, gold, best, items, trips, detours, gaveUp; `since` −1 for rovers from before save v12).
+  Each Rover card also shows the estimated gain of one more level in bluetreri/s (`upgradeGain`: storms averaged).
 - Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Collected on
   arrival; the Library tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, `WORKS_MAX`
   (15) per collection; the tab shows each collection's and the whole library's % complete. **Prices are per map**

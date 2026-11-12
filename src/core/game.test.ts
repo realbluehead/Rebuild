@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { newGame as freshGame } from './state';
-import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
-import { applyPlan, createWorld, goldBetween, kingDistance, pathCells, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
+import { applyPlan, createWorld, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
 import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { WORKS, WORKS_MAX } from '../content/collection';
 
@@ -341,6 +341,13 @@ describe('game', () => {
     // not fit in a hold that fills on a detour is lost (the exact count, with no overflow, is in the routes tests).
     expect(items.size).toBe(w.itemRanks.length);
     expect(specials).toBe(w.special.reduce((a, b) => a + b, 0));
+    // Each rover's record adds up to the whole game.
+    const sum = (f: (b: (typeof s.bots)[number]) => number) => s.bots.reduce((x, b) => x + f(b), 0);
+    expect(sum((b) => b.log.gold)).toBeCloseTo(s.totalGold.toNumber(), 6);
+    expect(sum((b) => b.log.items)).toBe(items.size);
+    expect(sum((b) => b.log.cells)).toBe(totalCells(w)); // every cell exactly once
+    expect(sum((b) => b.log.gaveUp)).toBeGreaterThanOrEqual(gaveUp); // (several can happen within one tick)
+    expect(s.bots[1].log.since).toBeGreaterThan(0); // the second rover joined later
     const share = s.totalGold.toNumber() / w.goldPrefix[totalCells(w)];
     expect(share).toBeLessThanOrEqual(1 + 1e-9);
     expect(share).toBeGreaterThan(0.85);
@@ -382,6 +389,7 @@ describe('game', () => {
     const s = newGame(42);
     const big = fullWorld();
     expect(canCraft(s, big, 'book')).toBe(false);
+    s.ring = ringCount(big); // every explorer level reached
     const first = nextWorkCost(s, big, 'book');
     s.items.page = first;
     const speed = stats(s).speed;
@@ -395,6 +403,7 @@ describe('game', () => {
   it('each collection ends at WORKS_MAX works, and the library share reaches 100%', () => {
     const s = newGame(42);
     s.items = { page: 1e9, note: 1e9, photo: 1e9 };
+    s.ring = ringCount(world);
     for (const wd of WORKS) while (craft(s, world, wd.id));
     for (const wd of WORKS) expect(s.works[wd.id]).toBe(WORKS_MAX);
     expect(libraryShare(s)).toBe(1);
@@ -619,12 +628,13 @@ describe('routes', () => {
 
   it('a new game starts on Random, with no levels, and the rest are upgrades', () => {
     const s = freshGame(1);
+    const rw = createWorld(1, SIZE);
     expect(s.routes).toEqual(['random']);
     expect(s.route).toBe('random');
     expect(routeUpgradeCost(s, 'random')).toBeNull();
     s.gold = D(1e9);
     s.items.page = 1000;
-    expect(upgradeRoute(s, 'random')).toBe(false);
+    expect(upgradeRoute(s, rw, 'random')).toBe(false);
     // Its first ring after camp already follows Random.
     const w = createWorld(42, SIZE);
     const g = freshGame(42);
@@ -634,31 +644,52 @@ describe('routes', () => {
 
   it('routes are unlocked with bluetreri and items, and levelled up', () => {
     const s = freshGame(1);
-    expect(canUnlockRoute(s, 'circular')).toBe(false);
+    const rw = createWorld(1, SIZE);
+    s.ring = ringCount(rw); // the whole map explored: every explorer level reached
+    expect(canUnlockRoute(s, rw, 'circular')).toBe(false);
     expect(chooseRoute(s, 'circular')).toBe(false);
-    expect(unlockRoute(s, 'north')).toBe(false); // withdrawn
+    expect(unlockRoute(s, rw, 'north')).toBe(false); // withdrawn
     s.gold = D(1000);
     s.items.page = 8;
-    expect(unlockRoute(s, 'circular')).toBe(true);
+    expect(unlockRoute(s, rw, 'circular')).toBe(true);
     expect(s.items.page).toBe(8);
     expect(s.gold.toNumber()).toBe(920);
     expect(chooseRoute(s, 'circular')).toBe(true);
     expect(s.route).toBe('circular');
-    expect(unlockRoute(s, 'circular')).toBe(false);
+    expect(unlockRoute(s, rw, 'circular')).toBe(false);
     // Levels: bluetreri x ROUTE_LEVEL_GROWTH and items x level each time, up to ROUTE_MAX_LEVEL.
     s.gold = D(2000);
     expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 1500, items: { page: 3 } });
-    expect(upgradeRoute(s, 'circular')).toBe(true);
+    expect(upgradeRoute(s, rw, 'circular')).toBe(true);
     expect(routeLevel(s, 'circular')).toBe(1);
     expect(s.gold.toNumber()).toBe(500);
     expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 5250, items: { page: 6 } });
-    expect(upgradeRoute(s, 'circular')).toBe(false);
+    expect(upgradeRoute(s, rw, 'circular')).toBe(false);
     s.gold = D(1e9);
     s.items.page = 1000;
-    while (upgradeRoute(s, 'circular'));
+    while (upgradeRoute(s, rw, 'circular'));
     expect(routeLevel(s, 'circular')).toBe(ROUTE_MAX_LEVEL);
     expect(routeUpgradeCost(s, 'circular')).toBeNull();
-    expect(upgradeRoute(s, 'trail')).toBe(false); // locked
+    expect(upgradeRoute(s, rw, 'trail')).toBe(false); // locked
+  });
+
+  it('routes and works need an explorer level', () => {
+    const w = createWorld(1, SIZE);
+    const s = freshGame(1);
+    s.gold = D(1e12);
+    s.items = { page: 1e6, note: 1e6, photo: 1e6 };
+    expect(levelOf(s, w)).toBe(0);
+    expect(canUnlockRoute(s, w, 'circular')).toBe(false);
+    expect(canCraft(s, w, 'book')).toBe(false);
+    // Requirements rise: each route and route level, and each work, asks for more.
+    for (let k = 1; k < ROUTES.length; k++) expect(ROUTES[k].minLevel).toBeGreaterThan(ROUTES[k - 1].minLevel);
+    const big = fullWorld();
+    for (let k = 1; k < WORKS_MAX; k++) expect(workLevelNeeded(big, k)).toBeGreaterThanOrEqual(workLevelNeeded(big, k - 1));
+    // The last work is possible before the top level, so the library can be finished before the map.
+    expect(workLevelNeeded(big, WORKS_MAX - 1)).toBeLessThan(explorerLevel(0, totalCells(big)).max);
+    s.ring = ringCount(w);
+    expect(canUnlockRoute(s, w, 'circular')).toBe(true);
+    expect(canCraft(s, w, 'book')).toBe(true);
   });
 
   it('better routes cost more to unlock and to level up', () => {
@@ -668,13 +699,40 @@ describe('routes', () => {
 
   it('a new level of the route in use takes over at the next ring', () => {
     const w = createWorld(42, SIZE);
+    const rw = w;
     const s = newGame(42);
+    while (levelOf(s, w) < routeLevelNeeded(w, 'circular', 1)) tick(s, w, 1);
     Object.assign(s.upgrades, { speed: 20, explorers: 1 });
     s.gold = D(1e6);
     s.items.page = 100;
-    expect(upgradeRoute(s, 'circular')).toBe(true);
+    expect(upgradeRoute(s, rw, 'circular')).toBe(true);
     const ring = s.ring;
     while (s.ring === ring) tick(s, w, 0.5);
     expect(s.plan).toEqual([[s.ring, 'circular', 1]]);
+  });
+});
+
+describe('explorer level', () => {
+  it('grows exponentially and tops out with the whole map', () => {
+    const total = 1024 * 1024;
+    const a = explorerLevel(0, total);
+    expect(a.level).toBe(0);
+    expect(explorerLevel(10, total).level).toBe(1);
+    expect(explorerLevel(13, total).level).toBe(2);
+    const top = explorerLevel(total, total);
+    expect(top.level).toBe(top.max);
+    expect(top.frac).toBe(1);
+    expect(explorerLevel(total - 1, total).level).toBe(top.max - 1);
+    // Each level needs more cells than the one before, and progress stays within [0, 1].
+    let prev = 0;
+    let gap = 0;
+    for (let c = 1; c < total; c = Math.ceil(c * 1.05)) {
+      const l = explorerLevel(c, total);
+      expect(l.level).toBeGreaterThanOrEqual(prev);
+      expect(l.frac).toBeGreaterThanOrEqual(0);
+      expect(l.frac).toBeLessThanOrEqual(1);
+      if (l.level > prev && l.level < l.max) { expect(l.to - l.from).toBeGreaterThan(gap); gap = l.to - l.from; }
+      prev = l.level;
+    }
   });
 });

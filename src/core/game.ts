@@ -11,9 +11,9 @@ import { D, Decimal } from './decimal';
 import { newBot, type Bot, type GameState } from './state';
 import { ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
-import { WEATHER_EPOCH } from '../content/weather';
-import { workById, ITEMS, LIBRARY_SHARE, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
-import { ROUTE_LEVEL_GROWTH, ROUTES, routeById, type RouteId } from '../content/routes';
+import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
+import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
+import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 
@@ -108,6 +108,21 @@ export function explored(s: GameState, w: World): number {
   return p.a + p.reach.reduce((x, y) => x + y, 0);
 }
 
+/** Explorer level: XP = cells explored, each level needs `LEVEL_GROWTH`× the cells of the one before (level 1 at
+ * `LEVEL_FIRST` cells). The whole map is the top level, `max`, so early levels come fast and later ones far apart. */
+export const LEVEL_FIRST = 10;
+export const LEVEL_GROWTH = 1.3;
+export interface ExplorerLevel { level: number; max: number; from: number; to: number; frac: number }
+export function explorerLevel(cells: number, total: number): ExplorerLevel {
+  const at = (L: number) => (L <= 0 ? 0 : L >= max ? total : LEVEL_FIRST * LEVEL_GROWTH ** (L - 1));
+  const max = Math.floor(Math.log(total / LEVEL_FIRST) / Math.log(LEVEL_GROWTH)) + 1;
+  let level = cells < LEVEL_FIRST ? 0 : Math.min(max - 1, Math.floor(Math.log(cells / LEVEL_FIRST) / Math.log(LEVEL_GROWTH)) + 1);
+  if (cells >= total) level = max;
+  const from = at(level);
+  const to = level >= max ? total : at(level + 1);
+  return { level, max, from, to, frac: level >= max ? 1 : Math.min(1, Math.max(0, (cells - from) / (to - from))) };
+}
+
 /** Whether some rover has already stepped on the cell of rank r. */
 export function revealed(s: GameState, w: World, r: number, p = progress(s, w)): boolean {
   if (r < p.a) return true;
@@ -140,6 +155,34 @@ export function goldPerSec(s: GameState, w: World): number {
   const d = homeDistance(s, w);
   const perBot = st.cargo / (st.cargo / (g * st.speed) + d / homeSpeed(st, st.cargo) + d / st.travelSpeed);
   return perBot * s.bots.length;
+}
+
+/** Rough share of exploring done inside a storm, and how much a storm slows it before Body (for estimates only). */
+const STORM_SHARE = 0.1;
+const STORM_SLOW = 0.5;
+
+/** Estimated bluetreri per second at camp for the planning cards: `goldPerSec` with rovers still waiting for the next
+ *  ring counted as if they were out, and an average storm slowdown (none before storms start). */
+function plannedRate(s: GameState, w: World): number {
+  const st = stats(s);
+  const bots = s.bots;
+  s.bots = Array.from({ length: st.explorers }, (_, j) => bots[j] ?? bots[0]);
+  const rate = goldPerSec(s, w);
+  s.bots = bots;
+  const sky = s.ring >= WEATHER_FROM_RING ? 1 - STORM_SHARE * STORM_SLOW * st.armour : 1;
+  return rate * sky;
+}
+
+/** How much one more level of upgrade `id` would raise the bluetreri per second (0.25 = +25%), or null when it does
+ *  not bring bluetreri (the Radar finds items) or nothing is left to explore. */
+export function upgradeGain(s: GameState, w: World, id: StatId): number | null {
+  if (id === 'radar') return null;
+  const before = plannedRate(s, w);
+  if (!(before > 0)) return null;
+  s.upgrades[id]++;
+  const after = plannedRate(s, w);
+  s.upgrades[id]--;
+  return after / before - 1;
 }
 
 /** Cost of buying `qty` levels when `owned` are already owned (geometric sum). */
@@ -236,7 +279,7 @@ function nextRing(s: GameState, w: World, explorers: number): void {
   s.ring++;
   while (s.ring < ringCount(w) && w.rings[s.ring + 1] === w.rings[s.ring]) s.ring++;
   if (s.ring < ringCount(w) && (s.route !== activeRoute(s) || routeLevel(s, s.route) !== activeLevel(s))) switchRoute(s, w);
-  while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s, w)));
+  while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s, w), s.playTime));
   s.ringRobots = s.bots.length;
   for (const b of s.bots) b.prog = 0;
   // Detour paths and fetched items that exploring has caught up with are no longer needed.
@@ -349,6 +392,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           if (st.cargo - b.cargo < st.cargo * EPS * 10) b.cargo = st.cargo;
           s.mined.push(cell);
           minedSet.add(cell);
+          b.log.cells++;
           if (w.special[cell]) ev.specials.push(cell);
           const k = b.walked === last ? b.target : itemAt(w, r);
           if (k >= 0 && (k === b.target || !fetched.has(k))) {
@@ -370,6 +414,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           b.target = -1;
           b.from = -1;
           b.walked = 0;
+          b.log.gaveUp++;
           goHome(s, w, b, to);
           return;
         }
@@ -481,27 +526,34 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         mined ??= minedIndex(s, w);
         const g = (arcGold(w, st.grip, a, to, mined) - arcGold(w, st.grip, a, from, mined)) * st.loot;
         b.prog = to;
+        b.log.steps += to - from;
         b.cargo = Math.min(st.cargo, b.cargo + g);
         if (st.cargo - b.cargo < st.cargo * EPS * 10) b.cargo = st.cargo;
         // Cells it has reached: deposits and items.
         const r0 = a.lo + Math.floor(arcReach(w, st.grip, a, from));
         const r1 = a.lo + Math.floor(arcReach(w, st.grip, a, to));
         if (r1 > r0) {
+          for (let r = r0; r < r1; r++) if (!minedSet.has(w.order[r])) b.log.cells++; // (mined ones were counted on the detour)
           for (const r of specialsBetween(w, r0, r1)) if (!minedSet.has(w.order[r])) ev.specials.push(w.order[r]);
           for (const k of itemsBetween(w, r0, r1)) if (!fetched.has(k)) collect(s, w, k, ev, b);
         }
       } else {
+        const was = b.travel;
         if (b.trip === 'detour') {
           const stop = stopAt[j]!;
           b.travel = Math.min(stop, b.travel + v * step);
           if (b.travel >= stop - EPS * Math.max(1, stop)) b.travel = stop;
         } else b.travel = Math.min(b.travelLen, b.travel + v * step);
+        b.log.steps += b.travel - was;
         if (b.travel < b.travelLen - EPS) return;
         if (b.trip === 'home') {
           const g = D(b.cargo);
           s.gold = s.gold.add(g);
           s.totalGold = s.totalGold.add(g);
           ev.deposited += b.cargo;
+          b.log.gold += b.cargo;
+          b.log.best = Math.max(b.log.best, b.cargo);
+          b.log.trips++;
           b.cargo = 0;
           b.found = 0;
           b.trip = 'out';
@@ -518,6 +570,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           b.target = -1;
           b.from = -1;
           b.walked = 0;
+          b.log.detours++;
           b.trip = 'explore';
         } else {
           b.trip = 'explore';
@@ -586,6 +639,7 @@ function collect(s: GameState, w: World, k: number, ev: TickEvents, b: Bot): voi
   const r = w.itemRanks[k];
   s.items[ITEMS[w.item[w.order[r]] - 1].id]++;
   b.found++;
+  b.log.items++;
   ev.items.push(w.order[r]);
 }
 
@@ -636,7 +690,18 @@ function pricesFor(w: World): Record<WorkId, number[]> {
 export const workCost = (w: World, id: WorkId, made: number): number => pricesFor(w)[id][Math.min(made, WORKS_MAX - 1)];
 
 export const canCraft = (s: GameState, w: World, id: WorkId): boolean =>
-  s.works[id] < WORKS_MAX && s.items[workById(id).item] >= nextWorkCost(s, w, id);
+  s.works[id] < WORKS_MAX && levelOf(s, w) >= workLevelNeeded(w, s.works[id]) && s.items[workById(id).item] >= nextWorkCost(s, w, id);
+
+/** The player's explorer level right now. */
+export const levelOf = (s: GameState, w: World): number => explorerLevel(explored(s, w), totalCells(w)).level;
+/** Never above the world's top level (small test maps have fewer levels). */
+const capLevel = (w: World, need: number) => Math.min(need, explorerLevel(0, totalCells(w)).max);
+/** Explorer level needed for the k-th work (0-based) of a collection. */
+export const workLevelNeeded = (w: World, k: number): number =>
+  capLevel(w, Math.round(WORK_LEVEL_FIRST + ((WORK_LEVEL_LAST - WORK_LEVEL_FIRST) * Math.min(k, WORKS_MAX - 1)) / (WORKS_MAX - 1)));
+/** Explorer level needed to unlock route `id` (level 0) or to reach its level `k`. */
+export const routeLevelNeeded = (w: World, id: RouteId, k = 0): number =>
+  capLevel(w, (routeById(id)?.minLevel ?? 0) + ROUTE_LEVEL_STEP * k);
 
 /** Share of the library finished: one collection, or all of them. */
 export const libraryShare = (s: GameState, id?: WorkId): number =>
@@ -683,15 +748,15 @@ export function buy(s: GameState, w: World, id: StatId, qty = 1): boolean {
 }
 
 /** Whether route `id` can be unlocked now (bluetreri and items). */
-export function canUnlockRoute(s: GameState, id: RouteId): boolean {
+export function canUnlockRoute(s: GameState, w: World, id: RouteId): boolean {
   const def = routeById(id);
-  if (!def || s.routes.includes(id) || s.gold.lt(def.gold)) return false;
+  if (!def || s.routes.includes(id) || s.gold.lt(def.gold) || levelOf(s, w) < routeLevelNeeded(w, id)) return false;
   return Object.entries(def.items).every(([k, n]) => s.items[k as keyof GameState['items']] >= (n ?? 0));
 }
 
 /** Pays for route `id` and unlocks it. */
-export function unlockRoute(s: GameState, id: RouteId): boolean {
-  if (!canUnlockRoute(s, id)) return false;
+export function unlockRoute(s: GameState, w: World, id: RouteId): boolean {
+  if (!canUnlockRoute(s, w, id)) return false;
   const def = routeById(id)!;
   s.gold = s.gold.sub(def.gold);
   for (const [k, n] of Object.entries(def.items)) s.items[k as keyof GameState['items']] -= n ?? 0;
@@ -708,13 +773,13 @@ export function routeUpgradeCost(s: GameState, id: RouteId): { gold: number; ite
   for (const [k, n] of Object.entries(def.levelItems)) items[k as ItemId] = (n ?? 0) * (lv + 1);
   return { gold: Math.round(def.levelGold * ROUTE_LEVEL_GROWTH ** lv), items };
 }
-export function canUpgradeRoute(s: GameState, id: RouteId): boolean {
+export function canUpgradeRoute(s: GameState, w: World, id: RouteId): boolean {
   const c = routeUpgradeCost(s, id);
-  return !!c && s.gold.gte(c.gold) && Object.entries(c.items).every(([k, n]) => s.items[k as ItemId] >= (n ?? 0));
+  return !!c && levelOf(s, w) >= routeLevelNeeded(w, id, routeLevel(s, id) + 1) && s.gold.gte(c.gold) && Object.entries(c.items).every(([k, n]) => s.items[k as ItemId] >= (n ?? 0));
 }
 /** Pays for the next level of route `id`; it takes effect at the next ring if that route is in use. */
-export function upgradeRoute(s: GameState, id: RouteId): boolean {
-  if (!canUpgradeRoute(s, id)) return false;
+export function upgradeRoute(s: GameState, w: World, id: RouteId): boolean {
+  if (!canUpgradeRoute(s, w, id)) return false;
   const c = routeUpgradeCost(s, id)!;
   s.gold = s.gold.sub(c.gold);
   for (const [k, n] of Object.entries(c.items)) s.items[k as ItemId] -= n ?? 0;
