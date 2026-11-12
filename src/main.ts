@@ -53,7 +53,7 @@ async function boot() {
         locked = true;
         void saveGame(imported).then(() => location.reload());
       } catch {
-        alert('That text is not a valid game.');
+        view.toast('That text is not a valid game.');
       }
     },
     reset: () => { locked = true; void wipeGame().then(() => location.reload()); },

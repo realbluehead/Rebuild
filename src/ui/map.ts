@@ -7,6 +7,7 @@ import { hash2 } from '../core/rng';
 import type { Progress } from '../core/game';
 import { forItemsNear, pathCells, type World } from '../core/world';
 import type { Storm } from '../core/state';
+import { stormReach } from '../core/weather';
 import { buildAtlas, campFrames, FLAT, ITEM_SPRITES, PAL, robotFrames, SPECIAL_BASE, spriteCanvas, TILE, VARIANTS } from './sprites';
 
 /** Logical pixels per cell at each zoom (the canvas's short side is ~256 logical px). */
@@ -397,17 +398,26 @@ export class MapView {
     for (const st of storms) {
       const sx = (st.x + 0.5 - left) * cp;
       const sy = (st.y + 0.5 - top) * cp;
-      const R = Math.max(2, st.r * cp);
+      const R = Math.max(2, st.r * cp * 1.5);
       if (sx < -R || sy < -R || sx > W + R || sy > H + R) continue;
       const rgb = STORM_RGB[st.kind];
       ctx.save();
       const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
-      g.addColorStop(0, `rgba(${rgb}, 0.34)`);
-      g.addColorStop(0.75, `rgba(${rgb}, 0.22)`);
-      g.addColorStop(1, `rgba(${rgb}, 0)`);
+      g.addColorStop(0, `rgba(${rgb}, 0.36)`);
+      g.addColorStop(0.55, `rgba(${rgb}, 0.24)`);
+      g.addColorStop(1, `rgba(${rgb}, 0.1)`);
       ctx.fillStyle = g;
+      // Irregular outline (the same one the simulation uses to decide who is caught in the storm).
       ctx.beginPath();
-      ctx.arc(sx, sy, R, 0, Math.PI * 2);
+      for (let q = 0; q < 48; q++) {
+        const a = (q / 48) * Math.PI * 2;
+        const rr = stormReach(st, a) * cp;
+        const px = sx + Math.cos(a) * rr;
+        const py = sy + Math.sin(a) * rr;
+        if (q === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
       ctx.fill();
       ctx.clip();
       const seed = st.x * 31 + st.y * 17;

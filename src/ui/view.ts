@@ -402,7 +402,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     item('Field notes', '', () => openHelp());
     item('Export game', '', () => textModal('Copy this text to save your game:', actions.exportText(), true));
     item('Import game', '', () => textModal('Paste an exported game:', '', false, actions.importText));
-    item('Restart (new map)', 'danger', () => { if (confirm('Erase this game and start a new map?')) { try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* no storage */ } actions.reset(); } });
+    item('Restart (new map)', 'danger', () => confirmModal('Erase this game and start a new map?', 'Erase and restart', () => {
+      try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* no storage */ }
+      actions.reset();
+    }));
     m.box.append(h('div', 'info', `Version ${__APP_VERSION__}`));
     m.addClose('Close');
   }
@@ -555,6 +558,16 @@ function modal(cls = '') {
       box.append(b);
     },
   };
+}
+
+/** In-game yes/no dialog (the browser's own confirm() is blocked in some embedded browsers). */
+function confirmModal(question: string, yes: string, onYes: () => void) {
+  const m = modal();
+  m.box.append(h('div', '', question));
+  const b = h('button', 'px-btn danger', yes);
+  b.addEventListener('click', () => { m.close(); onYes(); });
+  m.box.append(b);
+  m.addClose('Cancel');
 }
 
 function textModal(title: string, value: string, readOnly: boolean, onOk?: (t: string) => void) {
