@@ -94,6 +94,8 @@ export interface GameState {
   playTime: number;
   /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
   doneAt?: number;
+  /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
+  recount?: boolean;
   /** Old saves (v3 or earlier): total steps, converted once the world exists (`fromLegacy`). */
   legacyWalked?: number;
 }

@@ -12,8 +12,8 @@ import { newBot, type Bot, type GameState } from './state';
 import { ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
 import { WEATHER_EPOCH } from '../content/weather';
-import { workById, workCost, ITEMS, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
-import { ROUTE_LEVEL_GROWTH, routeById, type RouteId } from '../content/routes';
+import { workById, ITEMS, LIBRARY_SHARE, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
+import { ROUTE_LEVEL_GROWTH, ROUTES, routeById, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, cellsReached, itemsBetween, kingDistance, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 
@@ -430,6 +430,38 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
   return ev;
 }
 
+/** Items collected so far (in finished rings, plus radar finds already brought back), by kind. */
+export function itemsCollected(s: GameState, w: World): Record<ItemId, number> {
+  const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
+  const done = s.ring >= ringCount(w) ? totalCells(w) : w.rings[s.ring];
+  const fetched = new Set(s.fetched.filter((k) => !s.bots.some((b) => b.trip === 'detour' && b.target === k)));
+  w.itemRanks.forEach((r, k) => { if (r < done || fetched.has(k)) out[ITEMS[w.item[w.order[r]] - 1].id]++; });
+  return out;
+}
+
+/** Items spent at today's prices: works made, routes unlocked and their levels. */
+export function itemsSpent(s: GameState, w: World): Record<ItemId, number> {
+  const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
+  for (const wd of WORKS) for (let k = 0; k < s.works[wd.id]; k++) out[wd.item] += workCost(w, wd.id, k);
+  for (const id of s.routes) {
+    const def = routeById(id);
+    if (!def) continue;
+    for (const [k, n] of Object.entries(def.items)) out[k as ItemId] += n ?? 0;
+    for (let lv = 0; lv < routeLevel(s, id); lv++) for (const [k, n] of Object.entries(def.levelItems)) out[k as ItemId] += (n ?? 0) * (lv + 1);
+  }
+  return out;
+}
+
+/** Saves that made works or bought routes at older (dearer) prices: give back the difference, so the library can still
+ *  be finished. Never takes items away. */
+export function recountItems(s: GameState, w: World): void {
+  if (!s.recount) return;
+  delete s.recount;
+  const got = itemsCollected(s, w);
+  const spent = itemsSpent(s, w);
+  for (const it of ITEMS) s.items[it.id] = Math.max(s.items[it.id], got[it.id] - spent[it.id]);
+}
+
 /** Converts an old save (total fleet steps) to the independent-rover model. */
 export function fromLegacy(s: GameState, w: World): void {
   if (s.legacyWalked === undefined) return;
@@ -447,19 +479,62 @@ function collect(s: GameState, w: World, k: number, ev: TickEvents, b: Bot): voi
 }
 
 /** Items the next work of this kind costs. */
-export const nextWorkCost = (s: GameState, id: WorkId): number => workCost(workById(id), s.works[id]);
+export const nextWorkCost = (s: GameState, w: World, id: WorkId): number => workCost(w, id, s.works[id]);
 
-export const canCraft = (s: GameState, id: WorkId): boolean =>
-  s.works[id] < WORKS_MAX && s.items[workById(id).item] >= nextWorkCost(s, id);
+/** Items of each kind on the whole map (they do not depend on the order). */
+const itemTotals = new WeakMap<World, Record<ItemId, number>>();
+export function itemsOnMap(w: World): Record<ItemId, number> {
+  let t = itemTotals.get(w);
+  if (!t) {
+    t = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
+    for (let i = 0; i < w.item.length; i++) if (w.item[i]) t[ITEMS[w.item[i] - 1].id]++;
+    itemTotals.set(w, t);
+  }
+  return t;
+}
+
+/** Items every route and level costs, by kind. */
+export function routeItems(): Record<ItemId, number> {
+  const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
+  for (const rd of ROUTES) {
+    for (const [k, n] of Object.entries(rd.items)) out[k as ItemId] += n ?? 0;
+    for (let lv = 0; lv < rd.maxLevel; lv++) for (const [k, n] of Object.entries(rd.levelItems)) out[k as ItemId] += (n ?? 0) * (lv + 1);
+  }
+  return out;
+}
+
+/** Price of every work of each collection on this map: growing by `costGrowth`, all of them adding up to LIBRARY_SHARE
+ *  of that kind's items after the routes' share. */
+const workPrices = new WeakMap<World, Record<WorkId, number[]>>();
+function pricesFor(w: World): Record<WorkId, number[]> {
+  let p = workPrices.get(w);
+  if (!p) {
+    const have = itemsOnMap(w);
+    const routes = routeItems();
+    p = Object.fromEntries(WORKS.map((wd) => {
+      const budget = Math.max(WORKS_MAX, LIBRARY_SHARE * have[wd.item] - routes[wd.item]);
+      const shape = Array.from({ length: WORKS_MAX }, (_, k) => wd.costGrowth ** k);
+      const sum = shape.reduce((a, b) => a + b, 0);
+      return [wd.id, shape.map((x) => Math.max(1, Math.floor((budget * x) / sum)))];
+    })) as Record<WorkId, number[]>;
+    workPrices.set(w, p);
+  }
+  return p;
+}
+/** Items that work number `made` of collection `id` costs on this map (0 = the first). */
+export const workCost = (w: World, id: WorkId, made: number): number => pricesFor(w)[id][Math.min(made, WORKS_MAX - 1)];
+
+export const canCraft = (s: GameState, w: World, id: WorkId): boolean =>
+  s.works[id] < WORKS_MAX && s.items[workById(id).item] >= nextWorkCost(s, w, id);
 
 /** Share of the library finished: one collection, or all of them. */
 export const libraryShare = (s: GameState, id?: WorkId): number =>
   id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
 /** Crafts the next work (book, record or album) from the collected items. */
-export function craft(s: GameState, id: WorkId): boolean {
-  if (!canCraft(s, id)) return false;
-  s.items[workById(id).item] -= nextWorkCost(s, id);
+export function craft(s: GameState, w: World, id: WorkId): boolean {
+  if (!canCraft(s, w, id)) return false;
+  s.items[workById(id).item] -= nextWorkCost(s, w, id);
   s.works[id]++;
   return true;
 }

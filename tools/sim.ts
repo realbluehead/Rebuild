@@ -59,7 +59,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
     upgradeRoute(s, 'circular');
     console.log(`${fmtTime(t).padStart(12)}  route: circular lv${routeLevel(s, 'circular')}`);
   }
-  for (const id of ['book', 'cd', 'album'] as const) while (craft(s, id));
+  for (const id of ['book', 'cd', 'album'] as const) while (craft(s, w, id));
   for (;;) {
     let best = UPGRADES[0].id;
     for (const u of UPGRADES) if (score(u.id) > score(best)) best = u.id;

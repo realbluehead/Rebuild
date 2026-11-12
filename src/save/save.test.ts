@@ -100,10 +100,12 @@ describe('save', () => {
     expect(state.routeLevels).toEqual({});
     expect(state.plan).toEqual([[5, 'north'], [12, 'east']]);
     expect(state.doneAt).toBeUndefined();
+    expect(state.recount).toBe(true); // v8 -> v9: items recounted once the world loads
     const back = deserialize(JSON.parse(JSON.stringify(serialize({ ...state, routeLevels: { circular: 2, random: 3 }, plan: [...state.plan, [40, 'circular', 2]], doneAt: 50 }, 0)))).state;
     expect(back.routeLevels).toEqual({ circular: 2 }); // Random has no levels
     expect(back.plan.at(-1)).toEqual([40, 'circular', 2]);
     expect(back.doneAt).toBe(50);
+    expect(back.recount).toBe(true);
   });
 
   it('rejects versions from the future', () => {

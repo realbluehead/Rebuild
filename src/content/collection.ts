@@ -1,6 +1,7 @@
 // Items rovers find on the map (pages, notes, photos) and the works made from them (books, records, albums).
-// Each work costs more than the last and gives a permanent bonus. Every collection has WORKS_MAX works, and the map holds
-// enough items to finish all of them (plus every route and level), with room to spare: there is a test.
+// Each work costs more than the last and gives a permanent bonus. Every collection has WORKS_MAX works. Prices are set per
+// map (`workCost` in core/game.ts): a whole collection costs LIBRARY_SHARE of that kind's items on the map, after what
+// every route and level costs, so the library can always be finished (seeds differ a lot in how many pages they hide).
 
 export type ItemId = 'page' | 'note' | 'photo';
 export type WorkId = 'book' | 'cd' | 'album';
@@ -27,8 +28,7 @@ export interface WorkDef {
   name: string;
   /** What it is made from. */
   item: ItemId;
-  /** Items for the first work; each following work asks for `costGrowth` times more (up to WORKS_MAX works). */
-  baseCost: number;
+  /** Each work asks for `costGrowth` times more than the last (up to WORKS_MAX works). */
   costGrowth: number;
   /** Bonus of each work (multiplier) and what it applies to. */
   bonus: number;
@@ -38,7 +38,7 @@ export interface WorkDef {
 
 export const WORKS: readonly WorkDef[] = [
   {
-    id: 'book', name: 'Books', item: 'page', baseCost: 15, costGrowth: 1.35, bonus: 1.1, effect: 'speed',
+    id: 'book', name: 'Books', item: 'page', costGrowth: 1.35, bonus: 1.1, effect: 'speed',
     titles: [
       'The Old Man and the Sea', 'Robinson Crusoe', 'Treasure Island', 'Moby Dick', 'Around the World in Eighty Days',
       'Twenty Thousand Leagues Under the Seas', 'The Little Prince', 'Tirant lo Blanc', 'Don Quixote', 'The Odyssey',
@@ -46,14 +46,14 @@ export const WORKS: readonly WorkDef[] = [
     ],
   },
   {
-    id: 'cd', name: 'Records', item: 'note', baseCost: 6, costGrowth: 1.35, bonus: 1.1, effect: 'bluetreri',
+    id: 'cd', name: 'Records', item: 'note', costGrowth: 1.35, bonus: 1.1, effect: 'bluetreri',
     titles: [
       'Abbey Road', 'Kind of Blue', 'Revolver', 'The Dark Side of the Moon', 'Rumours', 'Thriller', 'Blue Train',
       'Pet Sounds', 'London Calling', 'Nevermind', 'OK Computer', 'Back in Black', 'Purple Rain', 'Graceland', 'Blue',
     ],
   },
   {
-    id: 'album', name: 'Albums', item: 'photo', baseCost: 11, costGrowth: 1.35, bonus: 1.1, effect: 'hold',
+    id: 'album', name: 'Albums', item: 'photo', costGrowth: 1.35, bonus: 1.1, effect: 'hold',
     titles: [
       'Sunsets', 'Forests', 'Beaches', 'Mountains', 'Rivers', 'Snowfall', 'Lighthouses', 'Bridges', 'Ruins', 'Stars',
       'Deserts', 'Volcanoes', 'Auroras', 'Islands', 'Horizons',
@@ -66,11 +66,9 @@ export const WORKS_MAX = 15;
 
 export const workById = (id: WorkId): WorkDef => WORKS.find((w) => w.id === id)!;
 
-/** Items that work number `made` costs (0 = the first). */
-export const workCost = (def: WorkDef, made: number): number => Math.round(def.baseCost * def.costGrowth ** made);
+/** Share of a kind's items on the map that its whole collection costs (the rest is slack: some are left behind). */
+export const LIBRARY_SHARE = 0.8;
 
 /** Title of work number `made`. */
 export const workTitle = (def: WorkDef, made: number): string => def.titles[Math.min(made, def.titles.length - 1)];
 
-/** Items needed to finish a whole collection. */
-export const collectionCost = (def: WorkDef): number => Array.from({ length: WORKS_MAX }, (_, k) => workCost(def, k)).reduce((a, b) => a + b, 0);

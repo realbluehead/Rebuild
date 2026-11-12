@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newGame as freshGame } from './state';
-import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, libraryShare, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -8,12 +8,16 @@ import { D } from './decimal';
 import { fmt } from './format';
 import { applyPlan, createWorld, goldBetween, kingDistance, pathCells, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
 import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
-import { collectionCost, ITEMS, WORKS, WORKS_MAX } from '../content/collection';
+import { WORKS, WORKS_MAX } from '../content/collection';
 
 // Small map so the tests run fast (the real one is MAP_SIZE).
 const SIZE = 128;
 const world = createWorld(42, SIZE);
 const botes = UPGRADES.find((u) => u.id === 'speed')!;
+
+/** A full-size map (the library's prices are set for real maps). */
+let big: World | undefined;
+const fullWorld = () => (big ??= createWorld(7));
 
 /** Most tests share one world: they play on the starting circular order (a new game's Random would re-sort that world
  *  at its first ring). Route tests use `freshGame` and their own worlds. */
@@ -334,37 +338,64 @@ describe('game', () => {
 
   it('with enough items a work is made, and the next costs more', () => {
     const s = newGame(42);
-    expect(canCraft(s, 'book')).toBe(false);
-    s.items.page = 15;
+    const big = fullWorld();
+    expect(canCraft(s, big, 'book')).toBe(false);
+    const first = nextWorkCost(s, big, 'book');
+    s.items.page = first;
     const speed = stats(s).speed;
-    expect(craft(s, 'book')).toBe(true);
+    expect(craft(s, big, 'book')).toBe(true);
     expect(s.items.page).toBe(0);
     expect(s.works.book).toBe(1);
     expect(stats(s).speed).toBeGreaterThan(speed);
-    expect(nextWorkCost(s, 'book')).toBeGreaterThan(15);
+    expect(nextWorkCost(s, big, 'book')).toBeGreaterThan(first);
   });
 
   it('each collection ends at WORKS_MAX works, and the library share reaches 100%', () => {
     const s = newGame(42);
     s.items = { page: 1e9, note: 1e9, photo: 1e9 };
-    for (const wd of WORKS) while (craft(s, wd.id));
+    for (const wd of WORKS) while (craft(s, world, wd.id));
     for (const wd of WORKS) expect(s.works[wd.id]).toBe(WORKS_MAX);
     expect(libraryShare(s)).toBe(1);
     expect(libraryShare(s, 'book')).toBe(1);
   });
 
-  it('the map holds enough items to finish the whole library and every route and level', () => {
-    const need: Record<string, number> = { page: 0, note: 0, photo: 0 };
-    for (const wd of WORKS) need[wd.item] += collectionCost(wd);
-    for (const rd of ROUTES) {
-      for (const [k, n] of Object.entries(rd.items)) need[k] += n ?? 0;
-      for (let lv = 0; lv < ROUTE_MAX_LEVEL; lv++) for (const [k, n] of Object.entries(rd.levelItems)) need[k] += (n ?? 0) * (lv + 1);
-    }
-    for (const seed of [7, 99999]) {
-      const w = createWorld(seed);
-      const have = [0, 0, 0, 0];
-      for (let i = 0; i < w.item.length; i++) have[w.item[i]]++;
-      ITEMS.forEach((it, k) => expect(need[it.id]).toBeLessThan(0.85 * have[k + 1]));
+  it('a save that paid older prices gets its items recounted once (never fewer)', () => {
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 40, cargo: 20 });
+    run(s, 100000);
+    expect(isComplete(s, world)).toBe(true);
+    const got = itemsCollected(s, world);
+    expect(got.page + got.note + got.photo).toBe(world.itemRanks.length);
+    // As if two books and a record had been made at dearer prices and everything else had gone.
+    s.works.book = 2;
+    s.works.cd = 1;
+    s.items = { page: 0, note: 0, photo: 0 };
+    s.recount = true;
+    recountItems(s, world);
+    expect(s.recount).toBeUndefined();
+    const spent = itemsSpent(s, world);
+    expect(s.items.page).toBe(got.page - spent.page);
+    expect(s.items.note).toBe(got.note - spent.note);
+    expect(s.items.photo).toBe(got.photo - spent.photo);
+    s.items.page = 1e6;
+    s.recount = true;
+    recountItems(s, world);
+    expect(s.items.page).toBe(1e6);
+    recountItems(s, world); // only once
+    expect(s.items.page).toBe(1e6);
+  });
+
+  it('every map holds enough items to finish the whole library and every route and level', () => {
+    // Large seeds (like a new game's) hide far fewer pages than small ones: prices follow each map.
+    for (const w of [fullWorld(), createWorld(123456789)]) {
+      const have = itemsOnMap(w);
+      const routes = routeItems();
+      for (const wd of WORKS) {
+        let need = routes[wd.item];
+        for (let k = 0; k < WORKS_MAX; k++) need += workCost(w, wd.id, k);
+        expect(need).toBeLessThanOrEqual(0.85 * have[wd.item]);
+        for (let k = 1; k < WORKS_MAX; k++) expect(workCost(w, wd.id, k)).toBeGreaterThanOrEqual(workCost(w, wd.id, k - 1));
+      }
     }
   });
 

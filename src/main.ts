@@ -1,7 +1,7 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './ui/style.css';
-import { buy, chooseRoute, craft, fromLegacy, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buy, chooseRoute, craft, fromLegacy, recountItems, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
 import { applyPlan, createWorld, type World } from './core/world';
 import { fmt } from './core/format';
@@ -40,6 +40,7 @@ async function boot() {
   const world: World = createWorld(state.seed);
   applyPlan(world, state.plan); // the routes the rovers have followed so far
   fromLegacy(state, world); // saves from before independent rovers
+  recountItems(state, world); // saves that made works at older prices
   /** On restart or import the current game must not be saved any more (pagehide would write it back). */
   let locked = false;
   const save = () => (locked ? Promise.resolve() : saveGame(state));
@@ -69,7 +70,7 @@ async function boot() {
     },
     craft: (id) => {
       const before = stats(state);
-      if (!craft(state, id)) return;
+      if (!craft(state, world, id)) return;
       view.crafted(id, state.works[id], before, stats(state));
       void save();
     },

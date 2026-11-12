@@ -1,10 +1,10 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { UPGRADES, type StatId } from '../content/upgrades';
-import { ITEMS, WORKS, WORKS_MAX, workCost, workTitle, type ItemId, type WorkId } from '../content/collection';
+import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { GameState } from '../core/state';
@@ -334,7 +334,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       body.append(h('h3', '', `${wd.name} ${n}/${WORKS_MAX}: ${wd.effect} ×${fmt(wd.bonus ** n)}`));
       if (!n) body.append(h('p', 'info', 'None yet.'));
       for (let k = 0; k < n; k++) body.append(h('p', '', `${k + 1}. ${workTitle(wd, k)}`));
-      if (n < WORKS_MAX) body.append(h('p', 'info', `Next: ${workTitle(wd, n)} (${workCost(wd, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
+      if (n < WORKS_MAX) body.append(h('p', 'info', `Next: ${workTitle(wd, n)} (${workCost(world, wd.id, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
     }
     m.box.append(body);
     m.addClose('Close');
@@ -539,10 +539,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         const n = s.works[x.wd.id];
         set(x.lvl, `${n}/${WORKS_MAX} · ${whole(libraryShare(s, x.wd.id))}`);
         set(x.next, n >= WORKS_MAX ? 'Complete!' : workTitle(x.wd, n));
-        set(x.cost, n >= WORKS_MAX ? 'done' : `${s.items[x.wd.item]}/${nextWorkCost(s, x.wd.id)}`);
-        x.btn.classList.toggle('can', canCraft(s, x.wd.id));
+        set(x.cost, n >= WORKS_MAX ? 'done' : `${s.items[x.wd.item]}/${nextWorkCost(s, world, x.wd.id)}`);
+        x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
-      const ready = WORKS.some((wd) => canCraft(s, wd.id));
+      const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
       tabLibrary.classList.toggle('alert', ready);
       const active = activeRoute(s);
       const activeLv = activeLevel(s);

@@ -11,6 +11,8 @@
 // v7: exploration routes (`routes` unlocked, `route` chosen, `plan` applied: the order is rebuilt from it).
 // v8: discovery algorithms with levels (`routeLevels`, plan entries [ring, route, level]); the north/south/east/west
 //     routes are withdrawn and refunded; `doneAt` (play time when the map was finished).
+// v9: works got cheaper and capped (the library must be completable): items are recounted once the world loads.
+// v10: work prices are set per map (seeds differ in how many pages they hide): items are recounted again.
 import { D } from '../core/decimal';
 import { newBot, newGame, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -18,7 +20,7 @@ import { WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 10;
 
 /** What the v7 routes cost, refunded when they are withdrawn (random stays unlocked, but its old price is refunded too). */
 const V7_PRICES: Record<string, [number, Record<string, number>]> = {
@@ -56,6 +58,7 @@ export interface SaveData {
   zoom: number;
   playTime: number;
   doneAt?: number;
+  recount?: boolean;
 }
 
 type RawSave = { v: number } & Record<string, unknown>;
@@ -114,6 +117,10 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     const route = typeof s.route === 'string' && routes.includes(s.route) ? s.route : 'circular';
     return { ...s, v: 8, gold: gold.toString(), items, routes, route, routeLevels: {} };
   },
+  // v8 -> v9: recount the items at today's prices (`recountItems`, needs the world).
+  8: (s) => ({ ...s, v: 9, recount: true }),
+  // v9 -> v10: prices now follow each map; recount again.
+  9: (s) => ({ ...s, v: 10, recount: true }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -141,6 +148,7 @@ export function serialize(s: GameState, now: number): SaveData {
     zoom: s.zoom,
     playTime: s.playTime,
     ...(s.doneAt !== undefined ? { doneAt: s.doneAt } : {}),
+    ...(s.recount ? { recount: true } : {}),
   };
 }
 
@@ -168,6 +176,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
+  if (data.recount) state.recount = true;
   const routeIds = ROUTES.map((d) => d.id) as string[];
   const isRoute = (x: unknown): x is RouteId => typeof x === 'string' && routeIds.includes(x);
   // Plans may still name withdrawn routes (they rebuild the map as it was).
