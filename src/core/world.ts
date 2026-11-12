@@ -232,27 +232,41 @@ export function applyPlan(w: World, plan: readonly (readonly [number, RouteId])[
   for (const [ring, route] of plan) if (ring < w.rings.length - 1) reorder(w, ring, route);
 }
 
-/** Path distance from camp for an exploration route. Any field grown from the camp with positive costs keeps the
- *  explored area connected, whatever was explored before (each cell's predecessor is either explored or earlier). */
-export function routeField(w: World, route: RouteId): Float32Array {
+/** Path distance for an exploration route: from camp for the fixed routes, or from the explored area (the first `a`
+ *  cells) for the random one. Any field grown with positive costs from sources inside the explored area keeps it
+ *  connected, whatever was explored before (each cell's predecessor is either explored or earlier). */
+export function routeField(w: World, route: RouteId, a = 1, ring = 0): Float32Array {
   if (route === 'circular') return w.road;
+  if (route === 'random') return randomField(w, a, ring);
   const cached = w.fields.get(route);
   if (cached) return cached;
-  const { size, cx, cy, cost, seed } = w;
+  const { size, cx, cy, cost } = w;
   const dir = ROUTE_DIR[route];
   let field: Float64Array;
   if (dir) {
     const mult = DX.map((dx, k) => 1 - (ROUTE_PULL * (dx * dir[0] + DY[k] * dir[1])) / Math.hypot(dx, DY[k]));
     field = pathDistance(size, cx, cy, cost, mult);
   } else {
-    // Random: wandering fingers that follow cheap valleys of a large-scale noise.
-    const noisy = new Float32Array(cost.length);
-    for (let i = 0; i < noisy.length; i++) noisy[i] = cost[i] * Math.exp(4.4 * (fbm(i % size, Math.floor(i / size), seed + 401, 36, 3) - 0.5));
-    field = pathDistance(size, cx, cy, noisy);
+    field = pathDistance(size, cx, cy, cost);
   }
   const out = Float32Array.from(field);
   w.fields.set(route, out);
   return out;
+}
+
+/** Random route: grows from the edge of what is already explored (every explored cell is a source), along random
+ *  cheap and costly patches, so it pushes out at a few spots of the frontier at a time. New dice at every switch. */
+function randomField(w: World, a: number, ring: number): Float32Array {
+  const { size, cost, seed, order } = w;
+  const n = size * size;
+  const dice = seed + 401 + ring * 7919;
+  const noisy = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = i % size;
+    const y = Math.floor(i / size);
+    noisy[i] = cost[i] * Math.exp(4.4 * (fbm(x, y, dice, 22, 3) - 0.5)) * (0.6 + 0.8 * rand2(x, y, dice + 1));
+  }
+  return Float32Array.from(pathDistance(size, w.cx, w.cy, noisy, DIAG, order.subarray(0, Math.max(1, a))));
 }
 
 /** Re-orders the unexplored part of the map (from the start of ring `ring` on) by `route`. Explored cells keep their
@@ -261,7 +275,7 @@ export function reorder(w: World, ring: number, route: RouteId): void {
   const n = totalCells(w);
   const a = w.rings[ring];
   if (a >= n) return;
-  const field = routeField(w, route);
+  const field = routeField(w, route, a, ring);
   const scale = ROUTE_BAND[route];
   const { order, size, cx, cy } = w;
   const rest = order.slice(a);
@@ -304,10 +318,12 @@ const DY = [0, 0, 1, -1, 1, -1, 1, -1];
 const DIAG = [1, 1, 1, 1, 1, 1, 1, 1];
 
 /** Path distance (Dijkstra, 8 neighbours) from (cx, cy); moving between two cells costs the mean of their costs. */
-function pathDistance(size: number, cx: number, cy: number, cost: Float32Array, mult: readonly number[] = DIAG): Float64Array {
+function pathDistance(size: number, cx: number, cy: number, cost: Float32Array, mult: readonly number[] = DIAG,
+  sources?: ArrayLike<number>): Float64Array {
   const n = size * size;
   const dist = new Float64Array(n).fill(Infinity);
   const heap = new MinHeap(n);
+  for (let q = 0; sources && q < sources.length; q++) { dist[sources[q]] = 0; heap.push(0, sources[q]); }
   const start = cy * size + cx;
   dist[start] = 0;
   heap.push(0, start);

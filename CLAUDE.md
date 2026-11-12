@@ -32,12 +32,13 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   glides each storm towards its simulated position and draws it as a translucent textured layer.
 - **Routes** (`content/routes.ts`, Routes tab): circular (default), north, east, south, west, random. Unlocked with bluetreri +
   items (`unlockRoute`), picked with `chooseRoute`; the pick takes over at the next ring start (`switchRoute` in `nextRing`):
-  `reorder` re-sorts the unexplored cells by the route's distance field from camp (`routeField`: anisotropic Dijkstra for the
-  four directions, noisy costs for random; any camp-rooted positive field keeps the explored area connected) and renumbers
+  `reorder` re-sorts the unexplored cells by the route's distance field (`routeField`: anisotropic Dijkstra from camp for
+  the four directions; for random, a multi-source Dijkstra from every explored cell with noisy costs re-rolled at each switch,
+  so it grows from the explored edge; any positive field rooted in the explored area keeps it connected) and renumbers
   the remaining rings. The world is never saved, so `s.plan` ([ring, route] pairs) is replayed with `applyPlan` after
   `createWorld` on load. Ranks and item indices change on a switch: `fetched`, bot targets and `scouted` are carried over by
   cell, and `TickEvents` report map cells, not ranks. Home distance comes from `w.road` (the circular field) at the rover's
-  cell. A switch costs one ~0.5 s hitch on the full map (the field's Dijkstra; fields are cached in `w.fields`).
+  cell. A switch costs one ~0.5 s hitch on the full map (the field's Dijkstra; fixed fields are cached in `w.fields`, the random one is not).
 - Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Collected on
   arrival; the Works tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, cost ×1.9 each time.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that

@@ -445,6 +445,27 @@ describe('routes', () => {
     expect(dy).toBeLessThan(0); // north is up (smaller y)
   });
 
+  it('the random route grows from the edge of what is explored, differently at each switch', () => {
+    const w = createWorld(42, SIZE);
+    const a = w.rings[20];
+    applyPlan(w, [[20, 'random']]);
+    const near = (i: number) => {
+      const x = i % SIZE;
+      const y = Math.floor(i / SIZE);
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+        const j = (y + dy) * SIZE + x + dx;
+        if (j >= 0 && j < SIZE * SIZE && w.rank[j] < a) return true;
+      }
+      return false;
+    };
+    for (let r = w.rings[20]; r < w.rings[21]; r++) expect(near(w.order[r])).toBe(true);
+    // Another switch at a different ring rolls new dice.
+    const other = createWorld(42, SIZE);
+    applyPlan(other, [[21, 'random']]);
+    const b = other.rings[22];
+    expect(Array.from(other.order.subarray(b, b + 300))).not.toEqual(Array.from(w.order.subarray(b, b + 300)));
+  });
+
   it('switching routes mid-game still collects every item, deposit and bluetreri exactly once', () => {
     const w = createWorld(42, SIZE);
     const { s, items, specials } = play(w, [[10, 'north'], [40, 'random'], [90, 'west']]);
