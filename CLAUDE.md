@@ -29,7 +29,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   and fades it before it dies; at most one new storm forms per step (near the frontier, none before ring 6), ~20% severe
   (`SEVERE_MULT`). Storms are irregular blobs (`stormReach`: seeded lobes by storm id) that slow exploring and detours
   (`weatherFactor`, softened by Body); home/out trips are not affected. `s.weather` is saved (storms + `nextId`). The map
-  glides each storm towards its simulated position and draws it as a translucent textured layer.
+  glides each storm towards its simulated position and draws it as a translucent textured layer, cut to the discovered
+  ground (a per-frame pixel mask: nothing shows over the dark).
 - **Routes** = discovery algorithms (`content/routes.ts`, Routes tab), from the least to the most efficient: Random
   (free, every new game starts on it and switches to it at ring 1; no levels, `maxLevel` 0), then the upgrades Circular,
   Trail, Prospector, Survey, each dearer (bluetreri + items, `unlockRoute`). The world is still generated in circular order

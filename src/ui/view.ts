@@ -410,7 +410,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: s.routes.length > 1, title: 'Routes', lines: [
         'The Routes tab sets how the rovers push into the dark. They start out wandering at random; the upgrades, from the least to the most efficient, are Circular, Trail, Prospector and Survey.',
         'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
-        'The route you pick (or a new level) takes over when the next ring starts; what is already explored stays as it is.'] },
+        'The route you pick (or a new level) shows as Queued and takes over when the rovers finish the ring they are on (the card shows how much of it is done); what is already explored stays as it is.'] },
       { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring (the next band of dark ground); each ring is split between all of them, and each works at its own pace.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
@@ -560,6 +560,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       tabLibrary.classList.toggle('alert', ready);
       const active = activeRoute(s);
       const activeLv = activeLevel(s);
+      // How much of the current ring is done: a queued route (or level) takes over when it is complete.
+      const ringNow = progress(s, world);
+      const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
       for (const c of routeCards) {
         const id = c.rd.id;
         const owned = s.routes.includes(id);
@@ -574,7 +577,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           const running = active === id && activeLv === lv;
           const pending = s.route === id && !running;
           set(c.state, c.rd.maxLevel ? `lv${lv}` : '');
-          set(c.eff, pending ? 'from next ring' : c.rd.short);
+          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : c.rd.short);
           label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
           c.btn.classList.toggle('can', s.route !== id);
           const next = routeUpgradeCost(s, id);

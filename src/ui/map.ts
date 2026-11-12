@@ -50,6 +50,11 @@ export class MapView {
   private ctx: CanvasRenderingContext2D;
   private img!: ImageData;
   private buf!: Uint32Array;
+  /** Discovered pixels (opaque) of the last frame: the weather is only drawn over them, not over the dark. */
+  private maskImg!: ImageData;
+  private mask!: Uint32Array;
+  private maskCv = document.createElement('canvas');
+  private stormCv = document.createElement('canvas');
   private W = 0;
   private H = 0;
   private atlas: Uint32Array[];
@@ -165,6 +170,10 @@ export class MapView {
     this.canvas.height = this.H;
     this.img = this.ctx.createImageData(this.W, this.H);
     this.buf = new Uint32Array(this.img.data.buffer);
+    this.maskCv.width = this.stormCv.width = this.W;
+    this.maskCv.height = this.stormCv.height = this.H;
+    this.maskImg = this.ctx.createImageData(this.W, this.H);
+    this.mask = new Uint32Array(this.maskImg.data.buffer);
   }
 
   /** Cell (index) under a screen point (client coordinates), or -1 if outside the map. */
@@ -345,6 +354,9 @@ export class MapView {
     const atlas = this.atlas[frame];
     const { rank, special } = w;
     const VOID = PAL.void;
+    const mask = this.mask;
+    mask.fill(0);
+    const OPAQUE = 0xff000000;
 
     if (cp >= 1) {
       const useTiles = cp >= TILE_MIN_PX;
@@ -364,6 +376,7 @@ export class MapView {
           if (r >= fogEnd && !scouted) { buf[row + pxl] = VOID; continue; }
           // Mined out: revealed and no rover still working it. Its deposit is gone and it looks drained.
           const mined = seen(r) || dug.has(i);
+          if (mined || scouted) mask[row + pxl] = OPAQUE;
           let c: number;
           if (useTiles) {
             const sx = Math.floor((wx - cx) * TILE);
@@ -392,7 +405,9 @@ export class MapView {
           if (bx < 0 || bx >= m) { buf[row + pxl] = VOID; continue; }
           const b = by * m + bx;
           const r = this.mipMin[b];
-          buf[row + pxl] = seen(r) ? this.mipPlain[b] : r < fogEnd && ((pxl + py) & 1) === 0 ? darken(this.mipColor[b]) : VOID;
+          const known = seen(r);
+          if (known) mask[row + pxl] = OPAQUE;
+          buf[row + pxl] = known ? this.mipPlain[b] : r < fogEnd && ((pxl + py) & 1) === 0 ? darken(this.mipColor[b]) : VOID;
         }
       }
     }
@@ -432,11 +447,18 @@ export class MapView {
       return { ...real, x: d.x, y: d.y, r: d.r };
     });
     for (const id of this.stormDraw.keys()) if (!live.has(id)) this.stormDraw.delete(id);
+    // Storms go on their own layer, which is then cut to the discovered ground (nothing shows over the dark).
+    const main = ctx;
+    const sctx = this.stormCv.getContext('2d')!;
+    sctx.clearRect(0, 0, W, H);
+    let anyStorm = false;
     for (const st of drawn) {
+      const ctx = sctx;
       const sx = (st.x + 0.5 - left) * cp;
       const sy = (st.y + 0.5 - top) * cp;
       const R = Math.max(2, st.r * cp * 1.5);
       if (sx < -R || sy < -R || sx > W + R || sy > H + R) continue;
+      anyStorm = true;
       const rgb = STORM_RGB[st.kind];
       ctx.save();
       const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
@@ -495,6 +517,15 @@ export class MapView {
         }
       }
       ctx.restore();
+    }
+
+    if (anyStorm) {
+      const mctx = this.maskCv.getContext('2d')!;
+      mctx.putImageData(this.maskImg, 0, 0);
+      sctx.globalCompositeOperation = 'destination-in';
+      sctx.drawImage(this.maskCv, 0, 0);
+      sctx.globalCompositeOperation = 'source-over';
+      main.drawImage(this.stormCv, 0, 0);
     }
 
     // The cell the player tapped.
