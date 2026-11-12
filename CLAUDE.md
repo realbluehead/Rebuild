@@ -58,10 +58,14 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - End of the game: the tick where the map is done and everything is unloaded sets `s.doneAt` (play time) and
   `TickEvents.completed`; `main.ts` shows the congratulations dialog (also after offline catch-up), once per device.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that
-  rover fetches it (`trip` 'detour', `target`, at exploring speed × weather). `s.fetched` lists claimed items so exploring does
-  not collect them again (pruned in `nextRing`). The detour starts from the rover's cell (`Bot.from`)
-  and the straight path to the item (`pathCells`) is revealed as it walks; finished paths are kept in `state.scouted`
-  (triples [fromRank, toRank, maxRank], no bluetreri) and dropped in `nextRing` once exploring has passed them.
+  rover fetches it (`trip` 'detour', `target`). `s.fetched` lists claimed items so exploring does not collect them again
+  (pruned in `nextRing`). The detour starts from the rover's cell (`Bot.from`) and follows the straight path (`pathCells`)
+  **at exploring pace** (`detourPlan`: each cell entered costs 1 + grip × (rough − 1) steps, out and back the same way;
+  speed × weather at `from`). Each cell reached on the way out (`Bot.walked`) is **mined** unless already explored: its
+  bluetreri goes into the hold, its deposit and any item are taken, and the cell joins `s.mined` (map cells; exploring
+  gets no bluetreri from them: `arcGold` subtracts `minedBelow`; pruned in `nextRing`). If the hold fills on the way, the
+  rover gives up: the item is released and it goes home from that cell (what does not fit is lost). Walked paths are kept
+  in `state.scouted` (triples [fromRank, toRank, maxRank]) and dropped once exploring has passed them.
   On the map: submarine radar (rotating needle, radius = range) around each rover; detected items light up when the
   needle passes and the detour target gets a frame.
 - If the rover leaves the view, an arrow at the edge (away from the buttons) points to it; tapping it flies there. The map never moves on its own.

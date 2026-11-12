@@ -4,10 +4,10 @@ import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '..
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
-import type { GameState } from '../core/state';
+import type { Bot, GameState } from '../core/state';
 import { totalCells, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
@@ -205,7 +205,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
     const i = selected;
     const r = world.rank[i];
-    const mined = revealed(s, world, r);
+    const mined = revealed(s, world, r) || s.mined.includes(i);
     const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * st.loot;
     const it = world.item[i] ? ITEMS[world.item[i] - 1] : null;
     const gone = it && (mined || s.fetched.includes(world.itemRanks.indexOf(r)));
@@ -317,6 +317,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   worksList.append(shelfCard);
   panel.append(tabs, list, routesList, worksList);
 
+  /** Where a rover is on its detour, for the map: 0 -> 0.5 out to the item (by cells walked: rough cells take longer)
+   *  and 0.5 -> 1 back. */
+  function detourShare(b: Bot): number {
+    const s = current;
+    if (!s || b.target < 0 || b.from < 0) return 0;
+    const plan = detourPlan(world, stats(s).grip, b.from, b.target);
+    const n = plan.path.length - 1;
+    if (n <= 0) return 0.5;
+    if (b.travel < plan.out) {
+      let q = 0;
+      while (q < n && plan.cum[q + 1] <= b.travel) q++;
+      const seg = q < n ? (b.travel - plan.cum[q]) / (plan.cum[q + 1] - plan.cum[q]) : 0;
+      return ((q + seg) / n) / 2;
+    }
+    const back = plan.total - plan.out;
+    return 0.5 + (back > 0 ? Math.min(1, (b.travel - plan.out) / back) : 1) / 2;
+  }
+
   /** Shelf: every work made and the bonus it gives. */
   function openShelf() {
     const s = current;
@@ -387,7 +405,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         `Each collection has ${WORKS_MAX} works and the tab shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark around that rover: they light up as the needle passes.',
-        'The rover that spots an item leaves its exploring, fetches it (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
+        'The rover that spots an item leaves its exploring and goes for it (the one it is after is framed), as slowly as if it were exploring, and mines the bluetreri of every cell on its way. Then it comes back the same way.',
+        'If its hold fills before it gets there, bad luck: it leaves the item for later and heads to camp.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
         'The Routes tab sets how the rovers push into the dark. They start out wandering at random; the upgrades, from the least to the most efficient, are Circular, Trail, Prospector and Survey.',
         'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
@@ -492,12 +511,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const prog = progress(s, world);
       const trips: TripView[] = s.bots.map((b) => ({
         kind: b.trip,
-        f: b.travelLen > 0 ? b.travel / b.travelLen : 1,
+        f: b.trip === 'detour' ? detourShare(b) : b.travelLen > 0 ? b.travel / b.travelLen : 1,
         target: b.target >= 0 ? world.itemRanks[b.target] : undefined,
         from: b.from >= 0 ? b.from : undefined,
       }));
       if (selected >= 0 && selected >= totalCells(world)) selected = -1;
-      map.render(prog, s.zoom, now, dt, trips, { range: st.radar, fetched: s.fetched }, s.scouted, s.weather.storms, selected);
+      map.render(prog, s.zoom, now, dt, trips, { range: st.radar, fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected);
       showCell(s, st);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 

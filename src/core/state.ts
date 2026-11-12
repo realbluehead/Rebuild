@@ -16,7 +16,8 @@ export interface Bot {
   prog: number;
   /** Bluetreri it carries and has not unloaded yet. */
   cargo: number;
-  /** Steps made on the current trip (return, departure or detour) and its total length. */
+  /** Steps made on the current trip (return, departure or detour) and its total length. A detour walks to the item
+   *  at exploring pace (each cell costs what exploring it costs) and back the same way (see `detourPlan`). */
   travel: number;
   travelLen: number;
   /** Item (index into `world.itemRanks`) it is fetching, on a detour; otherwise -1. */
@@ -25,9 +26,11 @@ export interface Bot {
   from: number;
   /** Pages, notes and photos it has picked up since it last left camp. */
   found: number;
+  /** On a detour: cells of its path reached so far (each one mined on arrival). */
+  walked: number;
 }
 
-export const newBot = (trip: Trip = 'explore', travelLen = 0): Bot => ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0 });
+export const newBot = (trip: Trip = 'explore', travelLen = 0): Bot => ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, walked: 0 });
 
 /** A storm drifting over the map: an irregular blob of about `r` cells around (x, y). */
 export interface Storm {
@@ -83,6 +86,9 @@ export interface GameState {
   routeLevels: Partial<Record<RouteId, number>>;
   /** [ring, route, level] entries; saves from before levels have [ring, route] (legacy fields, see `applyPlan`). */
   plan: ([number, RouteId] | [number, RouteId, number])[];
+  /** Cells (map indices) mined on radar detours ahead of normal exploration: exploring gets no bluetreri from them.
+   *  Dropped once exploring has passed them. */
+  mined: number[];
   /** Paths walked on radar detours, ahead of normal exploration: flat triples [fromRank, toRank, maxRank]. Their
    *  cells show as revealed (no bluetreri: that still comes when exploring reaches them). Dropped once explored. */
   scouted: number[];
@@ -118,6 +124,7 @@ export function newGame(seed = randomSeed()): GameState {
     routeLevels: {},
     plan: [],
     scouted: [],
+    mined: [],
     zoomUnlocked: 1,
     zoom: 0,
     playTime: 0,

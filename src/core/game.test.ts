@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newGame as freshGame } from './state';
-import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -302,6 +302,48 @@ describe('game', () => {
     expect(bare).toBeGreaterThanOrEqual(0.1);
     expect(weatherFactor(storms, SIZE, cell, 0.5)).toBeGreaterThan(bare);
     expect(weatherFactor([], SIZE, cell, 1)).toBe(1);
+  });
+
+  it('a detour walks at exploring pace and mines its path; a full hold sends the rover home and leaves the item', () => {
+    const w = createWorld(42, SIZE);
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 30, radar: 4, explorers: 1 });
+    const items = new Set<number>();
+    let specials = 0;
+    let gaveUp = 0;
+    let checked = false;
+    for (let t = 0; t < 200000 && !isComplete(s, w); t += 0.25) {
+      const before = s.bots.map((b) => [b.trip, b.target] as const);
+      const e = tick(s, w, 0.25);
+      specials += e.specials.length;
+      for (const i of e.items) { expect(items.has(i)).toBe(false); items.add(i); }
+      s.bots.forEach((b, j) => {
+        if (before[j]?.[0] === 'detour' && b.trip === 'home') {
+          gaveUp++;
+          // The item was picked up just before the hold filled, or it is left for later.
+          const cell = w.order[w.itemRanks[before[j][1]]];
+          if (!items.has(cell)) expect(s.fetched).not.toContain(before[j][1]);
+        }
+        // A detour is as long as exploring its cells: one cell of rough ground costs more than one step.
+        if (!checked && b.trip === 'detour') {
+          const plan = detourPlan(w, stats(s).grip, b.from, b.target);
+          expect(b.travelLen).toBeCloseTo(plan.total, 9);
+          expect(plan.out).toBeGreaterThanOrEqual(plan.path.length - 1);
+          checked = true;
+        }
+      });
+    }
+    expect(isComplete(s, w)).toBe(true);
+    expect(checked).toBe(true);
+    expect(gaveUp).toBeGreaterThan(0);
+    expect(s.mined).toEqual([]);
+    // Every item and deposit exactly once, mined on detours or explored. Bluetreri is never counted twice; what does
+    // not fit in a hold that fills on a detour is lost (the exact count, with no overflow, is in the routes tests).
+    expect(items.size).toBe(w.itemRanks.length);
+    expect(specials).toBe(w.special.reduce((a, b) => a + b, 0));
+    const share = s.totalGold.toNumber() / w.goldPrefix[totalCells(w)];
+    expect(share).toBeLessThanOrEqual(1 + 1e-9);
+    expect(share).toBeGreaterThan(0.85);
   });
 
   it('a detour reveals the path it walked, which is dropped once exploring catches up', () => {

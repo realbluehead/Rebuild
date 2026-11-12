@@ -13,6 +13,7 @@
 //     routes are withdrawn and refunded; `doneAt` (play time when the map was finished).
 // v9: works got cheaper and capped (the library must be completable): items are recounted once the world loads.
 // v10: work prices are set per map (seeds differ in how many pages they hide): items are recounted again.
+// v11: detours go at exploring pace and mine the cells on their way (`mined`, `Bot.walked`).
 import { D } from '../core/decimal';
 import { newBot, newGame, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -20,7 +21,7 @@ import { WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 /** What the v7 routes cost, refunded when they are withdrawn (random stays unlocked, but its old price is refunded too). */
 const V7_PRICES: Record<string, [number, Record<string, number>]> = {
@@ -54,6 +55,7 @@ export interface SaveData {
   plan: ([number, RouteId] | [number, RouteId, number])[];
   weather: { epoch: number; storms: Storm[]; nextId: number };
   scouted: number[];
+  mined: number[];
   zoomUnlocked: number;
   zoom: number;
   playTime: number;
@@ -121,6 +123,14 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   8: (s) => ({ ...s, v: 9, recount: true }),
   // v9 -> v10: prices now follow each map; recount again.
   9: (s) => ({ ...s, v: 10, recount: true }),
+  // v10 -> v11: nothing mined yet; a rover on a detour starts it again from where it left its arc (its length is
+  // worked out again at the next tick).
+  10: (s) => ({
+    ...s,
+    v: 11,
+    mined: [],
+    bots: (Array.isArray(s.bots) ? (s.bots as Bot[]) : []).map((b) => (b?.trip === 'detour' ? { ...b, travel: 0, travelLen: 0, walked: 0 } : b)),
+  }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -144,6 +154,7 @@ export function serialize(s: GameState, now: number): SaveData {
     plan: s.plan.map((p) => [...p] as [number, RouteId] | [number, RouteId, number]),
     weather: { epoch: s.weather.epoch, storms: s.weather.storms.map((st) => ({ ...st })), nextId: s.weather.nextId },
     scouted: [...s.scouted],
+    mined: [...s.mined],
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
     playTime: s.playTime,
@@ -217,11 +228,13 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
     bot.target = Number.isInteger(b?.target) ? b.target : -1;
     bot.from = bot.trip === 'detour' && Number.isInteger(b?.from) ? b.from : -1;
     bot.found = Math.floor(num(b?.found));
+    bot.walked = bot.trip === 'detour' ? Math.floor(num(b?.walked)) : 0;
     if (bot.trip === 'detour' && bot.target < 0) bot.trip = 'explore';
     return bot;
   });
   const sc = Array.isArray(data.scouted) ? data.scouted.map((x) => Math.floor(num(x))) : [];
   state.scouted = sc.slice(0, sc.length - (sc.length % 3));
+  state.mined = Array.isArray(data.mined) ? [...new Set(data.mined.map((x) => Math.floor(num(x))))] : [];
   state.ringRobots = Math.max(1, Math.floor(num(data.ringRobots, 1)));
   if (data.legacyWalked !== undefined) state.legacyWalked = num(data.legacyWalked);
   state.zoomUnlocked = Math.min(ZOOMS.length, Math.max(1, data.zoomUnlocked ?? 1));

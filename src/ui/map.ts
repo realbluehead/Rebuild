@@ -247,7 +247,7 @@ export class MapView {
   /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState); `storms`: the weather;
    *  `selected`: the cell (map index) the player tapped, or -1. */
   render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { range: 0, fetched: [] },
-    scouted: number[] = [], storms: readonly Storm[] = [], selected = -1): void {
+    scouted: number[] = [], minedCells: readonly number[] = [], storms: readonly Storm[] = [], selected = -1): void {
     const { w, W, H, buf } = this;
     if (this.version !== w.version) this.refreshRanks();
     const size = w.size;
@@ -274,10 +274,13 @@ export class MapView {
       for (let q = 0; q < scouted.length; q += 3) for (const i of pathCells(w, scouted[q], scouted[q + 1])) this.scoutCells.add(i);
     }
     const scout = new Set(this.scoutCells);
+    // Cells mined on detours: revealed, and drained like explored ones.
+    const dug = new Set(minedCells);
+    for (const i of dug) scout.add(i);
     for (const t of trips) {
       if (t.kind !== 'detour' || t.from === undefined || t.target === undefined) continue;
       const path = pathCells(w, t.from, t.target);
-      const upTo = Math.floor(Math.min(1, t.f * 2) * (path.length - 1) + 0.5);
+      const upTo = Math.floor(Math.min(1, t.f * 2) * (path.length - 1) + 1e-9);
       for (let q = 0; q <= upTo; q++) scout.add(path[q]);
     }
     const seen = (r: number): boolean => {
@@ -360,7 +363,7 @@ export class MapView {
           const scouted = scout.has(i);
           if (r >= fogEnd && !scouted) { buf[row + pxl] = VOID; continue; }
           // Mined out: revealed and no rover still working it. Its deposit is gone and it looks drained.
-          const mined = seen(r);
+          const mined = seen(r) || dug.has(i);
           let c: number;
           if (useTiles) {
             const sx = Math.floor((wx - cx) * TILE);
