@@ -15,6 +15,7 @@
 // v10: work prices are set per map (seeds differ in how many pages they hide): items are recounted again.
 // v11: detours go at exploring pace and mine the cells on their way (`mined`, `Bot.walked`).
 // v12: each rover keeps a lifetime record (`Bot.log`); older rovers start it at 0 with `since` -1.
+// v13: items a rover picks up wait in its `bag` until it unloads at camp (older ones were already counted: empty bags).
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -22,7 +23,7 @@ import { WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 /** What the v7 routes cost, refunded when they are withdrawn (random stays unlocked, but its old price is refunded too). */
 const V7_PRICES: Record<string, [number, Record<string, number>]> = {
@@ -134,6 +135,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   }),
   // v11 -> v12: no records yet.
   11: (s) => ({ ...s, v: 12, bots: (Array.isArray(s.bots) ? (s.bots as Bot[]) : []).map((b) => ({ ...b, log: newLog(-1) })) }),
+  // v12 -> v13: items found so far were already added to the player's stock.
+  12: (s) => ({ ...s, v: 13, bots: (Array.isArray(s.bots) ? (s.bots as Bot[]) : []).map((b) => ({ ...b, found: 0, bag: [0, 0, 0] })) }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -143,7 +146,7 @@ export function serialize(s: GameState, now: number): SaveData {
     seed: s.seed,
     ring: s.ring,
     ringRobots: s.ringRobots,
-    bots: s.bots.map((b) => ({ ...b, log: { ...b.log } })),
+    bots: s.bots.map((b) => ({ ...b, bag: [...b.bag], log: { ...b.log } })),
     ...(s.legacyWalked !== undefined ? { legacyWalked: s.legacyWalked } : {}),
     gold: s.gold.toString(),
     totalGold: s.totalGold.toString(),
@@ -230,7 +233,8 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
     bot.travel = Math.min(bot.travelLen, num(b?.travel));
     bot.target = Number.isInteger(b?.target) ? b.target : -1;
     bot.from = bot.trip === 'detour' && Number.isInteger(b?.from) ? b.from : -1;
-    bot.found = Math.floor(num(b?.found));
+    bot.bag = [0, 1, 2].map((q) => Math.floor(num(Array.isArray(b?.bag) ? b.bag[q] : 0)));
+    bot.found = bot.bag.reduce((x, y) => x + y, 0);
     bot.walked = bot.trip === 'detour' ? Math.floor(num(b?.walked)) : 0;
     const log = b?.log;
     bot.log = {

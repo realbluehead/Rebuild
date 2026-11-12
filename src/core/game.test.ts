@@ -736,3 +736,22 @@ describe('explorer level', () => {
     }
   });
 });
+
+describe('items at camp', () => {
+  it('pages, notes and photos are the player\'s only once the rover unloads', () => {
+    const w = createWorld(42, SIZE);
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 20, explorers: 1 });
+    let waited = false;
+    for (let t = 0; t < 4000 && !(waited && s.bots.every((b) => b.found === 0)); t++) {
+      tick(s, w, 0.5);
+      const stock = s.items.page + s.items.note + s.items.photo;
+      const bags = s.bots.reduce((a, b) => a + b.bag.reduce((x, y) => x + y, 0), 0);
+      // Nothing is spent here: what is at camp plus what rovers carry is everything found.
+      expect(stock + bags).toBe(s.bots.reduce((a, b) => a + b.log.items, 0));
+      for (const b of s.bots) expect(b.found).toBe(b.bag.reduce((x, y) => x + y, 0));
+      if (bags > 0) waited = true;
+    }
+    expect(waited).toBe(true);
+  });
+});

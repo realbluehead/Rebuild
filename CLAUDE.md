@@ -60,8 +60,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - **Fleet** screen (≡ menu, or tapping the haul box with nothing selected): each rover's trip, hold and `Bot.log`
   (`BotLog`: since, cells, steps, gold, best, items, trips, detours, gaveUp; `since` −1 for rovers from before save v12).
   Each Rover card also shows the estimated gain of one more level in bluetreri/s (`upgradeGain`: storms averaged).
-- Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Collected on
-  arrival; the Library tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, `WORKS_MAX`
+- Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Picked up on
+  arrival into the rover's `bag` and added to `s.items` only when it unloads at camp (like the bluetreri; save v13); the Library tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, `WORKS_MAX`
   (15) per collection; the tab shows each collection's and the whole library's % complete. **Prices are per map**
   (`workCost(w, id, k)` in `core/game.ts`): each work ×`costGrowth`, a whole collection = `LIBRARY_SHARE` (0.8) of that kind
   on the map (`itemsOnMap`) minus what every route and level costs (`routeItems`), so the library can always be finished.

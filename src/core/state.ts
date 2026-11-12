@@ -26,6 +26,8 @@ export interface Bot {
   from: number;
   /** Pages, notes and photos it has picked up since it last left camp. */
   found: number;
+  /** Those items by kind (index into ITEMS): they are the player's only once the rover unloads at camp. */
+  bag: number[];
   /** On a detour: cells of its path reached so far (each one mined on arrival). */
   walked: number;
   /** Its record since it joined (for the fleet screen). */
@@ -55,7 +57,7 @@ export interface BotLog {
 export const newLog = (since = 0): BotLog => ({ since, cells: 0, steps: 0, gold: 0, best: 0, items: 0, trips: 0, detours: 0, gaveUp: 0 });
 
 export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0): Bot =>
-  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, walked: 0, log: newLog(since) });
+  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since) });
 
 /** A storm drifting over the map: an irregular blob of about `r` cells around (x, y). */
 export interface Storm {

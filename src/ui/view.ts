@@ -458,7 +458,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: s.zoomUnlocked > 1, title: 'Zoom', lines: [
         'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
-        'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them.',
+        'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them, but like the bluetreri they only count once the rover unloads at camp.',
         'On the Library tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.',

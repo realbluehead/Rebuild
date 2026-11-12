@@ -25,7 +25,8 @@ describe('save', () => {
     s.works.cd = 2;
     s.fetched = [11, 3];
     s.weather = { epoch: 4, storms: [{ id: 3, kind: 'acid', x: 10.5, y: 12.25, vx: 0.1, vy: -0.2, r: 4.5, size: 6, age: 7, life: 90, severe: true }], nextId: 4 };
-    s.bots[0].found = 2;
+    s.bots[0].bag = [1, 0, 2];
+    s.bots[0].found = 3;
     s.zoomUnlocked = 3;
     s.zoom = 2;
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));
@@ -102,6 +103,7 @@ describe('save', () => {
     expect(state.doneAt).toBeUndefined();
     expect(state.recount).toBe(true); // v8 -> v9: items recounted once the world loads
     expect(state.mined).toEqual([]); // v10 -> v11
+    for (const b of state.bots) { expect(b.bag).toEqual([0, 0, 0]); expect(b.found).toBe(0); } // v12 -> v13: already counted
     const back = deserialize(JSON.parse(JSON.stringify(serialize({ ...state, routeLevels: { circular: 2, random: 3 }, plan: [...state.plan, [40, 'circular', 2]], doneAt: 50 }, 0)))).state;
     expect(back.routeLevels).toEqual({ circular: 2 }); // Random has no levels
     expect(back.plan.at(-1)).toEqual([40, 'circular', 2]);

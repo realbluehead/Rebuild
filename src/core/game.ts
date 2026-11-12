@@ -142,7 +142,7 @@ export function botCells(s: GameState, w: World): number[] {
 }
 
 export const isComplete = (s: GameState, w: World): boolean =>
-  s.ring >= ringCount(w) && s.bots.every((b) => b.trip === 'explore' && b.cargo <= 0);
+  s.ring >= ringCount(w) && s.bots.every((b) => b.trip === 'explore' && b.cargo <= 0 && b.found <= 0);
 
 /** Average bluetreri per second reaching camp (per rover: explore until the hold is full + the round trip). */
 export function goldPerSec(s: GameState, w: World): number {
@@ -366,7 +366,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       if (b.trip !== 'explore') return;
       const a = arcs[j];
       const done = !a || b.prog >= a.len - EPS;
-      if (b.cargo >= st.cargo * (1 - EPS) || (done && b.cargo > 0)) {
+      if (b.cargo >= st.cargo * (1 - EPS) || (done && (b.cargo > 0 || b.found > 0))) {
         goHome(s, w, b, a ? cellOf(w, st.grip, a, b.prog) : undefined);
         changed = true;
       }
@@ -397,9 +397,9 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           const k = b.walked === last ? b.target : itemAt(w, r);
           if (k >= 0 && (k === b.target || !fetched.has(k))) {
             if (k !== b.target) { fetched.add(k); s.fetched.push(k); }
-            collect(s, w, k, ev, b);
+            collect(w, k, ev, b);
           }
-        } else if (b.walked === last) collect(s, w, b.target, ev, b);
+        } else if (b.walked === last) collect(w, b.target, ev, b);
         changed = true;
         if (b.cargo >= st.cargo * (1 - EPS)) {
           // Full: give up the rest. An item not reached yet is left for exploring (or another detour).
@@ -535,7 +535,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         if (r1 > r0) {
           for (let r = r0; r < r1; r++) if (!minedSet.has(w.order[r])) b.log.cells++; // (mined ones were counted on the detour)
           for (const r of specialsBetween(w, r0, r1)) if (!minedSet.has(w.order[r])) ev.specials.push(w.order[r]);
-          for (const k of itemsBetween(w, r0, r1)) if (!fetched.has(k)) collect(s, w, k, ev, b);
+          for (const k of itemsBetween(w, r0, r1)) if (!fetched.has(k)) collect(w, k, ev, b);
         }
       } else {
         const was = b.travel;
@@ -555,6 +555,9 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           b.log.best = Math.max(b.log.best, b.cargo);
           b.log.trips++;
           b.cargo = 0;
+          // Pages, notes and photos count only once at camp, like the bluetreri.
+          ITEMS.forEach((it, q) => { s.items[it.id] += b.bag[q] ?? 0; });
+          b.bag = ITEMS.map(() => 0);
           b.found = 0;
           b.trip = 'out';
           b.travel = 0;
@@ -635,9 +638,9 @@ export function fromLegacy(s: GameState, w: World): void {
   delete s.legacyWalked;
 }
 
-function collect(s: GameState, w: World, k: number, ev: TickEvents, b: Bot): void {
+function collect(w: World, k: number, ev: TickEvents, b: Bot): void {
   const r = w.itemRanks[k];
-  s.items[ITEMS[w.item[w.order[r]] - 1].id]++;
+  b.bag[w.item[w.order[r]] - 1]++;
   b.found++;
   b.log.items++;
   ev.items.push(w.order[r]);
