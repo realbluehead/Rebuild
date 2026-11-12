@@ -11,7 +11,7 @@ import type { GameState } from '../core/state';
 import { totalCells, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
-import { COIN, FLAT, ITEM_SPRITES, robotFrames, spriteCanvas } from './sprites';
+import { COIN, FLAT, ITEM_SPRITES, spriteCanvas } from './sprites';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
@@ -62,7 +62,6 @@ function workEffect(effect: string, a: Stats, b: Stats): string {
 
 export function createView(root: HTMLElement, world: World, initial: GameState, actions: ViewActions) {
   document.documentElement.style.setProperty('--coin', `url(${spriteCanvas(COIN).toDataURL()})`);
-  document.documentElement.style.setProperty('--robot', `url(${robotFrames()[0].toDataURL()})`);
   root.replaceChildren();
 
   // Top bar: bluetreri and rate on the left, menu on the right.
@@ -98,13 +97,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const zout = h('button', 'px-btn', '−');
   const pips = h('div', 'pips');
   const pipEls = ZOOMS.map(() => pips.appendChild(h('i')));
-  const home = h('button', 'px-btn home');
-  home.title = 'Go to rover (space)';
-  home.append(h('i', 'robot-icon'));
-  zoomCtl.append(zin, pips, zout, home);
+  zoomCtl.append(zin, pips, zout);
   zin.addEventListener('click', () => actions.zoom(-1));
   zout.addEventListener('click', () => actions.zoom(1));
-  home.addEventListener('click', () => map.goToRobot());
 
   // Bottom left: what the tapped cell holds or, with nothing tapped, what the rovers are hauling.
   const cellBox = h('div', 'cell-info px-box');

@@ -140,8 +140,6 @@ button { font: inherit; color: inherit; }
 }
 .zoom-ctl .px-btn { width: 40px; height: 40px; padding: 0; font: 16px/1 var(--font-num); color: var(--text); }
 .pips { display: grid; gap: 4px; }
-.zoom-ctl .home { margin-top: 6px; display: grid; place-items: center; }
-.robot-icon { width: 22px; height: 24px; background: var(--robot) center / contain no-repeat; image-rendering: pixelated; }
 .pips i { width: 12px; height: 12px; background: var(--lo); border: 2px solid var(--edge); }
 .pips i.on { background: var(--gold); }
 .pips i.locked { background: transparent; border-color: #4a3020; }
