@@ -15,7 +15,7 @@ export const UPGRADES: readonly UpgradeDef[] = [
   { id: 'body', name: 'Body', desc: 'Armour against acid storms, snow and lightning: storms slow rovers down less', baseCost: 60, costGrowth: 2.3 },
   { id: 'cargo', name: 'Hold', desc: 'Each rover carries more bluetreri before returning to camp', baseCost: 25, costGrowth: 2.2 },
   { id: 'radar', name: 'Radar', desc: 'Each rover detects pages, notes and photos around it in the dark and goes to fetch them', baseCost: 40, costGrowth: 3 },
-  { id: 'explorers', name: 'Rovers', desc: 'One more rover leaves camp', baseCost: 1000, costGrowth: 9 },
+  { id: 'explorers', name: 'Rovers', desc: 'One more rover leaves camp', baseCost: 1000, costGrowth: 10 },
 ];
 
 /** Effect of each level. */

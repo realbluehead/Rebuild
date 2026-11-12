@@ -640,18 +640,18 @@ describe('routes', () => {
     s.gold = D(1000);
     s.items.page = 8;
     expect(unlockRoute(s, 'circular')).toBe(true);
-    expect(s.items.page).toBe(6);
-    expect(s.gold.toNumber()).toBe(880);
+    expect(s.items.page).toBe(8);
+    expect(s.gold.toNumber()).toBe(920);
     expect(chooseRoute(s, 'circular')).toBe(true);
     expect(s.route).toBe('circular');
     expect(unlockRoute(s, 'circular')).toBe(false);
     // Levels: bluetreri x ROUTE_LEVEL_GROWTH and items x level each time, up to ROUTE_MAX_LEVEL.
-    s.gold = D(2500);
-    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 2000, items: { page: 3 } });
+    s.gold = D(2000);
+    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 1500, items: { page: 3 } });
     expect(upgradeRoute(s, 'circular')).toBe(true);
     expect(routeLevel(s, 'circular')).toBe(1);
     expect(s.gold.toNumber()).toBe(500);
-    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 8000, items: { page: 6 } });
+    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 5250, items: { page: 6 } });
     expect(upgradeRoute(s, 'circular')).toBe(false);
     s.gold = D(1e9);
     s.items.page = 1000;

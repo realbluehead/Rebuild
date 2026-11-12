@@ -2,6 +2,8 @@
 // Usage: npm run sim [-- hours [seed]]
 import { UPGRADES } from '../src/content/upgrades';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
+import { ROUTES } from '../src/content/routes';
+import { WORKS_MAX } from '../src/content/collection';
 import { buy, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
@@ -46,31 +48,44 @@ function score(id: (typeof UPGRADES)[number]['id']): number {
   return (after / before - 1) / costOf(UPGRADES.find((u) => u.id === id)!, s.upgrades[id]).toNumber();
 }
 
-/** Routes: the player leaves Random for Circular as soon as it can and then levels it (NOROUTES=1 keeps Random). */
+/** Routes: the player unlocks each route as soon as it can (in order, the next one being better), switches to it and
+ *  levels the one in use (NOROUTES=1 keeps Random all game). */
 const useRoutes = !process.env.NOROUTES;
+/** Big advances, for the timeline at the end: route unlocks and levels, new rovers, zooms, finished collections. */
+const big: [number, string][] = [];
+const mark = (t: number, what: string) => {
+  big.push([t, what]);
+  console.log(`${fmtTime(t).padStart(12)}  * ${what}`);
+};
 
 for (let t = 0; t < hours * 3600; t += DT) {
-  if (useRoutes && canUnlockRoute(s, 'circular')) {
-    unlockRoute(s, 'circular');
-    chooseRoute(s, 'circular');
-    console.log(`${fmtTime(t).padStart(12)}  route: circular`);
+  if (useRoutes) {
+    const next = ROUTES.find((r) => !s.routes.includes(r.id));
+    if (next && canUnlockRoute(s, next.id)) {
+      unlockRoute(s, next.id);
+      chooseRoute(s, next.id);
+      mark(t, `route ${next.name}`);
+    }
+    if (canUpgradeRoute(s, s.route)) {
+      upgradeRoute(s, s.route);
+      mark(t, `route ${s.route} lv${routeLevel(s, s.route)}`);
+    }
   }
-  if (useRoutes && s.route === 'circular' && canUpgradeRoute(s, 'circular')) {
-    upgradeRoute(s, 'circular');
-    console.log(`${fmtTime(t).padStart(12)}  route: circular lv${routeLevel(s, 'circular')}`);
+  for (const id of ['book', 'cd', 'album'] as const) {
+    while (craft(s, w, id)) if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
   }
-  for (const id of ['book', 'cd', 'album'] as const) while (craft(s, w, id));
   for (;;) {
     let best = UPGRADES[0].id;
     for (const u of UPGRADES) if (score(u.id) > score(best)) best = u.id;
     if (!canBuy(s, best)) break;
     buy(s, w, best);
+    if (best === 'explorers') mark(t, `rover #${stats(s).explorers}`);
   }
   for (let k = 0; k < DT / TICK_SEC; k++) {
     const ev = tick(s, w, TICK_SEC);
     if (ev.zoomUnlocked && ev.zoomUnlocked > zoom) {
       zoom = ev.zoomUnlocked;
-      console.log(`${fmtTime(t).padStart(12)}  ZOOM ${zoom} (${ZOOMS[zoom - 1].name}) unlocked`);
+      mark(t, `ZOOM ${zoom} (${ZOOMS[zoom - 1].name})`);
     }
   }
   while (nextPct < pctMilestones.length && explored(s, w) >= n * pctMilestones[nextPct]) {
@@ -81,4 +96,11 @@ for (let t = 0; t < hours * 3600; t += DT) {
   if (isComplete(s, w)) break;
 }
 
+// Gaps between big advances (the goal: something new every couple of hours of play, a bit more each time).
+console.log('\nBig advances:');
+let prev = 0;
+for (const [t, what] of big) {
+  console.log(`${fmtTime(t).padStart(12)}  (+${fmtTime(t - prev).padStart(10)})  ${what}`);
+  prev = t;
+}
 console.log(`\nEnd (${fmtTime(s.playTime)}): ${(100 * explored(s, w) / n).toFixed(2)}% · ${JSON.stringify(s.upgrades)} · works ${JSON.stringify(s.works)} · items ${JSON.stringify(s.items)}`);
