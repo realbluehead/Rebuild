@@ -1,10 +1,12 @@
 // Map rendering on a low-resolution canvas, scaled up with crisp pixels.
 // Every logical pixel is computed by hand (ImageData): tiles up close, flat colours further out and a 4x4
-// mipmap for the farthest zoom. Fog depends on each cell's rank relative to the explored cells.
+// mipmap for the farthest zoom. Fog depends on each cell's rank relative to the explored cells. Cells already
+// mined look drained (and their deposits are gone); storms are drawn as a translucent layer on top.
 import { ZOOMS } from '../content/world';
 import { hash2 } from '../core/rng';
 import type { Progress } from '../core/game';
-import { itemIndexAt, pathCells, ringOfRank, type World } from '../core/world';
+import { forItemsNear, pathCells, type World } from '../core/world';
+import type { Storm } from '../core/state';
 import { buildAtlas, campFrames, FLAT, ITEM_SPRITES, PAL, robotFrames, SPECIAL_BASE, spriteCanvas, TILE, VARIANTS } from './sprites';
 
 /** Logical pixels per cell at each zoom (the canvas's short side is ~256 logical px). */
@@ -22,11 +24,22 @@ interface Popup { wx: number; wy: number; text: string; t0: number; }
 /** What a rover does when not exploring: going to or from camp, or fetching an item (`target`, a rank, walking
  *  from the cell of rank `from`). */
 export interface TripView { kind: 'explore' | 'home' | 'out' | 'detour'; f: number; target?: number; from?: number; }
-/** Items the radar detects: from index `next` of `itemRanks`, up to `range` rings further out. */
-export interface RadarView { next: number; range: number; }
+/** Each rover's radar: range in cells, and items (indices into `itemRanks`) already claimed by a rover. */
+export interface RadarView { range: number; fetched: readonly number[]; }
 
 const darken = (c: number) => (((c >>> 2) & 0x3f3f3f) | 0xff000000) >>> 0;
 /** Mixes two ABGR colours (t = 0 -> a, t = 1 -> b). */
+/** A mined-out cell: partly desaturated and a little darker. */
+const drain = (c: number) => {
+  const r = c & 0xff;
+  const g = (c >>> 8) & 0xff;
+  const b = (c >>> 16) & 0xff;
+  const l = (r * 3 + g * 6 + b) / 10;
+  const f = (v: number) => Math.round((v * 0.6 + l * 0.4) * 0.84);
+  return (0xff000000 | (f(b) << 16) | (f(g) << 8) | f(r)) >>> 0;
+};
+/** Storm layer colours (r, g, b). */
+const STORM_RGB: Record<Storm['kind'], string> = { acid: '170, 230, 60', snow: '232, 240, 255', electric: '175, 115, 255' };
 const mix = (a: number, b: number, t: number) => {
   const ch = (sh: number) => Math.round(((a >>> sh) & 0xff) + (((b >>> sh) & 0xff) - ((a >>> sh) & 0xff)) * t) << sh;
   return (0xff000000 | ch(16) | ch(8) | ch(0)) >>> 0;
@@ -40,9 +53,13 @@ export class MapView {
   private H = 0;
   private atlas: Uint32Array[];
   private tileOf: Uint8Array;
+  /** The same tile/colour without the deposit, for mined-out cells. */
+  private plainTile: Uint8Array;
   private flat: Uint32Array;
+  private plainFlat: Uint32Array;
   private mipSize: number;
   private mipColor: Uint32Array;
+  private mipPlain: Uint32Array;
   private mipMin: Uint32Array;
   private robot = robotFrames();
   private camp = campFrames();
@@ -71,20 +88,25 @@ export class MapView {
       return out;
     });
     this.tileOf = new Uint8Array(n);
+    this.plainTile = new Uint8Array(n);
     this.flat = new Uint32Array(n);
+    this.plainFlat = new Uint32Array(n);
     for (let y = 0; y < w.size; y++) {
       for (let x = 0; x < w.size; x++) {
         const i = y * w.size + x;
         const t = w.terrain[i];
         const h = hash2(x, y, w.seed + 5);
-        this.tileOf[i] = w.special[i] ? SPECIAL_BASE + t : t * VARIANTS + (h % VARIANTS);
-        this.flat[i] = w.special[i] ? PAL.blu : FLAT[t][(h >>> 8) % 5 === 0 ? 1 : 0];
+        this.plainTile[i] = t * VARIANTS + (h % VARIANTS);
+        this.tileOf[i] = w.special[i] ? SPECIAL_BASE + t : this.plainTile[i];
+        this.plainFlat[i] = FLAT[t][(h >>> 8) % 5 === 0 ? 1 : 0];
+        this.flat[i] = w.special[i] ? PAL.blu : this.plainFlat[i];
       }
     }
     // Mipmap: mean colour and minimum rank of each 4x4 block.
     this.mipSize = w.size / MIP;
     const m = this.mipSize;
     this.mipColor = new Uint32Array(m * m);
+    this.mipPlain = new Uint32Array(m * m);
     this.mipMin = new Uint32Array(m * m);
     for (let by = 0; by < m; by++) {
       for (let bx = 0; bx < m; bx++) {
@@ -92,14 +114,15 @@ export class MapView {
         for (let y = 0; y < MIP; y++) {
           for (let x = 0; x < MIP; x++) {
             const i = (by * MIP + y) * w.size + bx * MIP + x;
-            const c = this.flat[i];
+            const c = this.plainFlat[i];
             r += c & 0xff; g += (c >>> 8) & 0xff; b += (c >>> 16) & 0xff;
             if (w.rank[i] < min) min = w.rank[i];
             if (w.special[i]) special = true;
           }
         }
         const k = MIP * MIP;
-        this.mipColor[by * m + bx] = special ? PAL.blu : (0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0;
+        this.mipPlain[by * m + bx] = drain((0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0);
+        this.mipColor[by * m + bx] = special ? PAL.blu : this.mipPlain[by * m + bx];
         this.mipMin[by * m + bx] = min;
       }
     }
@@ -201,8 +224,10 @@ export class MapView {
   private scoutKey = '';
   private scoutCells = new Set<number>();
 
-  /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState). */
-  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { next: 0, range: 0 }, scouted: number[] = []): void {
+  /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState); `storms`: the weather;
+   *  `selected`: the cell (map index) the player tapped, or -1. */
+  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { range: 0, fetched: [] },
+    scouted: number[] = [], storms: readonly Storm[] = [], selected = -1): void {
     const { w, W, H, buf } = this;
     const size = w.size;
     const n = size * size;
@@ -313,16 +338,21 @@ export class MapView {
           const r = rank[i];
           const scouted = scout.has(i);
           if (r >= fogEnd && !scouted) { buf[row + pxl] = VOID; continue; }
+          // Mined out: revealed and no rover still working it. Its deposit is gone and it looks drained.
+          const mined = seen(r);
           let c: number;
           if (useTiles) {
             const sx = Math.floor((wx - cx) * TILE);
-            c = atlas[this.tileOf[i] * 256 + sy * TILE + sx];
+            c = atlas[(mined ? this.plainTile[i] : this.tileOf[i]) * 256 + sy * TILE + sx];
           } else {
-            c = this.flat[i];
+            c = mined ? this.plainFlat[i] : this.flat[i];
           }
-          if (!seen(r) && !scouted) {
+          if (mined) {
+            c = drain(c);
+          } else if (!scouted) {
+            // Still dark: dithered terrain, deposits glinting through, or the cell a rover is working on.
             const t = exploring.get(r);
-            c = t !== undefined ? mix(darken(c), c, t) : ((pxl + py) & 1) === 0 && !special[i] ? darken(c) : VOID;
+            c = t !== undefined ? mix(darken(c), c, t) : special[i] || ((pxl + py) & 1) === 0 ? darken(c) : VOID;
           }
           buf[row + pxl] = c;
         }
@@ -338,7 +368,7 @@ export class MapView {
           if (bx < 0 || bx >= m) { buf[row + pxl] = VOID; continue; }
           const b = by * m + bx;
           const r = this.mipMin[b];
-          buf[row + pxl] = seen(r) ? this.mipColor[b] : r < fogEnd && ((pxl + py) & 1) === 0 ? darken(this.mipColor[b]) : VOID;
+          buf[row + pxl] = seen(r) ? this.mipPlain[b] : r < fogEnd && ((pxl + py) & 1) === 0 ? darken(this.mipColor[b]) : VOID;
         }
       }
     }
@@ -361,6 +391,72 @@ export class MapView {
         ctx.fillStyle = '#ff5a4a';
         ctx.fillRect(sx - 1, sy - 1, 3, 3);
       }
+    }
+
+    // Weather: each storm is a translucent disc with its own texture (acid rain, snow, lightning).
+    for (const st of storms) {
+      const sx = (st.x + 0.5 - left) * cp;
+      const sy = (st.y + 0.5 - top) * cp;
+      const R = Math.max(2, st.r * cp);
+      if (sx < -R || sy < -R || sx > W + R || sy > H + R) continue;
+      const rgb = STORM_RGB[st.kind];
+      ctx.save();
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+      g.addColorStop(0, `rgba(${rgb}, 0.34)`);
+      g.addColorStop(0.75, `rgba(${rgb}, 0.22)`);
+      g.addColorStop(1, `rgba(${rgb}, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(sx, sy, R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.clip();
+      const seed = st.x * 31 + st.y * 17;
+      const count = Math.min(140, Math.round((R * R) / 40) + 4);
+      if (st.kind === 'acid' || st.kind === 'snow') {
+        const fall = st.kind === 'acid' ? now / 9 : now / 45;
+        ctx.fillStyle = st.kind === 'acid' ? 'rgba(200, 255, 90, 0.7)' : 'rgba(255, 255, 255, 0.85)';
+        for (let q = 0; q < count; q++) {
+          const h = hash2(q, seed, 77);
+          const span = 2 * R;
+          const px = sx - R + (((h & 0xffff) / 0xffff) * span + (st.kind === 'acid' ? fall * 0.4 : Math.sin(fall / 9 + q) * 3)) % span;
+          const py = sy - R + ((((h >>> 16) / 0xffff) * span + fall) % span);
+          if (st.kind === 'acid') ctx.fillRect(Math.round(px), Math.round(py), 1, 3);
+          else ctx.fillRect(Math.round(px), Math.round(py), q % 3 ? 1 : 2, q % 3 ? 1 : 2);
+        }
+      } else {
+        // Electric storm: a dark core and, now and then, a lightning bolt.
+        ctx.fillStyle = 'rgba(40, 20, 70, 0.25)';
+        ctx.fillRect(sx - R, sy - R, 2 * R, 2 * R);
+        const beat = Math.floor(now / 140);
+        const h = hash2(beat, seed, 91);
+        if (h % 9 === 0) {
+          ctx.fillStyle = 'rgba(220, 200, 255, 0.18)';
+          ctx.fillRect(sx - R, sy - R, 2 * R, 2 * R);
+          ctx.strokeStyle = 'rgba(240, 230, 255, 0.95)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          let bx = sx + (((h >>> 8) & 0xff) / 255 - 0.5) * R;
+          let by = sy - R * 0.8;
+          ctx.moveTo(bx, by);
+          for (let q = 0; q < 6; q++) {
+            bx += ((hash2(q, h, 3) & 0xff) / 255 - 0.5) * R * 0.35;
+            by += R * 0.28;
+            ctx.lineTo(Math.round(bx), Math.round(by));
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // The cell the player tapped.
+    if (selected >= 0) {
+      const sx = Math.round(((selected % size) - left) * cp);
+      const sy = Math.round((Math.floor(selected / size) - top) * cp);
+      const s = Math.max(3, Math.round(cp));
+      ctx.strokeStyle = Math.floor(now / 400) % 2 ? '#ffe28a' : '#f2c14e';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx - 1.5, sy - 1.5, s + 3, s + 3);
     }
 
     // Items some rover is fetching: a fixed frame around them, so you can see where it is heading.
@@ -421,12 +517,16 @@ export class MapView {
       }
       ctx.restore();
 
-      // Detected items (the ones rovers will fetch): they light up when the needle hits them and fade out.
-      const maxRing = prog.ring + radar.range;
-      for (let k = Math.max(radar.next, itemIndexAt(w, ringA)); k < w.itemRanks.length; k++) {
+      // Items inside some rover's radar circle (the ones it will fetch): they light up when the needle hits them.
+      const claimed = new Set(radar.fetched);
+      const inRange = new Set<number>();
+      for (const b of this.bots) {
+        const cell = Math.floor(b.y) * size + Math.floor(b.x);
+        if (cell >= 0 && cell < n) forItemsNear(w, cell, radar.range, (k) => inRange.add(k));
+      }
+      for (const k of inRange) {
         const r = w.itemRanks[k];
-        if (ringOfRank(w, r) > maxRing) break;
-        if (seen(r) || fetching.has(r)) continue;
+        if (seen(r) || fetching.has(r) || claimed.has(k)) continue;
         const i = w.order[r];
         const ix = (i % size) + 0.5;
         const iy = Math.floor(i / size) + 0.5;

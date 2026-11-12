@@ -2,6 +2,7 @@ import { D, Decimal } from './decimal';
 import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
+import type { StormId } from '../content/weather';
 
 /** What a rover is doing: exploring its part of the ring, returning to camp to unload, heading back out to
  *  the frontier, or fetching an item the radar spotted. */
@@ -21,9 +22,25 @@ export interface Bot {
   target: number;
   /** Rank of the cell the detour started from (its path is revealed on the way); otherwise -1. */
   from: number;
+  /** Pages, notes and photos it has picked up since it last left camp. */
+  found: number;
 }
 
-export const newBot = (trip: Trip = 'explore', travelLen = 0): Bot => ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1 });
+export const newBot = (trip: Trip = 'explore', travelLen = 0): Bot => ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0 });
+
+/** A storm on the map: a disc of `r` cells around (x, y). */
+export interface Storm {
+  kind: StormId;
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** The sky during one weather epoch (see content/weather.ts). */
+export interface Weather {
+  epoch: number;
+  storms: Storm[];
+}
 
 export interface GameState {
   /** Map seed: the world is regenerated from it. */
@@ -41,9 +58,10 @@ export interface GameState {
   items: Record<ItemId, number>;
   /** Works made of each kind. */
   works: Record<WorkId, number>;
-  /** Items (index into `world.itemRanks`) the radar has already gone through: those before it were either
-   *  collected or some rover went (or is going) to fetch them. */
-  radarNext: number;
+  /** Items (index into `world.itemRanks`) that a rover fetched, or is fetching, with the radar ahead of normal
+   *  exploration, so exploring does not collect them again. Dropped once exploring has passed them. */
+  fetched: number[];
+  weather: Weather;
   /** Paths walked on radar detours, ahead of normal exploration: flat triples [fromRank, toRank, maxRank]. Their
    *  cells show as revealed (no bluetreri: that still comes when exploring reaches them). Dropped once explored. */
   scouted: number[];
@@ -68,7 +86,8 @@ export function newGame(seed = randomSeed()): GameState {
     upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])) as Record<StatId, number>,
     items: Object.fromEntries(ITEMS.map((i) => [i.id, 0])) as Record<ItemId, number>,
     works: Object.fromEntries(WORKS.map((x) => [x.id, 0])) as Record<WorkId, number>,
-    radarNext: 0,
+    fetched: [],
+    weather: { epoch: 0, storms: [] },
     scouted: [],
     zoomUnlocked: 1,
     zoom: 0,

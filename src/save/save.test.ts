@@ -23,13 +23,16 @@ describe('save', () => {
     s.upgrades.speed = 7;
     s.items.page = 7;
     s.works.cd = 2;
-    s.radarNext = 11;
+    s.fetched = [11, 3];
+    s.weather = { epoch: 4, storms: [{ kind: 'acid', x: 10, y: 12, r: 5 }] };
+    s.bots[0].found = 2;
     s.zoomUnlocked = 3;
     s.zoom = 2;
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));
     expect(savedAt).toBe(1234);
     expect(state.gold.eq(s.gold)).toBe(true);
-    expect(state).toMatchObject({ seed: 7, ring: 12, ringRobots: 2, zoomUnlocked: 3, zoom: 2, radarNext: 11 });
+    expect(state).toMatchObject({ seed: 7, ring: 12, ringRobots: 2, zoomUnlocked: 3, zoom: 2, fetched: [11, 3] });
+    expect(state.weather).toEqual(s.weather);
     expect(state.bots).toEqual(s.bots);
     expect(state.upgrades.speed).toBe(7);
     expect(state.items.page).toBe(7);
@@ -45,9 +48,9 @@ describe('save', () => {
   it('migrates a v1 save (before the hold) and converts it into rovers when the world loads', () => {
     const v1 = { v: 1, savedAt: 9, seed: 3, walked: 50, gold: '12', totalGold: '40', upgrades: { speed: 4, radius: 2, loot: 3, explorers: 1 }, ringRobots: 2, zoomUnlocked: 2, zoom: 1, playTime: 99 };
     const { state } = deserialize(v1);
-    expect(state.upgrades).toEqual({ speed: 4, radar: 3, cargo: 0, explorers: 1 });
+    expect(state.upgrades).toEqual({ speed: 4, tyres: 0, body: 0, radar: 3, cargo: 0, explorers: 1 });
     expect(state.items).toEqual({ page: 0, note: 0, photo: 0 });
-    expect(state.radarNext).toBe(0);
+    expect(state.fetched).toEqual([]);
     expect(state.legacyWalked).toBe(50);
     expect(state).toMatchObject({ ringRobots: 2, zoomUnlocked: 2 });
     fromLegacy(state, world);
@@ -74,6 +77,9 @@ describe('save', () => {
     expect(state.scouted).toEqual([]);
     expect(state.bots[0].trip).toBe('detour');
     expect(state.bots[0].from).toBe(-1);
+    // v5 -> v6: the item it is fetching is already claimed, and the sky starts clear.
+    expect(state.fetched).toEqual([4]);
+    expect(state.weather).toEqual({ epoch: 0, storms: [] });
     const back = deserialize({ ...serialize({ ...state, scouted: [1, 9, 12, 7] }, 0) }).state;
     expect(back.scouted).toEqual([1, 9, 12]);
   });

@@ -1,12 +1,13 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, workCost, workTitle, type WorkId } from '../content/collection';
-import { TERRAINS } from '../content/world';
-import { ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
+import { TERRAINS, ZOOMS } from '../content/world';
+import { STORMS } from '../content/weather';
 import { canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { stormAt, stormDef } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { GameState } from '../core/state';
-import { totalCells, zoomFraction, type World } from '../core/world';
+import { totalCells, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, robotFrames, spriteCanvas } from './sprites';
@@ -30,13 +31,26 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: s
 /** Sets text only if it changed (saves the browser work on every frame). */
 const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el.textContent = text; };
 
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
 /** Short effect text (now -> next level), so it fits the narrow mobile cards. */
-function effectText(id: StatId, a: Stats, b: Stats): string {
+export function effectText(id: StatId, a: Stats, b: Stats): string {
   switch (id) {
-    case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)} steps/s`;
-    case 'radar': return a.radar ? `range ${a.radar}→${b.radar}` : `range ${b.radar}`;
+    case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)}/s`;
+    case 'tyres': return `rough −${Math.round(100 * (1 - a.grip))}→${pct(1 - b.grip)}`;
+    case 'body': return `storms −${Math.round(100 * (1 - a.armour))}→${pct(1 - b.armour)}`;
     case 'cargo': return `hold ${fmt(a.cargo)}→${fmt(b.cargo)}`;
+    case 'radar': return `range ${a.radar}→${b.radar}`;
     case 'explorers': return `rovers ${a.explorers}→${b.explorers}`;
+  }
+}
+
+/** What a work's bonus changed (before -> after), in words. */
+function workEffect(effect: string, a: Stats, b: Stats): string {
+  switch (effect) {
+    case 'speed': return `Rover speed ${fmt(a.speed)}→${fmt(b.speed)} steps/s`;
+    case 'hold': return `Hold ${fmt(a.cargo)}→${fmt(b.cargo)} bluetreri`;
+    default: return `Bluetreri ×${fmt(a.loot)}→×${fmt(b.loot)}`;
   }
 }
 
@@ -86,13 +100,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   zout.addEventListener('click', () => actions.zoom(1));
   home.addEventListener('click', () => map.goToRobot());
 
-  const zoomInfo = h('div', 'zoom-info px-box');
-  const zoomName = h('div', 'zoom-name');
-  const zoomNext = h('div', 'zoom-next');
-  const bar = h('div', 'bar');
-  const barFill = h('i');
-  bar.append(barFill);
-  zoomInfo.append(zoomName, zoomNext, bar);
+  // Bottom left: what the tapped cell holds or, with nothing tapped, what the rovers are hauling.
+  const cellBox = h('div', 'cell-info px-box');
+  const cellTitle = h('div', 'cell-title');
+  const cellLine = h('div', 'cell-line');
+  const cellSky = h('div', 'cell-line sky');
+  cellBox.append(cellTitle, cellLine, cellSky);
+  /** Cell (map index) the player tapped, or -1. */
+  let selected = -1;
+  cellBox.addEventListener('click', () => { selected = -1; });
 
   const toast = h('div', 'toast px-box');
 
@@ -109,7 +125,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     try { localStorage.setItem('rebuild:speed', String(speed)); } catch { /* no storage */ }
     showSpeed();
   });
-  mapWrap.append(canvas, zoomCtl, zoomInfo, speedBtn, toast);
+  mapWrap.append(canvas, zoomCtl, cellBox, speedBtn, toast);
 
   // View controls: drag (mouse or finger) to move, wheel or pinch to zoom.
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (Math.abs(e.deltaY) > 4) actions.zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
@@ -173,18 +189,37 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   function cellInfo(cx: number, cy: number) {
     if (map.hitsPointer(cx, cy)) { map.goToRobot(); return; }
     const i = map.cellAt(cx, cy);
-    const s = current;
-    if (i < 0 || !s) return;
+    selected = i === selected ? -1 : i;
+  }
+
+  /** Fills the bottom-left box: the tapped cell's resources, or the rovers' haul. */
+  function showCell(s: GameState, st: Stats) {
+    if (selected < 0) {
+      const found = s.bots.reduce((a, b) => a + b.found, 0);
+      set(cellTitle, 'Rovers\' haul');
+      set(cellLine, `${fmt(carried(s))} bluetreri · ${found} ${found === 1 ? 'item' : 'items'}`);
+      const n = s.weather.storms.length;
+      set(cellSky, n ? `Sky: ${n} ${n === 1 ? 'storm' : 'storms'}` : 'Sky: clear');
+      return;
+    }
+    const i = selected;
     const r = world.rank[i];
-    if (!revealed(s, world, r)) { showToast('Not explored yet'); return; }
-    const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * stats(s).loot;
-    showToast(`${world.special[i] ? 'Deposit' : TERRAINS[world.terrain[i]].name}: ${fmt(value)} bluetreri`);
+    const mined = revealed(s, world, r);
+    const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * st.loot;
+    const it = world.item[i] ? ITEMS[world.item[i] - 1] : null;
+    const gone = it && (mined || s.fetched.includes(world.itemRanks.indexOf(r)));
+    set(cellTitle, `${TERRAINS[world.terrain[i]].name}${world.special[i] ? ' · deposit' : ''}`);
+    if (mined) set(cellLine, `Mined out (gave ${fmt(value)})${gone ? ` · ${it!.name} taken` : ''}`);
+    else set(cellLine, `${fmt(value)} bluetreri${gone ? ` · ${it!.name} taken` : ' · ???'}`);
+    const storm = stormAt(s.weather.storms, world.size, i);
+    const def = storm ? stormDef(storm.kind) : null;
+    set(cellSky, def ? `${def.name}: −${pct((1 - def.factor) * st.armour)} speed` : 'Sky: clear');
   }
 
   const panel = h('aside', 'panel');
   // Tabs: upgrades (bought with bluetreri) and works (made from pages, notes and photos).
   const tabs = h('div', 'tabs');
-  const tabUpg = h('button', 'px-btn tab on', 'Upgrades');
+  const tabUpg = h('button', 'px-btn tab on', 'Rover');
   const tabWorks = h('button', 'px-btn tab', 'Works');
   tabs.append(tabUpg, tabWorks);
   const showTab = (works: boolean) => {
@@ -195,8 +230,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   };
   tabUpg.addEventListener('click', () => showTab(false));
   tabWorks.addEventListener('click', () => showTab(true));
-  const list = h('div', 'list');
-  // Upgrades in a 2x2 grid: everything within thumb reach, no scrolling.
+  const list = h('div', 'list rover');
+  // Rover parts in a 3x2 grid: everything within thumb reach, no scrolling.
   const rows = UPGRADES.map((u) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
@@ -284,7 +319,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: true, title: 'The map', lines: [
         'Drag the map with a finger or the mouse, or move with the arrow keys or WASD.',
         'The rover button (or space) takes the view to a rover. If a rover leaves the screen, an arrow at the edge points to it: tap it to go there.',
-        'Tap a revealed cell to see what it is and how much bluetreri it is worth.'] },
+        'Tap a cell to see what it holds in the box at the bottom left (tap the box to clear it). With nothing tapped, the box shows what the rovers are hauling.',
+        'Mined-out cells look drained: their bluetreri is gone, and so are their crystals.'] },
       { on: deposited, title: 'Bluetreri and the hold', lines: [
         'Bluetreri is a blue mineral that has grown among the ruins. It is what you spend on upgrades.',
         'Rovers carry the bluetreri they find, but each hold is limited. When a hold is full, that rover returns to camp to unload and then goes back to where it left off. Each rover goes on its own schedule. Nothing can be spent until it reaches camp.',
@@ -293,7 +329,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'Each cell yields bluetreri by terrain (and the farther from camp, the more). Rough terrain is slower to explore: streets are fast, jungle and rubble are slow. Found so far:'] },
       { on: seenSpecial, title: 'Deposits', lines: ['Cells with blue crystals are bluetreri deposits: they yield far more than the rest.'] },
       { on: u.speed > 0, title: 'Engine', lines: ['Rovers explore and travel faster. Every upgrade costs more at each level; the button lights up when you can afford it.'] },
-      { on: u.cargo > 0, title: 'Hold', lines: ['Each rover can carry more bluetreri, so it returns to camp less often.'] },
+      { on: u.cargo > 0, title: 'Hold', lines: ['Each rover can carry more bluetreri, so it returns to camp less often. A loaded rover drives home slowly: the fuller, the slower.'] },
+      { on: u.tyres > 0, title: 'Tyres', lines: ['Better grip on rough ground: rubble, jungle, ruins and towers slow the rovers down less.'] },
+      { on: s.weather.storms.length > 0 || u.body > 0, title: 'Weather', lines: [
+        'Storms drift over the city and slow down any rover working under them. They change every few minutes.',
+        ...STORMS.map((d) => `${d.name}: ${d.desc}`),
+        'The Body upgrade armours the rovers, so storms slow them down less.'] },
       { on: s.zoomUnlocked > 1, title: 'Zoom', lines: [
         'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
@@ -302,8 +343,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: crafted, title: 'Works', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.'] },
       { on: u.radar > 0, title: 'Radar', lines: [
-        'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark: they light up as the needle passes.',
-        'A rover leaves its exploring, fetches them one at a time (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
+        'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark around that rover: they light up as the needle passes.',
+        'The rover that spots an item leaves its exploring, fetches it (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
       { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring around camp; each ring is split between all of them, and each works at its own pace.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
@@ -378,11 +419,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   let current: GameState | null = null;
   let lastHelpCheck = 0;
 
-  function showToast(text: string) {
+  function showToast(text: string, ms = 2600) {
     toast.textContent = text;
     toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => toast.classList.remove('show'), 2600);
+    toastTimer = window.setTimeout(() => toast.classList.remove('show'), ms);
   }
 
   return {
@@ -405,7 +446,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         target: b.target >= 0 ? world.itemRanks[b.target] : undefined,
         from: b.from >= 0 ? b.from : undefined,
       }));
-      map.render(prog, s.zoom, now, dt, trips, { next: s.radarNext, range: st.radar }, s.scouted);
+      if (selected >= 0 && selected >= totalCells(world)) selected = -1;
+      map.render(prog, s.zoom, now, dt, trips, { range: st.radar, fetched: s.fetched }, s.scouted, s.weather.storms, selected);
+      showCell(s, st);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
       set(gold, fmt(s.gold));
@@ -425,16 +468,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });
       zin.disabled = s.zoom <= 0;
       zout.disabled = s.zoom >= s.zoomUnlocked - 1;
-      set(zoomName, `Zoom ${s.zoom + 1}: ${ZOOMS[s.zoom].name}`);
-      if (s.zoomUnlocked < ZOOMS.length) {
-        const f = Math.min(1, zoomFraction(world, s.zoomUnlocked - 1, cells) / ZOOM_UNLOCK_FRACTION);
-        set(zoomNext, `Next: ${ZOOMS[s.zoomUnlocked].name} ${Math.floor(f * 100)}%`);
-        barFill.style.width = `${f * 100}%`;
-        bar.hidden = false;
-      } else {
-        set(zoomNext, isComplete(s, world) ? 'Map complete!' : 'All zooms open');
-        bar.hidden = true;
-      }
+      if (isComplete(s, world)) set(cellSky, 'Map complete!');
 
       for (const r of rows) {
         const lvl = s.upgrades[r.def.id];
@@ -473,10 +507,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     /** Field notes on the first game. */
     openHelp: () => openHelp(),
     toast: (text: string) => showToast(text),
-    /** A new work was made. */
-    crafted(id: WorkId, n: number) {
+    /** A new work was made: what it is and what its bonus changed. */
+    crafted(id: WorkId, n: number, before: Stats, after: Stats) {
       const wd = WORKS.find((x) => x.id === id)!;
-      showToast(`New: ${workTitle(wd, n - 1)}`);
+      showToast(`New: ${workTitle(wd, n - 1)}\n${workEffect(wd.effect, before, after)}`, 4200);
+    },
+    /** An upgrade was bought: what it changed. */
+    bought(id: StatId, level: number, before: Stats, after: Stats) {
+      const u = UPGRADES.find((x) => x.id === id)!;
+      showToast(`${u.name} lv${level}\n${effectText(id, before, after)}`, 2600);
     },
     /** Chosen speed multiplier (1 = normal). */
     gameSpeed: () => speed,

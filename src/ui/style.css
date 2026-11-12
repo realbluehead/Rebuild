@@ -146,9 +146,10 @@ button { font: inherit; color: inherit; }
 .pips i.on { background: var(--gold); }
 .pips i.locked { background: transparent; border-color: #4a3020; }
 
-.zoom-info { position: absolute; left: 8px; bottom: 8px; padding: 6px 10px; width: min(200px, calc(100% - 120px)); pointer-events: none; }
-.zoom-name { font: 10px/1.6 var(--font-num); }
-.zoom-next { color: var(--muted); font-size: 17px; }
+.cell-info { position: absolute; left: 8px; bottom: 8px; padding: 6px 10px; width: min(220px, calc(100% - 130px)); cursor: pointer; }
+.cell-title { font: 9px/1.6 var(--font-num); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-line { color: var(--text); font-size: 17px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-line.sky { color: var(--muted); }
 .bar { height: 8px; margin-top: 4px; background: var(--void); border: 2px solid var(--edge); }
 .bar i { display: block; height: 100%; background: var(--ok); }
 .bar[hidden] { display: none; }
@@ -157,11 +158,12 @@ button { font: inherit; color: inherit; }
 
 .toast {
   position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(.6);
-  padding: 12px 16px; font: 14px/1.4 var(--font-num); color: var(--haz);
+  padding: 12px 16px; font: 11px/1.6 var(--font-num); color: var(--text);
   border: 6px solid var(--haz); border-image: var(--stripes) 6;
   opacity: 0; pointer-events: none; transition: opacity .2s steps(3), transform .2s steps(3);
-  white-space: nowrap; z-index: 2;
+  white-space: pre-line; text-align: center; width: max-content; max-width: 92%; z-index: 2;
 }
+.toast::first-line { color: var(--haz); }
 .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
 /* Upgrade panel: a 2x2 grid at the bottom, within thumb reach */
@@ -176,6 +178,11 @@ button { font: inherit; color: inherit; }
 .upg .name { font: 9px/1.4 var(--font-num); }
 .upg .lvl { font: 8px/1 var(--font-num); color: var(--muted); }
 .upg .eff { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Rover tab: six parts in a 3x2 grid, a little more compact */
+.list.rover { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.list.rover .upg { padding: 6px; gap: 2px; }
+.list.rover .upg .eff { font-size: 16px; }
+.list.rover .upg .buy { min-height: 34px; }
 .upg .buy {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px; padding: 4px; font: 10px/1 var(--font-num);

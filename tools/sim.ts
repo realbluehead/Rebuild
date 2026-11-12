@@ -32,7 +32,9 @@ function value(): number {
   // New rovers will work on the next ring: value them as if they were already there.
   const bots = s.bots;
   s.bots = Array.from({ length: stats(s).explorers }, (_, j) => bots[j] ?? bots[0]);
-  const v = goldPerSec(s, w) * Math.sqrt(stats(s).stepsPerSec);
+  // Storms: roughly a tenth of the exploring happens under one, at about half speed (the body softens it).
+  const sky = 1 - 0.1 * 0.5 * stats(s).armour;
+  const v = goldPerSec(s, w) * sky * Math.sqrt(stats(s).stepsPerSec * sky);
   s.bots = bots;
   return v;
 }
@@ -50,7 +52,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
     let best = UPGRADES[0].id;
     for (const u of UPGRADES) if (score(u.id) > score(best)) best = u.id;
     if (!canBuy(s, best)) break;
-    buy(s, best);
+    buy(s, w, best);
   }
   for (let k = 0; k < DT / TICK_SEC; k++) {
     const ev = tick(s, w, TICK_SEC);

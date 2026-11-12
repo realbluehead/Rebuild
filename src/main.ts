@@ -32,8 +32,18 @@ async function boot() {
   const save = () => (locked ? Promise.resolve() : saveGame(state));
 
   const view = createView(app, world, state, {
-    buy: (id) => { if (buy(state, id)) void save(); },
-    craft: (id) => { if (craft(state, id)) { view.crafted(id, state.works[id]); void save(); } },
+    buy: (id) => {
+      const before = stats(state);
+      if (!buy(state, world, id)) return;
+      view.bought(id, state.upgrades[id], before, stats(state));
+      void save();
+    },
+    craft: (id) => {
+      const before = stats(state);
+      if (!craft(state, id)) return;
+      view.crafted(id, state.works[id], before, stats(state));
+      void save();
+    },
     zoom: (d) => { setZoom(state, state.zoom + d); },
     exportText: () => exportSave(serialize(state, Date.now())),
     importText: (text) => {

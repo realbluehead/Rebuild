@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from './state';
-import { buy, canCraft, carried, costOf, craft, explored, fromLegacy, isComplete, nextWorkCost, setZoom, stats, tick } from './game';
+import { buy, canCraft, carried, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, nextWorkCost, progress, setZoom, stats, tick } from './game';
+import { makeWeather, weatherFactor } from './weather';
+import { STORMS } from '../content/weather';
 import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
-import { createWorld, goldBetween, pathCells, totalCells, totalSteps, unlockAt, zoomFraction } from './world';
+import { createWorld, goldBetween, kingDistance, pathCells, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction } from './world';
 
 // Small map so the tests run fast (the real one is MAP_SIZE).
 const SIZE = 128;
@@ -38,14 +40,16 @@ describe('world', () => {
   });
 
   it('a rover only reveals the adjacent cell: if the next one is far, it has to walk', () => {
-    expect(world.steps[1]).toBe(1);
+    expect(stepsAt(world, 1, 1)).toBe(1);
     let far = 0;
     for (let r = 1; r < totalCells(world); r++) {
       const a = world.order[r - 1];
       const b = world.order[r];
       const king = Math.max(Math.abs((a % SIZE) - (b % SIZE)), Math.abs(Math.floor(a / SIZE) - Math.floor(b / SIZE)));
       // An adjacent cell costs one step times its roughness; a farther one, one per cell of the way.
-      expect(world.steps[r + 1] - world.steps[r]).toBeCloseTo(king * TERRAINS[world.terrain[b]].rough, 9);
+      expect(stepsAt(world, 1, r + 1) - stepsAt(world, 1, r)).toBeCloseTo(king * TERRAINS[world.terrain[b]].rough, 9);
+      // With perfect tyres only the distance counts.
+      expect(stepsAt(world, 0, r + 1) - stepsAt(world, 0, r)).toBeCloseTo(king, 9);
       if (king > 1) far++;
     }
     expect(far).toBeGreaterThan(0);
@@ -156,10 +160,12 @@ describe('game', () => {
   it('one long tick gives the same as many short ones (exact offline)', () => {
     const a = newGame(42);
     const b = newGame(42);
-    a.upgrades.speed = b.upgrades.speed = 12;
-    a.upgrades.explorers = b.upgrades.explorers = 1;
+    for (const s of [a, b]) Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 2, tyres: 2, body: 1 });
     tick(a, world, 900);
     for (let k = 0; k < 9000; k++) tick(b, world, 0.1);
+    expect(a.weather.epoch).toBeGreaterThan(0); // the sky changed on the way
+    expect(a.fetched).toEqual(b.fetched);
+    expect(a.items).toEqual(b.items);
     expect(a.ring).toBe(b.ring);
     expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 3);
     a.bots.forEach((bot, j) => {
@@ -207,11 +213,52 @@ describe('game', () => {
     s.upgrades.cargo = 20;
     s.upgrades.radar = 3;
     let early = 0;
-    for (let k = 0; k < 20000 && s.radarNext < 5; k++) {
+    const radius = stats(s).radar;
+    for (let k = 0; k < 20000 && early < 5; k++) {
+      // Every rover that sets off on a detour goes for an item inside its own radar circle.
+      const before = s.bots.map((b) => b.trip);
       const ev = tick(s, world, 0.2);
+      s.bots.forEach((b, j) => {
+        if (b.trip === 'detour' && before[j] !== 'detour') {
+          expect(kingDistance(world, world.order[b.from], world.order[world.itemRanks[b.target]])).toBeLessThanOrEqual(radius);
+        }
+      });
       for (const r of ev.items) if (r >= explored(s, world)) early++;
     }
-    expect(early).toBeGreaterThan(0);
+    expect(early).toBe(5);
+  });
+
+  it('a loaded rover drives home slower than an empty one heads out', () => {
+    const st = stats(newGame(1));
+    expect(homeSpeed(st, 0)).toBe(st.travelSpeed);
+    expect(homeSpeed(st, st.cargo)).toBeLessThan(st.travelSpeed / 2);
+  });
+
+  it('tyres make rough cells cheaper and keep every rover on its cell', () => {
+    const s = newGame(42);
+    s.upgrades.speed = 10;
+    s.upgrades.cargo = 30;
+    s.gold = D(1e9);
+    while (s.ring < 8) tick(s, world, 0.3);
+    const before = progress(s, world);
+    expect(buy(s, world, 'tyres', 3)).toBe(true);
+    const after = progress(s, world);
+    after.reach.forEach((x, k) => expect(x).toBeCloseTo(before.reach[k], 9));
+    expect(stats(s).grip).toBeLessThan(1);
+  });
+
+  it('storms slow rovers down and the body softens it', () => {
+    const s = newGame(42);
+    s.ring = 40;
+    let storms = makeWeather(s, world, 1).storms;
+    for (let e = 2; !storms.length; e++) storms = makeWeather(s, world, e).storms;
+    const st = storms[0];
+    const cell = st.y * SIZE + st.x;
+    const bare = weatherFactor(storms, SIZE, cell, 1);
+    expect(bare).toBeLessThan(1);
+    expect(bare).toBeGreaterThanOrEqual(Math.min(...STORMS.map((d) => d.factor)) - 1e-12);
+    expect(weatherFactor(storms, SIZE, cell, 0.5)).toBeGreaterThan(bare);
+    expect(weatherFactor([], SIZE, cell, 1)).toBe(1);
   });
 
   it('a detour reveals the path it walked, which is dropped once exploring catches up', () => {
@@ -260,7 +307,7 @@ describe('game', () => {
 
   it('cannot buy without bluetreri', () => {
     const s = newGame(42);
-    expect(buy(s, 'speed')).toBe(false);
+    expect(buy(s, world, 'speed')).toBe(false);
     expect(s.upgrades.speed).toBe(0);
   });
 
@@ -268,7 +315,7 @@ describe('game', () => {
     const s = newGame(42);
     s.gold = D(botes.baseCost);
     const before = stats(s).stepsPerSec;
-    expect(buy(s, 'speed')).toBe(true);
+    expect(buy(s, world, 'speed')).toBe(true);
     expect(s.gold.toNumber()).toBe(0);
     expect(stats(s).stepsPerSec).toBeGreaterThan(before);
   });

@@ -7,11 +7,13 @@
 // v4: independent rovers (each with cargo, trip and arc); `walked` becomes `legacyWalked` and is converted
 //     when the world is loaded (`fromLegacy`).
 // v5: radar detours reveal the cells on their path (`scouted`, `Bot.from`).
+// v6: each rover's radar works around it (`fetched` replaces `radarNext`), weather, `Bot.found`, Tyres and Body.
 import { D } from '../core/decimal';
-import { newBot, newGame, type Bot, type GameState, type Trip } from '../core/state';
+import { newBot, newGame, type Bot, type GameState, type Storm, type Trip } from '../core/state';
+import { STORMS } from '../content/weather';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /** JSON shape of the game: Decimals are stored as text. */
 export interface SaveData {
@@ -29,7 +31,8 @@ export interface SaveData {
   upgrades: Record<string, number>;
   items: Record<string, number>;
   works: Record<string, number>;
-  radarNext: number;
+  fetched: number[];
+  weather: { epoch: number; storms: Storm[] };
   scouted: number[];
   zoomUnlocked: number;
   zoom: number;
@@ -64,6 +67,15 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   },
   // v4 -> v5: detour paths are revealed. Nothing scouted yet; rovers already on a detour reveal no path.
   4: (s) => ({ ...s, v: 5, scouted: [] }),
+  // v5 -> v6: the radar works per rover. Items already claimed are only known for rovers on a detour; the sky
+  // starts clear and changes at the next epoch.
+  5: (s) => {
+    const rest = { ...s };
+    delete rest.radarNext;
+    const bots = Array.isArray(s.bots) ? (s.bots as Bot[]) : [];
+    const fetched = bots.filter((b) => b?.trip === 'detour' && Number.isInteger(b.target) && b.target >= 0).map((b) => b.target);
+    return { ...rest, v: 6, fetched, weather: { epoch: 0, storms: [] } };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -80,7 +92,8 @@ export function serialize(s: GameState, now: number): SaveData {
     upgrades: { ...s.upgrades },
     items: { ...s.items },
     works: { ...s.works },
-    radarNext: s.radarNext,
+    fetched: [...s.fetched],
+    weather: { epoch: s.weather.epoch, storms: s.weather.storms.map((st) => ({ ...st })) },
     scouted: [...s.scouted],
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
@@ -110,7 +123,14 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.gold = D(data.gold ?? 0);
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = num(data.playTime);
-  state.radarNext = Math.floor(num(data.radarNext));
+  state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
+  const kinds = STORMS.map((d) => d.id) as string[];
+  state.weather = {
+    epoch: Math.floor(num(data.weather?.epoch)),
+    storms: (Array.isArray(data.weather?.storms) ? data.weather.storms : [])
+      .filter((st) => kinds.includes(st?.kind))
+      .map((st) => ({ kind: st.kind, x: Math.floor(num(st.x)), y: Math.floor(num(st.y)), r: num(st.r) })),
+  };
   state.bots = (Array.isArray(data.bots) && data.bots.length ? data.bots : [newBot()]).map((b) => {
     const bot = newBot(TRIPS.includes(b?.trip) ? b.trip : 'explore', num(b?.travelLen));
     bot.prog = num(b?.prog);
@@ -118,6 +138,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
     bot.travel = Math.min(bot.travelLen, num(b?.travel));
     bot.target = Number.isInteger(b?.target) ? b.target : -1;
     bot.from = bot.trip === 'detour' && Number.isInteger(b?.from) ? b.from : -1;
+    bot.found = Math.floor(num(b?.found));
     if (bot.trip === 'detour' && bot.target < 0) bot.trip = 'explore';
     return bot;
   });

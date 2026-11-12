@@ -1,34 +1,42 @@
 // Pure simulation: no DOM, clock or storage access. Everything is testable.
 //
 // Each rover works on its own. When a ring starts it is split into arcs (one per rover) and each rover explores
-// its arc at its own pace (terrain roughness slows it down). When its hold is full, or it finishes its arc with
-// cargo, it returns to camp to unload and heads out again. The next ring starts once every arc is done. That is
-// why rovers leave and return at different times. `tick` processes events (hold full, arc done, trip done...)
-// in time order, so one long step (offline) gives the same result as many short ones.
+// its arc at its own pace (terrain roughness and storms slow it down). When its hold is full, or it finishes its
+// arc with cargo, it drives back to camp (slower the more it carries) to unload and heads out again. The next ring
+// starts once every arc is done. Each rover's radar spots items around it; that rover leaves its arc to fetch them.
+// `tick` processes events (hold full, arc done, trip done, arriving at a cell where the weather changes or the
+// radar spots something, the sky changing) in time order, so one long step (offline) gives the same result as
+// many short ones.
 import { D, Decimal } from './decimal';
 import { newBot, type Bot, type GameState } from './state';
-import { BASE_CARGO, BASE_SPEED, CARGO_MULT, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
+import { ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
+import { WEATHER_EPOCH } from '../content/weather';
 import { workById, workCost, ITEMS, type WorkId } from '../content/collection';
-import { arcOf, arcStarts, cellsReached, itemsBetween, pathCells, prefixAt, ringAt, ringCount, ringOfRank, specialsBetween, totalCells, unlockAt, type World } from './world';
+import { arcOf, arcStarts, cellsReached, itemsBetween, kingDistance, nearestItem, pathCells, prefixAt, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
+import { makeWeather, weatherFactor } from './weather';
 
 export const TICK_RATE = 10; // ticks per second
 export const TICK_SEC = 1 / TICK_RATE;
 const EPS = 1e-9;
 
 export interface Stats {
-  /** Steps per second of each rover while exploring. */
+  /** Steps per second of each rover while exploring (clear sky). */
   speed: number;
-  /** Steps per second of each rover over known ground (going to or from camp). */
+  /** Steps per second of each rover over known ground (going to or from camp, empty). */
   travelSpeed: number;
   /** Bluetreri multiplier (records). */
   loot: number;
-  /** Radar range in rings (0 = no radar). */
+  /** Radar range in cells around each rover (0 = no radar). */
   radar: number;
   /** Bluetreri each rover can carry. */
   cargo: number;
+  /** Share of each terrain's extra roughness still felt (tyres; 1 = none). */
+  grip: number;
+  /** Share of a storm's slowdown still felt (body; 1 = none). */
+  armour: number;
   explorers: number;
-  /** Exploring steps per second of all rovers together. */
+  /** Exploring steps per second of all rovers together (clear sky). */
   stepsPerSec: number;
 }
 
@@ -39,7 +47,10 @@ export function stats(s: GameState): Stats {
   const loot = wk('cd');
   const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album');
   const explorers = 1 + u.explorers;
-  return { speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: radarRange(u.radar), cargo, explorers, stepsPerSec: speed * explorers };
+  return {
+    speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: radarRange(u.radar), cargo,
+    grip: GRIP_MULT ** u.tyres, armour: ARMOUR_MULT ** u.body, explorers, stepsPerSec: speed * explorers,
+  };
 }
 
 /** Bluetreri all rovers can carry together. */
@@ -50,6 +61,11 @@ export const carried = (s: GameState): number => s.bots.reduce((a, b) => a + b.c
 
 /** Steps from camp to the frontier (the ring's path distance). */
 export const homeDistance = (s: GameState): number => s.ring + 1;
+
+/** Speed of a rover driving home with `cargo` on board (`st.cargo` = full hold). */
+export const homeSpeed = (st: Stats, cargo: number): number => st.travelSpeed / (1 + LOAD_DRAG * Math.min(1, cargo / st.cargo));
+
+interface Arc { lo: number; hi: number; len: number }
 
 /** Progress of the current ring: where it starts and ends, where each arc starts and how far its rover has got. */
 export interface Progress {
@@ -69,6 +85,7 @@ export function progress(s: GameState, w: World): Progress {
     const n = totalCells(w);
     return { ring: s.ring, a: n, b: n, starts: [n], reach: [], robotOf: [] };
   }
+  const grip = stats(s).grip;
   const starts = arcStarts(w, s.ring, s.ringRobots);
   const arcs = starts.length - 1;
   const robotOf: number[] = [];
@@ -76,8 +93,8 @@ export function progress(s: GameState, w: World): Progress {
   for (let k = 0; k < arcs; k++) {
     const j = arcOf(s.ring, k, arcs);
     robotOf.push(j);
-    const arc = { lo: starts[k], hi: starts[k + 1], len: w.steps[starts[k + 1]] - w.steps[starts[k]] };
-    reach.push(arcReach(w, arc, s.bots[j]?.prog ?? 0));
+    const arc = { lo: starts[k], hi: starts[k + 1], len: stepsAt(w, grip, starts[k + 1]) - stepsAt(w, grip, starts[k]) };
+    reach.push(arcReach(w, grip, arc, s.bots[j]?.prog ?? 0));
   }
   return { ring: s.ring, a: w.rings[s.ring], b: w.rings[s.ring + 1], starts, reach, robotOf };
 }
@@ -97,6 +114,15 @@ export function revealed(s: GameState, w: World, r: number, p = progress(s, w)):
   return r < p.starts[k] + Math.floor(p.reach[k]);
 }
 
+/** Rank of the cell each rover is on (exploring: its arc position; otherwise where it left its arc), or -1. */
+export function botCells(s: GameState, w: World): number[] {
+  const p = progress(s, w);
+  return s.bots.map((_, j) => {
+    const k = p.robotOf.indexOf(j);
+    return k < 0 ? -1 : Math.min(p.starts[k + 1] - 1, p.starts[k] + Math.floor(p.reach[k] + 1e-7));
+  });
+}
+
 export const isComplete = (s: GameState, w: World): boolean =>
   s.ring >= ringCount(w) && s.bots.every((b) => b.trip === 'explore' && b.cargo <= 0);
 
@@ -106,9 +132,10 @@ export function goldPerSec(s: GameState, w: World): number {
   const st = stats(s);
   const a = w.rings[s.ring];
   const b = w.rings[s.ring + 1];
-  const g = ((w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, w.steps[b] - w.steps[a])) * st.loot; // per step
+  const g = ((w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, stepsAt(w, st.grip, b) - stepsAt(w, st.grip, a))) * st.loot; // per step
   if (!(g > 0)) return 0;
-  const perBot = st.cargo / (st.cargo / (g * st.speed) + (2 * homeDistance(s)) / st.travelSpeed);
+  const d = homeDistance(s);
+  const perBot = st.cargo / (st.cargo / (g * st.speed) + d / homeSpeed(st, st.cargo) + d / st.travelSpeed);
   return perBot * s.bots.length;
 }
 
@@ -131,23 +158,27 @@ export interface TickEvents {
 }
 
 /** Arc rover j works on the current ring: [start, end) and its length in steps; null if it has none. */
-function arcOfBot(s: GameState, w: World, j: number, starts: number[]): { lo: number; hi: number; len: number } | null {
+function arcOfBot(s: GameState, w: World, j: number, starts: number[], grip: number): Arc | null {
   const arcs = starts.length - 1;
   if (s.ring >= ringCount(w) || j >= arcs) return null;
   const k = arcOf(s.ring, j, arcs);
   const lo = starts[k];
   const hi = starts[k + 1];
-  return { lo, hi, len: w.steps[hi] - w.steps[lo] };
+  return { lo, hi, len: stepsAt(w, grip, hi) - stepsAt(w, grip, lo) };
 }
 
 /** Cells (with fraction) covered inside an arc after `prog` steps. If the arc is done, all of them
  *  (without depending on rounding when adding steps). */
-const arcReach = (w: World, a: { lo: number; hi: number; len: number }, prog: number): number =>
-  prog >= a.len - EPS ? a.hi - a.lo : cellsReached(w, a.lo, a.hi, w.steps[a.lo] + prog);
+const arcReach = (w: World, grip: number, a: Arc, prog: number): number =>
+  prog >= a.len - EPS ? a.hi - a.lo : cellsReached(w, grip, a.lo, a.hi, stepsAt(w, grip, a.lo) + prog);
 
 /** Bluetreri (before multipliers) collected inside an arc after `prog` steps. */
-const arcGold = (w: World, arc: { lo: number; hi: number }, prog: number): number =>
-  prefixAt(w, arc.lo + cellsReached(w, arc.lo, arc.hi, w.steps[arc.lo] + prog)) - w.goldPrefix[arc.lo];
+const arcGold = (w: World, grip: number, a: Arc, prog: number): number =>
+  prefixAt(w, a.lo + cellsReached(w, grip, a.lo, a.hi, stepsAt(w, grip, a.lo) + prog)) - w.goldPrefix[a.lo];
+
+/** Rank of the cell a rover is on inside its arc after `prog` steps. */
+const cellOf = (w: World, grip: number, a: Arc, prog: number): number =>
+  Math.min(a.hi - 1, a.lo + Math.floor(arcReach(w, grip, a, prog + 1e-7)));
 
 /** Starts the next ring: it is split between all rovers, and new rovers leave camp. */
 function nextRing(s: GameState, w: World, explorers: number): void {
@@ -156,11 +187,12 @@ function nextRing(s: GameState, w: World, explorers: number): void {
   while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s)));
   s.ringRobots = s.bots.length;
   for (const b of s.bots) b.prog = 0;
-  // Detour paths that exploring has caught up with are no longer needed.
+  // Detour paths and fetched items that exploring has caught up with are no longer needed.
   const a = s.ring < ringCount(w) ? w.rings[s.ring] : totalCells(w);
   const kept: number[] = [];
   for (let i = 0; i < s.scouted.length; i += 3) if (s.scouted[i + 2] >= a) kept.push(s.scouted[i], s.scouted[i + 1], s.scouted[i + 2]);
   s.scouted = kept;
+  s.fetched = s.fetched.filter((k) => w.itemRanks[k] >= a || s.bots.some((b) => b.target === k));
 }
 
 function goHome(s: GameState, b: Bot): void {
@@ -173,13 +205,23 @@ function goHome(s: GameState, b: Bot): void {
 export function tick(s: GameState, w: World, dt: number): TickEvents {
   const ev: TickEvents = { specials: [], items: [], deposited: 0 };
   if (dt <= 0) return ev;
-  s.playTime += dt;
   let left = dt;
+  const fetched = new Set(s.fetched);
+  /** Per rover: cells ahead already checked (nothing happens on arriving there) for this ring and sky. */
+  const clearTo: number[] = [];
+  let clearKey = '';
   for (let guard = 0; left > EPS && guard < 500000; guard++) {
     const st = stats(s);
     const live = s.ring < ringCount(w);
+    const key = `${s.ring}/${s.weather.epoch}`;
+    if (key !== clearKey) { clearKey = key; clearTo.length = 0; }
+
+    // The sky changes.
+    const nextSky = (s.weather.epoch + 1) * WEATHER_EPOCH;
+    if (s.playTime >= nextSky - 1e-7) { s.weather = makeWeather(s, w, Math.floor((s.playTime + 1e-7) / WEATHER_EPOCH)); continue; }
+
     const starts = live ? arcStarts(w, s.ring, s.ringRobots) : [totalCells(w)];
-    const arcs = s.bots.map((_, j) => arcOfBot(s, w, j, starts));
+    const arcs = s.bots.map((_, j) => arcOfBot(s, w, j, starts, st.grip));
 
     // Ring done (every arc finished): on to the next.
     if (live && arcs.every((a, j) => !a || s.bots[j].prog >= a.len - EPS)) { nextRing(s, w, st.explorers); continue; }
@@ -194,51 +236,83 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     });
     if (changed) continue;
 
-    // Radar: if the first pending item is already in range, an exploring rover goes to fetch it.
-    if (live && st.radar > 0) {
-      const p = progress(s, w);
-      while (s.radarNext < w.itemRanks.length && revealed(s, w, w.itemRanks[s.radarNext], p)) s.radarNext++;
-      if (s.radarNext < w.itemRanks.length) {
-        const itemRing = ringOfRank(w, w.itemRanks[s.radarNext]);
-        const j = s.bots.findIndex((b, i) => b.trip === 'explore' && arcs[i] && b.prog < arcs[i]!.len - EPS);
-        if (itemRing <= s.ring + st.radar && j >= 0) {
-          const b = s.bots[j];
-          b.trip = 'detour';
-          b.target = s.radarNext++;
-          const arc = arcs[j]!;
-          b.from = Math.min(arc.hi - 1, arc.lo + Math.floor(arcReach(w, arc, b.prog)));
-          b.travel = 0;
-          b.travelLen = 2 * (itemRing - s.ring + 1);
-          continue;
-        }
+    // Radar: a rover that spots an item around it leaves its arc to fetch it.
+    const p = live && st.radar > 0 ? progress(s, w) : null;
+    const spot = (cell: number, own: number) => nearestItem(w, w.order[cell], st.radar, (k) => {
+      const r = w.itemRanks[k];
+      return !fetched.has(k) && r !== own && !revealed(s, w, r, p!);
+    });
+    if (p) {
+      for (let j = 0; j < s.bots.length; j++) {
+        const b = s.bots[j];
+        const a = arcs[j];
+        if (b.trip !== 'explore' || !a || b.prog >= a.len - EPS) continue;
+        const c = cellOf(w, st.grip, a, b.prog);
+        const k = spot(c, c);
+        if (k < 0) continue;
+        fetched.add(k);
+        s.fetched.push(k);
+        b.trip = 'detour';
+        b.target = k;
+        b.from = c;
+        b.travel = 0;
+        b.travelLen = 2 * Math.max(1, kingDistance(w, w.order[c], w.order[w.itemRanks[k]]));
+        changed = true;
       }
     }
+    if (changed) continue;
 
-    // When each rover's next event happens.
-    let step = left;
-    const fullAt: (number | undefined)[] = [];
-    s.bots.forEach((b, j) => {
+    // Each rover's speed right now: storms slow exploring and detours, a full hold slows the drive home.
+    const exploreCell: number[] = [];
+    const speedOf = s.bots.map((b, j) => {
       const a = arcs[j];
       if (b.trip === 'explore') {
+        if (!a || b.prog >= a.len - EPS) return 0;
+        exploreCell[j] = cellOf(w, st.grip, a, b.prog);
+        return st.speed * weatherFactor(s.weather.storms, w.size, w.order[exploreCell[j]], st.armour);
+      }
+      if (b.trip === 'detour') return st.speed * weatherFactor(s.weather.storms, w.size, w.order[b.from], st.armour);
+      if (b.trip === 'home') return homeSpeed(st, b.cargo);
+      return st.travelSpeed;
+    });
+
+    // When each rover's next event happens.
+    let step = Math.min(left, nextSky - s.playTime);
+    const stopAt: (number | undefined)[] = [];
+    s.bots.forEach((b, j) => {
+      const a = arcs[j];
+      const v = speedOf[j];
+      if (b.trip === 'explore') {
         if (!a || b.prog >= a.len - EPS) return; // waits for the others to finish
-        let t = (a.len - b.prog) / st.speed;
+        let target = a.len;
+        // Where the hold fills up: find the exact point (bluetreri grows continuously with the steps).
         const room = st.cargo - b.cargo;
-        const g0 = arcGold(w, a, b.prog);
-        if ((arcGold(w, a, a.len) - g0) * st.loot >= room) {
-          // Where the hold fills up: find the exact point (bluetreri grows continuously with the steps).
+        const g0 = arcGold(w, st.grip, a, b.prog);
+        if ((arcGold(w, st.grip, a, a.len) - g0) * st.loot >= room) {
           let lo = b.prog;
           let hi = a.len;
           for (let i = 0; i < 50; i++) {
             const mid = (lo + hi) / 2;
-            if ((arcGold(w, a, mid) - g0) * st.loot >= room) hi = mid;
+            if ((arcGold(w, st.grip, a, mid) - g0) * st.loot >= room) hi = mid;
             else lo = mid;
           }
-          fullAt[j] = hi;
-          t = Math.min(t, (hi - b.prog) / st.speed);
+          target = hi;
         }
-        step = Math.min(step, t);
+        // The first cell ahead (within reach in this step) where the weather changes or the radar spots something.
+        const c = exploreCell[j];
+        const f = v;
+        const horizon = Math.min(cellOf(w, st.grip, a, Math.min(target, b.prog + v * step)), a.hi - 1);
+        for (let m = Math.max(c + 1, clearTo[j] ?? 0); m <= horizon; m++) {
+          const fm = st.speed * weatherFactor(s.weather.storms, w.size, w.order[m], st.armour);
+          if (fm !== f || (p && spot(m, m) >= 0)) {
+            target = Math.min(target, stepsAt(w, st.grip, m) - stepsAt(w, st.grip, a.lo));
+            break;
+          }
+          clearTo[j] = m + 1;
+        }
+        stopAt[j] = target;
+        step = Math.min(step, (target - b.prog) / v);
       } else {
-        const v = b.trip === 'detour' ? st.speed : st.travelSpeed;
         step = Math.min(step, (b.travelLen - b.travel) / v);
       }
     });
@@ -248,24 +322,25 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     // Everyone advances `step` seconds.
     s.bots.forEach((b, j) => {
       const a = arcs[j];
+      const v = speedOf[j];
       if (b.trip === 'explore') {
         if (!a || b.prog >= a.len - EPS) return;
         const from = b.prog;
-        const full = fullAt[j];
-        let to = Math.min(a.len, from + st.speed * step);
-        if (full !== undefined && to >= full - EPS * Math.max(1, full)) to = full;
-        const g = (arcGold(w, a, to) - arcGold(w, a, from)) * st.loot;
+        const stop = stopAt[j]!;
+        let to = Math.min(stop, from + v * step);
+        if (to >= stop - EPS * Math.max(1, stop)) to = stop;
+        const g = (arcGold(w, st.grip, a, to) - arcGold(w, st.grip, a, from)) * st.loot;
         b.prog = to;
-        b.cargo = full !== undefined && to === full ? st.cargo : Math.min(st.cargo, b.cargo + g);
+        b.cargo = Math.min(st.cargo, b.cargo + g);
+        if (st.cargo - b.cargo < st.cargo * EPS * 10) b.cargo = st.cargo;
         // Cells it has reached: deposits and items.
-        const r0 = a.lo + Math.floor(arcReach(w, a, from));
-        const r1 = a.lo + Math.floor(arcReach(w, a, to));
+        const r0 = a.lo + Math.floor(arcReach(w, st.grip, a, from));
+        const r1 = a.lo + Math.floor(arcReach(w, st.grip, a, to));
         if (r1 > r0) {
           ev.specials.push(...specialsBetween(w, r0, r1));
-          for (const k of itemsBetween(w, r0, r1)) if (k >= s.radarNext) collect(s, w, k, ev);
+          for (const k of itemsBetween(w, r0, r1)) if (!fetched.has(k)) collect(s, w, k, ev, b);
         }
       } else {
-        const v = b.trip === 'detour' ? st.speed : st.travelSpeed;
         b.travel = Math.min(b.travelLen, b.travel + v * step);
         if (b.travel < b.travelLen - EPS) return;
         if (b.trip === 'home') {
@@ -274,11 +349,12 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           s.totalGold = s.totalGold.add(g);
           ev.deposited += b.cargo;
           b.cargo = 0;
+          b.found = 0;
           b.trip = 'out';
           b.travel = 0;
           if (s.ring >= ringCount(w)) b.trip = 'explore';
         } else if (b.trip === 'detour') {
-          collect(s, w, b.target, ev);
+          collect(s, w, b.target, ev, b);
           if (b.from >= 0) {
             const to = w.itemRanks[b.target];
             let max = 0;
@@ -295,7 +371,9 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       }
     });
     left -= step;
+    s.playTime += step;
   }
+  s.playTime += Math.max(0, left);
   const cells = explored(s, w);
   while (s.zoomUnlocked < ZOOMS.length && cells >= unlockAt(w, s.zoomUnlocked - 1)) {
     s.zoomUnlocked++;
@@ -313,9 +391,10 @@ export function fromLegacy(s: GameState, w: World): void {
   delete s.legacyWalked;
 }
 
-function collect(s: GameState, w: World, k: number, ev: TickEvents): void {
+function collect(s: GameState, w: World, k: number, ev: TickEvents, b: Bot): void {
   const r = w.itemRanks[k];
   s.items[ITEMS[w.item[w.order[r]] - 1].id]++;
+  b.found++;
   ev.items.push(r);
 }
 
@@ -337,13 +416,22 @@ export function canBuy(s: GameState, id: StatId, qty = 1): boolean {
   return !!def && s.gold.gte(costOf(def, s.upgrades[id], qty));
 }
 
-export function buy(s: GameState, id: StatId, qty = 1): boolean {
+export function buy(s: GameState, w: World, id: StatId, qty = 1): boolean {
   const def = upgradeById(id);
   if (!def) return false;
   const cost = costOf(def, s.upgrades[id], qty);
   if (s.gold.lt(cost)) return false;
   s.gold = s.gold.sub(cost);
+  // Tyres change how many steps each cell costs: keep every rover on the same cell of its arc.
+  const before = id === 'tyres' ? progress(s, w) : null;
   s.upgrades[id] += qty;
+  if (before) {
+    const grip = stats(s).grip;
+    before.robotOf.forEach((j, k) => {
+      const b = s.bots[j];
+      if (b) b.prog = stepsForReach(w, grip, before.starts[k], before.starts[k + 1], before.reach[k]);
+    });
+  }
   return true;
 }
 

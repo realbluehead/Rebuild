@@ -9,19 +9,29 @@ Exploration idle with a **retro pixel** look, set in a **post-apocalyptic city**
 toxic dumps, toxic water and urban jungle). Top-down view of a 2D map (1024×1024 cells) that starts completely dark;
 rovers reveal it on their own, little by little, over time. 4 zoom levels (Street 16 → District 64 → City 256 → Metropolis 1024
 cells per side); you start at the closest and the next unlocks when 80% of the current zoom's square is revealed.
-- Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`): Engine (speed), Radar (range in rings), Hold (cargo capacity),
-  Rovers. Steps/s = speed × rovers. Bluetreri comes from every cell (terrain × distance) and from deposits.
+- Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), all on the **Rover** tab (3×2 grid): Engine (speed),
+  Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
+  Radar (range in cells around each rover), Rovers (count). Steps/s = speed × rovers. Bluetreri comes from every cell
+  (terrain × distance) and from deposits. Buying or crafting announces the effect (before→after) in a toast.
 - **Independent rovers** (`state.bots[]`, each with `trip`, `prog` along its arc, `cargo`, travel): when a ring starts it is
   split into arcs (`arcStarts`/`arcOf`) and each rover explores its own. Hold full (or arc done with cargo) → back to camp
-  (`trip` home → out → explore, distance = ring + 1, at `TRAVEL_MULT`× the speed) and only then is the bluetreri the player's.
+  (`trip` home → out → explore, distance = ring + 1, at `TRAVEL_MULT`× the speed; the drive home is slower the fuller the hold,
+  `homeSpeed`, `LOAD_DRAG`) and only then is the bluetreri the player's.
   The next ring starts when every arc is done. `tick` advances event by event (the point where the hold fills is found by
-  bisection), so it is exact for any dt (there is a test) and rovers leave and return at different times.
-- **Roughness** (`TERRAINS[].rough`): exploring a cell costs `distance × rough` steps (streets 1, jungle 1.8, towers 2.6…).
-  `cost` only decides the exploration order.
+  bisection; a look-ahead finds the next cell where the weather changes or the radar would spot something; sky changes are
+  events too), so it is exact for any dt (there is a test) and rovers leave and return at different times.
+- **Roughness** (`TERRAINS[].rough`): exploring a cell costs `distance × (1 + grip × (rough − 1))` steps (streets 1, jungle 1.8,
+  towers 2.6…). The world keeps `stepBase` and `stepRough` prefix sums; always use `stepsAt(w, grip, r)`. Buying Tyres rescales each
+  rover's `prog` so it stays on the same cell (`buy` needs the world). `cost` only decides the exploration order.
+- **Weather** (`content/weather.ts`, `core/weather.ts`): every `WEATHER_EPOCH` s of play the sky changes (`s.weather`, stored, made
+  by `makeWeather` from seed + epoch + explored area; none before ring 6, some epochs calm). Storms are static discs (acid, snow,
+  electric) that slow exploring and detours (`weatherFactor`, softened by Body); home/out trips are not affected. Drawn as a
+  translucent textured layer on the map.
 - Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Collected on
   arrival; the Works tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, cost ×1.9 each time.
-- Radar: items up to `radar` rings further out are fetched by an exploring rover (`trip` 'detour', `target`, at exploring speed).
-  `radarNext` is the index of the first item the radar has not gone through. The detour starts from the rover's cell (`Bot.from`)
+- Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that
+  rover fetches it (`trip` 'detour', `target`, at exploring speed × weather). `s.fetched` lists claimed items so exploring does
+  not collect them again (pruned in `nextRing`). The detour starts from the rover's cell (`Bot.from`)
   and the straight path to the item (`pathCells`) is revealed as it walks; finished paths are kept in `state.scouted`
   (triples [fromRank, toRank, maxRank], no bluetreri) and dropped in `nextRing` once exploring has passed them.
   On the map: submarine radar (rotating needle, radius = range) around each rover; detected items light up when the
@@ -29,7 +39,10 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - If the rover leaves the view, an arrow at the edge (away from the buttons) points to it; tapping it flies there. The map never moves on its own.
 - Terrain (`content/world.ts` `T`): height picks water/rubble/city; in the city, streets every 7 cells (`BLOCK`, camp on a crossing)
   and blocks of buildings; humidity makes urban jungle; separate noise makes dump patches. Tiles in `ui/sprites.ts` (8 variants).
-- The currency is **bluetreri** (an invented blue mineral; still `gold` in the code). Legend in the field notes; tapping the map shows the terrain and its value.
+- The currency is **bluetreri** (an invented blue mineral; still `gold` in the code). Legend in the field notes.
+- Bottom-left box (`showCell` in `ui/view.ts`): a tapped cell's terrain, bluetreri (or "mined out"), item taken, storm; with nothing
+  tapped, the rovers' haul (cargo + `Bot.found` items since leaving camp) and the sky. Tapping the box clears the selection.
+- Mined-out cells are drawn drained (desaturated) and lose their deposit crystals; unexplored deposits glint through the fog.
 - UI style: rusted metal (riveted plates, copper buttons) with yellow-and-black hazard details (`--stripes`):
   under the top bar, hold full, notices, restart and the ? button when there are new notes.
 - Help = "Field notes" (`helpEntries` in `ui/view.ts`): each entry appears once the player has found what it explains
@@ -42,10 +55,10 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (cost per terrain + noise) walked by rings and angle: the explored area is always one connected patch (there is a test).
   Offline progress is exact. If generation changes, saves will see a different map.
 - Format: **always a portrait phone**. On mobile it fills the screen; on desktop it is a centred 9:19.5 phone frame (`#app` in `style.css`).
-  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, upgrades in a 2×2 grid at the bottom. Dialogs open inside the phone.
+  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rover/Works tabs at the bottom. Dialogs open inside the phone.
 - Rendering (`ui/map.ts`): low-resolution canvas (~256 logical px on the short side) scaled with crisp pixels; 16×16 tiles generated by
   code (`ui/sprites.ts`, own palette) up close, flat colour further out and a 4×4 mipmap at zoom 4. Bundled pixel fonts (work offline): `Press Start 2P` for numbers and titles (class/var `--font-num`), `VT323` for text (clear digits; Pixelify Sans was dropped because its 5 looked like an S).
-- Current balance (sim, `BASE_SPEED` 0.18 steps/s): zoom 2 ~30 min, zoom 3 ~2 h 30, zoom 4 ~7 h, full map ~24 h (the sim does not buy Radar).
+- Current balance (sim, `BASE_SPEED` 0.18 steps/s): zoom 2 ~45 min, zoom 3 ~3 h 15, zoom 4 ~7 h 20, full map ~17 h 30 (the sim does not buy Radar).
   `BASE_SPEED` scales the whole pace linearly (bluetreri also comes from exploring). For testing: the "Speed ×N" button on the map (×1 to ×100).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.
 

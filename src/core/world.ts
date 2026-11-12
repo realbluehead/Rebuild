@@ -38,13 +38,23 @@ export interface World {
   goldPrefix: Float64Array;
   /** rings[k] = first rank of ring k; the last element is the total cell count. */
   rings: Uint32Array;
-  /** steps[r] = steps needed to have the first r cells revealed (n + 1 values). */
-  steps: Float64Array;
-  /** ringSteps[k] = steps[rings[k]]: the step count at which each ring starts. */
+  /** Steps needed to have the first r cells revealed are `stepBase[r] + grip * stepRough[r]` (n + 1 values):
+   *  the base is the walking distance, the rough part the terrain's extra roughness, which tyres reduce
+   *  (`grip` = 1 without tyres). See `stepsAt`. */
+  stepBase: Float64Array;
+  stepRough: Float64Array;
+  /** ringSteps[k] = steps (grip 1) at which ring k starts. Only for converting old saves. */
   ringSteps: Float64Array;
+  /** Items by area: buckets of ITEM_BUCKET x ITEM_BUCKET cells, `itemCells[itemStart[b]..itemStart[b+1])` holds the
+   *  item indices (into `itemRanks`) of bucket b. For the per-rover radar. */
+  itemStart: Uint32Array;
+  itemCells: Uint32Array;
   /** Per zoom level: sorted ranks of the cells in its square (to know how much of it is revealed). */
   zoomRanks: Uint32Array[];
 }
+
+/** Side of the item buckets (see `World.itemStart`). */
+export const ITEM_BUCKET = 16;
 
 /** City block size: there is a street every BLOCK cells. */
 const BLOCK = 7;
@@ -151,17 +161,31 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
 
   // Steps: reaching cell r means coming from cell r - 1 (king distance: 1 if adjacent), multiplied by the
   // cell's roughness.
-  const steps = new Float64Array(n + 1);
-  steps[1] = 1; // the camp itself
+  const stepBase = new Float64Array(n + 1);
+  const stepRough = new Float64Array(n + 1);
+  stepBase[1] = 1; // the camp itself
   for (let r = 1; r < n; r++) {
     const p = order[r - 1];
     const q = order[r];
     const d = Math.max(Math.abs((p % size) - (q % size)), Math.abs(Math.floor(p / size) - Math.floor(q / size)));
     // Entering and exploring the cell costs by terrain roughness (streets are fast, jungle and rubble slow).
-    steps[r + 1] = steps[r] + d * TERRAINS[terrain[q]].rough;
+    stepBase[r + 1] = stepBase[r] + d;
+    stepRough[r + 1] = stepRough[r] + d * (TERRAINS[terrain[q]].rough - 1);
   }
   const ringSteps = new Float64Array(count.length);
-  for (let k = 0; k < count.length; k++) ringSteps[k] = steps[count[k]];
+  for (let k = 0; k < count.length; k++) ringSteps[k] = stepBase[count[k]] + stepRough[count[k]];
+
+  const nb = Math.ceil(size / ITEM_BUCKET);
+  const itemStart = new Uint32Array(nb * nb + 1);
+  const bucketOf = (k: number) => {
+    const i = order[itemRanks[k]];
+    return Math.floor(Math.floor(i / size) / ITEM_BUCKET) * nb + Math.floor((i % size) / ITEM_BUCKET);
+  };
+  for (let k = 0; k < itemRanks.length; k++) itemStart[bucketOf(k) + 1]++;
+  for (let b = 1; b <= nb * nb; b++) itemStart[b] += itemStart[b - 1];
+  const itemCells = new Uint32Array(itemRanks.length);
+  const put = itemStart.slice();
+  for (let k = 0; k < itemRanks.length; k++) itemCells[put[bucketOf(k)]++] = k;
 
   const zoomRanks = ZOOMS.map(({ view }) => {
     const x0 = Math.max(0, cx - (view >> 1));
@@ -174,7 +198,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     return out.sort();
   });
 
-  return { seed, size, cx, cy, terrain, special, item, itemRanks, order, rank, goldPrefix, rings: count, steps, ringSteps, zoomRanks };
+  return { seed, size, cx, cy, terrain, special, item, itemRanks, order, rank, goldPrefix, rings: count, stepBase, stepRough, ringSteps, itemStart, itemCells, zoomRanks };
 }
 
 const SQRT2 = Math.SQRT2;
@@ -254,8 +278,11 @@ class MinHeap {
 }
 
 export const totalCells = (w: World): number => w.size * w.size;
+/** Steps needed to have the first r cells revealed, with tyre grip `grip` (1 = no tyres). */
+export const stepsAt = (w: World, grip: number, r: number): number => w.stepBase[r] + grip * w.stepRough[r];
+
 /** Steps needed to explore the whole map. */
-export const totalSteps = (w: World): number => w.steps[totalCells(w)];
+export const totalSteps = (w: World, grip = 1): number => stepsAt(w, grip, totalCells(w));
 
 /** Bluetreri (before multipliers) of the cells between positions a and b (fractions included). */
 export function goldBetween(w: World, a: number, b: number): number {
@@ -275,19 +302,68 @@ export function ringAt(w: World, walked: number): number {
   return lo;
 }
 
-/** Cells (with fraction) covered inside the arc [lo, hi) when the rover is at `t` total steps. */
-export function cellsReached(w: World, lo: number, hi: number, t: number): number {
-  const st = w.steps;
-  // Largest m with steps[m] <= t: cells < m are already revealed.
+/** Cells (with fraction) covered inside the arc [lo, hi) when the rover is at `t` total steps (tyre grip `grip`). */
+export function cellsReached(w: World, grip: number, lo: number, hi: number, t: number): number {
+  // Largest m with steps(m) <= t: cells < m are already revealed.
   let a = lo;
   let b = hi;
   while (a < b) {
     const mid = (a + b + 1) >> 1;
-    if (st[mid] <= t) a = mid;
+    if (stepsAt(w, grip, mid) <= t) a = mid;
     else b = mid - 1;
   }
   if (a >= hi) return hi - lo;
-  return a - lo + Math.max(0, (t - st[a]) / (st[a + 1] - st[a]));
+  const s0 = stepsAt(w, grip, a);
+  return a - lo + Math.max(0, (t - s0) / (stepsAt(w, grip, a + 1) - s0));
+}
+
+/** Steps along the arc [lo, hi) needed to cover `reach` cells (the inverse of `cellsReached`). */
+export function stepsForReach(w: World, grip: number, lo: number, hi: number, reach: number): number {
+  if (reach >= hi - lo) return stepsAt(w, grip, hi) - stepsAt(w, grip, lo);
+  const m = lo + Math.floor(reach);
+  const s0 = stepsAt(w, grip, m);
+  return s0 + (reach - Math.floor(reach)) * (stepsAt(w, grip, m + 1) - s0) - stepsAt(w, grip, lo);
+}
+
+/** Calls `fn(k, d2)` for every item (index into `itemRanks`) within `radius` cells (Euclidean) of map cell `cell`,
+ *  where d2 is the squared distance. */
+export function forItemsNear(w: World, cell: number, radius: number, fn: (k: number, d2: number) => void): void {
+  const { size, itemStart, itemCells, itemRanks, order } = w;
+  const nb = Math.ceil(size / ITEM_BUCKET);
+  const x = cell % size;
+  const y = Math.floor(cell / size);
+  const bx0 = Math.max(0, Math.floor((x - radius) / ITEM_BUCKET));
+  const bx1 = Math.min(nb - 1, Math.floor((x + radius) / ITEM_BUCKET));
+  const by0 = Math.max(0, Math.floor((y - radius) / ITEM_BUCKET));
+  const by1 = Math.min(nb - 1, Math.floor((y + radius) / ITEM_BUCKET));
+  const r2 = radius * radius;
+  for (let by = by0; by <= by1; by++) {
+    for (let bx = bx0; bx <= bx1; bx++) {
+      const b = by * nb + bx;
+      for (let q = itemStart[b]; q < itemStart[b + 1]; q++) {
+        const k = itemCells[q];
+        const i = order[itemRanks[k]];
+        const d2 = ((i % size) - x) ** 2 + (Math.floor(i / size) - y) ** 2;
+        if (d2 <= r2) fn(k, d2);
+      }
+    }
+  }
+}
+
+/** Nearest item within `radius` of `cell` that `accept` lets through (ties: lowest index); -1 if none. */
+export function nearestItem(w: World, cell: number, radius: number, accept: (k: number) => boolean): number {
+  let best = -1;
+  let bestD = Infinity;
+  forItemsNear(w, cell, radius, (k, d2) => {
+    if ((d2 < bestD || (d2 === bestD && k < best)) && accept(k)) { best = k; bestD = d2; }
+  });
+  return best;
+}
+
+/** King (8-neighbour) distance between two map cells. */
+export function kingDistance(w: World, a: number, b: number): number {
+  const { size } = w;
+  return Math.max(Math.abs((a % size) - (b % size)), Math.abs(Math.floor(a / size) - Math.floor(b / size)));
 }
 
 /** Number of rings (the last valid index is ringCount - 1). */
