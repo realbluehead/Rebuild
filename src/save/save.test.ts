@@ -28,6 +28,9 @@ describe('save', () => {
     s.bots[0].bag = [1, 0, 2];
     s.bots[0].found = 3;
     s.bots[0].up.tyres = 2;
+    s.routes = ['random', 'circular'];
+    s.bots[0].route = 'circular';
+    s.plan = [[1, 'random', 0], [9, [['circular', 1], ['random', 0]]]];
     s.zoomUnlocked = 3;
     s.zoom = 2;
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));
@@ -37,6 +40,7 @@ describe('save', () => {
     expect(state.weather).toEqual(s.weather);
     expect(state.bots).toEqual(s.bots);
     expect(state.upgrades.speed).toBe(7);
+    expect(state.plan).toEqual(s.plan);
     expect(state.items.page).toBe(7);
     expect(state.works.cd).toBe(2);
     expect(state.legacyWalked).toBeUndefined();
@@ -105,6 +109,7 @@ describe('save', () => {
     expect(state.recount).toBe(true); // v8 -> v9: items recounted once the world loads
     expect(state.mined).toEqual([]); // v10 -> v11
     for (const b of state.bots) { expect(b.bag).toEqual([0, 0, 0]); expect(b.found).toBe(0); } // v12 -> v13: already counted
+    for (const b of state.bots) expect(b.route).toBe('circular'); // v14 -> v15: the fleet's route
     const back = deserialize(JSON.parse(JSON.stringify(serialize({ ...state, routeLevels: { circular: 2, random: 3 }, plan: [...state.plan, [40, 'circular', 2]], doneAt: 50 }, 0)))).state;
     expect(back.routeLevels).toEqual({ circular: 2 }); // Random has no levels
     expect(back.plan.at(-1)).toEqual([40, 'circular', 2]);

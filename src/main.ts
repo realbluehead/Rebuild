@@ -61,12 +61,12 @@ async function boot() {
     upgradeRoute: (id) => {
       if (!upgradeRoute(state, world, id)) return;
       const lv = routeLevel(state, id);
-      view.toast(`${routeById(id)!.name} lv${lv}: less entropy${state.route === id ? '\nfrom the next ring' : ''}`);
+      view.toast(`${routeById(id)!.name} lv${lv}: less entropy${state.bots.some((b) => b.route === id) ? '\nfrom the next ring' : ''}`);
       void save();
     },
-    chooseRoute: (id) => {
-      if (!chooseRoute(state, id)) return;
-      view.toast(`Route: ${routeById(id)!.name}\nfrom the next ring`);
+    chooseRoute: (id, rover) => {
+      if (!chooseRoute(state, id, rover)) return;
+      view.toast(`${rover === undefined ? 'All rovers' : `Rover #${rover + 1}`} · ${routeById(id)!.name}\nfrom the next ring`);
       void save();
     },
     craft: (id) => {

@@ -6,7 +6,7 @@ import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
-import { applyPlan, createWorld, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
+import { applyPlan, arcOf, arcStarts, createWorld, sectorAt, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
 import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { WORKS, WORKS_MAX } from '../content/collection';
 
@@ -24,7 +24,7 @@ const fullWorld = () => (big ??= createWorld(7));
 const newGame = (seed?: number) => {
   const s = freshGame(seed);
   s.routes.push('circular');
-  s.route = 'circular';
+  chooseRoute(s, 'circular');
   return s;
 };
 
@@ -586,6 +586,7 @@ describe('routes', () => {
     const plans: PlanEntry[] = [
       ...ROUTES.flatMap((r) => [[10, r.id, 0], [10, r.id, ROUTE_MAX_LEVEL]] as PlanEntry[]),
       ...(['north', 'south', 'east', 'west', 'random'] as RouteId[]).map((id) => [10, id] as PlanEntry), // legacy
+      [10, [['prospect', 2], ['circular', 0], ['random', 0]]], // one route per rover slice
     ];
     for (const entry of plans) {
       const w = createWorld(42, SIZE);
@@ -642,6 +643,57 @@ describe('routes', () => {
     expect(again.order).toEqual(w.order);
   });
 
+  it('each rover can follow its own route in its slice of the map', () => {
+    const w = createWorld(42, SIZE);
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 30, cargo: 20, radar: 2, explorers: 2 });
+    s.routes = ROUTES.map((r) => r.id);
+    const items = new Set<number>();
+    let specials = 0;
+    let picked = false;
+    for (let t = 0; t < 100000 && !isComplete(s, w); t += 0.1) {
+      if (!picked && s.bots.length === 3 && s.ring >= 12) {
+        picked = true;
+        expect(chooseRoute(s, 'prospect', 1)).toBe(true);
+        expect(chooseRoute(s, 'random', 2)).toBe(true);
+        expect(chooseRoute(s, 'north', 0)).toBe(false); // not offered
+      }
+      const e = tick(s, w, 0.1);
+      specials += e.specials.length;
+      for (const i of e.items) { expect(items.has(i)).toBe(false); items.add(i); }
+    }
+    tick(s, w, 1);
+    expect(isComplete(s, w)).toBe(true);
+    const mixed = s.plan.at(-1)!;
+    expect(mixed[1]).toEqual([['circular', 0], ['prospect', 0], ['random', 0]]);
+    expect(items.size).toBe(w.itemRanks.length);
+    expect(specials).toBe(w.special.reduce((a, b) => a + b, 0));
+    expect(s.totalGold.toNumber() / w.goldPrefix[totalCells(w)]).toBeCloseTo(1, 6);
+    // Loading the game rebuilds the same order from the plan.
+    const again = createWorld(42, SIZE);
+    applyPlan(again, s.plan);
+    expect(again.order).toEqual(w.order);
+    // Each rover's slice follows its route: the Prospector's slice is ordered differently from a plain circular one.
+    const plain = createWorld(42, SIZE);
+    applyPlan(plain, [...s.plan.slice(0, -1), [mixed[0], 'circular', 0]]);
+    const from = w.rings[mixed[0]];
+    const slice = (x: World, k: number) => Array.from(x.order.subarray(from)).filter((i) => sectorAt(x, i, 3) === k).slice(0, 400);
+    expect(slice(w, 1)).not.toEqual(slice(plain, 1));
+    // Each rover's arc of a ring is (nearly all) its own slice.
+    for (let ring = mixed[0]; ring < Math.min(ringCount(w), mixed[0] + 20); ring++) {
+      const st = arcStarts(w, ring, 3);
+      for (let j = 0; j < 3; j++) {
+        const k = arcOf(ring, j, 3);
+        let own = 0;
+        for (let r = st[k]; r < st[k + 1]; r++) if (sectorAt(w, w.order[r], 3) === j) own++;
+        expect(own).toBeGreaterThanOrEqual(0.6 * (st[k + 1] - st[k]));
+      }
+    }
+    // Picking the same route for everyone goes back to a single entry.
+    expect(chooseRoute(s, 'survey')).toBe(true);
+    expect(s.bots.every((b) => b.route === 'survey')).toBe(true);
+  });
+
   it('with a route switch, one long tick still gives the same as many short ones', () => {
     const wa = createWorld(42, SIZE);
     const wb = createWorld(42, SIZE);
@@ -650,7 +702,7 @@ describe('routes', () => {
     for (const s of [a, b]) {
       Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 2 });
       s.routes.push('prospect');
-      s.route = 'prospect';
+      chooseRoute(s, 'prospect');
       s.routeLevels.prospect = 2;
     }
     tick(a, wa, 600);

@@ -3,7 +3,7 @@
 // Usage: npx vite-node tools/routes.ts [-- warmHours runHours seed]
 import { UPGRADES } from '../src/content/upgrades';
 import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../src/content/routes';
-import { buy, canBuy, costOf, explored, goldPerSec, stats, TICK_SEC, tick } from '../src/core/game';
+import { buy, canBuy, chooseRoute, costOf, explored, goldPerSec, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { applyPlan, createWorld } from '../src/core/world';
 import { deserialize, serialize } from '../src/save/save';
@@ -40,7 +40,7 @@ function trial(route: RouteId, level: number): [number, number] {
   const w = createWorld(seed);
   applyPlan(w, s.plan);
   s.routes = ROUTES.map((r) => r.id);
-  s.route = route;
+  chooseRoute(s, route);
   s.routeLevels = { [route]: level };
   const g0 = s.totalGold.toNumber();
   const c0 = explored(s, w);

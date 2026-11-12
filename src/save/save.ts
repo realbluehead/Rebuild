@@ -23,9 +23,10 @@ import { STORMS } from '../content/weather';
 import { WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
+import type { PlanEntry } from '../core/world';
 import { ROVER_STATS } from '../content/upgrades';
 
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
 
 /** What the v7 routes cost, refunded when they are withdrawn (random stays unlocked, but its old price is refunded too). */
 const V7_PRICES: Record<string, [number, Record<string, number>]> = {
@@ -56,7 +57,7 @@ export interface SaveData {
   routes: RouteId[];
   route: RouteId;
   routeLevels: Partial<Record<RouteId, number>>;
-  plan: ([number, RouteId] | [number, RouteId, number])[];
+  plan: PlanEntry[];
   weather: { epoch: number; storms: Storm[]; nextId: number };
   scouted: number[];
   mined: number[];
@@ -141,6 +142,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   12: (s) => ({ ...s, v: 13, bots: (Array.isArray(s.bots) ? (s.bots as Bot[]) : []).map((b) => ({ ...b, found: 0, bag: [0, 0, 0] })) }),
   // v13 -> v14: no rover has levels of its own yet (deserialize fills them with 0).
   13: (s) => ({ ...s, v: 14 }),
+  // v14 -> v15: every rover follows the route the fleet had picked.
+  14: (s) => ({ ...s, v: 15, bots: (Array.isArray(s.bots) ? (s.bots as Bot[]) : []).map((b) => ({ ...b, route: s.route })) }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -161,7 +164,7 @@ export function serialize(s: GameState, now: number): SaveData {
     routes: [...s.routes],
     route: s.route,
     routeLevels: { ...s.routeLevels },
-    plan: s.plan.map((p) => [...p] as [number, RouteId] | [number, RouteId, number]),
+    plan: s.plan.map((p) => (typeof p[1] === 'string' ? [...p] : [p[0], p[1].map((x) => [...x])]) as PlanEntry),
     weather: { epoch: s.weather.epoch, storms: s.weather.storms.map((st) => ({ ...st })), nextId: s.weather.nextId },
     scouted: [...s.scouted],
     mined: [...s.mined],
@@ -213,8 +216,16 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.plan = [];
   for (const p of Array.isArray(data.plan) ? data.plan : []) {
     const ring = Math.floor(num(p?.[0]));
-    if (!isPlanned(p?.[1]) || ring <= (state.plan.at(-1)?.[0] ?? -1)) continue;
-    state.plan.push(p.length > 2 ? [ring, p[1], Math.min(ROUTE_MAX_LEVEL, Math.floor(num(p[2])))] : [ring, p[1]]);
+    if (ring <= (state.plan.at(-1)?.[0] ?? -1)) continue;
+    const lv = (x: unknown) => Math.min(ROUTE_MAX_LEVEL, Math.floor(num(x)));
+    if (Array.isArray(p?.[1])) {
+      // One [route, level] per rover slice.
+      const sectors = (p[1] as unknown[]).filter((x): x is [RouteId, number] => Array.isArray(x) && isRoute(x[0])).map(([r, l]) => [r, lv(l)] as const);
+      if (sectors.length) state.plan.push(sectors.length === (p[1] as unknown[]).length ? [ring, sectors] : [ring, sectors[0][0], sectors[0][1]]);
+      continue;
+    }
+    if (!isPlanned(p?.[1])) continue;
+    state.plan.push(p.length > 2 ? [ring, p[1], lv(p[2])] : [ring, p[1]]);
   }
   const kinds = STORMS.map((d) => d.id) as string[];
   state.weather = {
@@ -240,6 +251,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
     bot.bag = [0, 1, 2].map((q) => Math.floor(num(Array.isArray(b?.bag) ? b.bag[q] : 0)));
     bot.found = bot.bag.reduce((x, y) => x + y, 0);
     for (const id of ROVER_STATS) bot.up[id] = Math.floor(num(b?.up?.[id]));
+    bot.route = isRoute(b?.route) && state.routes.includes(b.route) ? b.route : state.route;
     bot.walked = bot.trip === 'detour' ? Math.floor(num(b?.walked)) : 0;
     const log = b?.log;
     bot.log = {

@@ -4,7 +4,7 @@ import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '..
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { activeSector, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -15,7 +15,8 @@ import { COIN, FLAT, ITEM_SPRITES, spriteCanvas } from './sprites';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
-  chooseRoute(id: RouteId): void;
+  /** Rover `rover` follows route `id` from the next ring (every rover without `rover`). */
+  chooseRoute(id: RouteId, rover?: number): void;
   upgradeRoute(id: RouteId): void;
   /** Buys a level of `id` for rover `rover` (the rover count is for the fleet). */
   buy(id: StatId, rover: number): void;
@@ -238,23 +239,35 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   tabRoutes.addEventListener('click', () => showTab(1));
   tabLibrary.addEventListener('click', () => showTab(2));
   const list = h('div', 'list rover');
-  // Upgrades are per rover: pick which one the cards buy for (the Rovers card is for the whole fleet).
+  // Upgrades and routes are per rover: pick which one the cards are for (the Rovers card is for the whole fleet). The
+  // Routes tab can also pick for every rover at once.
   let rover = 0;
-  const picker = h('div', 'rover-pick');
-  list.append(picker);
+  let allRoutes = false;
+  const pickers = [h('div', 'rover-pick'), h('div', 'rover-pick')];
+  list.append(pickers[0]);
   let pickerCount = -1;
   function fillPicker(s: GameState) {
     if (rover >= s.bots.length) rover = 0;
     if (pickerCount !== s.bots.length) {
       pickerCount = s.bots.length;
-      picker.replaceChildren(h('span', 'pick-label', 'Rover'));
-      s.bots.forEach((_, j) => {
-        const b = h('button', 'px-btn pick', `#${j + 1}`);
-        b.addEventListener('click', () => { rover = j; map.focus = j; map.goToRobot(); });
-        picker.append(b);
+      pickers.forEach((picker, q) => {
+        picker.replaceChildren(h('span', 'pick-label', 'Rover'));
+        s.bots.forEach((_, j) => {
+          const b = h('button', 'px-btn pick', `#${j + 1}`);
+          b.addEventListener('click', () => { rover = j; allRoutes = false; map.focus = j; map.goToRobot(); });
+          picker.append(b);
+        });
+        if (q === 1 && s.bots.length > 1) {
+          const all = h('button', 'px-btn pick all', 'All');
+          all.addEventListener('click', () => { allRoutes = true; });
+          picker.append(all);
+        }
       });
     }
-    [...picker.querySelectorAll('.pick')].forEach((b, j) => b.classList.toggle('on', j === rover));
+    pickers.forEach((picker, q) => {
+      const all = q === 1 && allRoutes && s.bots.length > 1;
+      [...picker.querySelectorAll('.pick')].forEach((b, j) => b.classList.toggle('on', all ? b.classList.contains('all') : j === rover));
+    });
   }
   // Rover parts in a 3x2 grid: everything within thumb reach, no scrolling.
   const rows = UPGRADES.map((u) => {
@@ -283,6 +296,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Exploration routes: unlock with bluetreri + items, then pick the one the rovers follow from the next ring.
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
+  routesList.append(pickers[1]);
   const routeCards = ROUTES.map((rd) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
@@ -293,7 +307,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.addEventListener('click', () => {
       const s = current;
       if (!s) return;
-      if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id);
+      if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id, allRoutes && s.bots.length > 1 ? undefined : rover);
       else actions.unlockRoute(rd.id);
     });
     // Next level: less entropy (shown once the route is unlocked).
@@ -670,8 +684,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
       tabLibrary.classList.toggle('alert', ready);
-      const active = activeRoute(s);
-      const activeLv = activeLevel(s);
+      const forAll = allRoutes && s.bots.length > 1;
+      const who = forAll ? s.bots.map((_, j) => j) : [rover];
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
       set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
@@ -690,12 +704,14 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
           c.up.style.display = 'none'; // (the hidden attribute loses to the button's display rule)
         } else {
-          const running = active === id && activeLv === lv;
-          const pending = s.route === id && !running;
+          const running = who.every((j) => { const [r, l] = activeSector(s, j); return r === id && l === lv; });
+          const picked = who.every((j) => s.bots[j].route === id);
+          const pending = picked && !running;
+          const users = s.bots.flatMap((b, j) => (b.route === id ? [`#${j + 1}`] : []));
           set(c.state, c.rd.maxLevel ? `lv${lv}` : '');
-          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : c.rd.short);
-          label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
-          c.btn.classList.toggle('can', s.route !== id);
+          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : s.bots.length > 1 && users.length ? `rovers ${users.join(' ')}` : c.rd.short);
+          label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : forAll ? 'Use for all' : 'Use');
+          c.btn.classList.toggle('can', !picked);
           const next = routeUpgradeCost(s, id);
           c.up.style.display = c.rd.maxLevel ? '' : 'none'; // Random has no levels
           const upNeed = routeLevelNeeded(world, id, lv + 1);

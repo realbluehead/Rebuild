@@ -14,7 +14,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
 import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteId } from '../content/routes';
-import { arcOf, arcStarts, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
+import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 
 export const TICK_RATE = 10; // ticks per second
@@ -56,9 +56,11 @@ export function stats(s: GameState, b: Bot | undefined = s.bots[0]): Stats {
   };
 }
 
-/** A new rover is built to the standard of the weakest one already out: each of its levels is the lowest among them. */
+/** A new rover is built to the standard of the weakest one already out: each of its levels is the lowest among them. It
+ *  follows the route last picked. */
 export function newRover(s: GameState, b: Bot = newBot()): Bot {
   if (s.bots.length) for (const id of ROVER_STATS) b.up[id] = Math.min(...s.bots.map((x) => x.up[id]));
+  b.route = s.route;
   return b;
 }
 
@@ -304,8 +306,8 @@ const cellOf = (w: World, grip: number, a: Arc, prog: number): number =>
 function nextRing(s: GameState, w: World, explorers: number): void {
   s.ring++;
   while (s.ring < ringCount(w) && w.rings[s.ring + 1] === w.rings[s.ring]) s.ring++;
-  if (s.ring < ringCount(w) && (s.route !== activeRoute(s) || routeLevel(s, s.route) !== activeLevel(s))) switchRoute(s, w);
   while (s.bots.length < explorers) s.bots.push(newRover(s, newBot('out', homeDistance(s, w), s.playTime)));
+  if (s.ring < ringCount(w) && sectorsKey(roverSectors(s)) !== sectorsKey(activeSectors(s))) switchRoute(s, w);
   s.ringRobots = s.bots.length;
   for (const b of s.bots) b.prog = 0;
   // Detour paths and fetched items that exploring has caught up with are no longer needed.
@@ -317,23 +319,37 @@ function nextRing(s: GameState, w: World, explorers: number): void {
   s.fetched = s.fetched.filter((k) => w.itemRanks[k] >= a || s.bots.some((b) => b.target === k));
 }
 
-/** The route the map is ordered by right now. */
-export const activeRoute = (s: GameState): RouteId => (s.plan.length ? s.plan[s.plan.length - 1][1] : 'circular');
-/** The entropy level of the active route (the starting circular order, and legacy entries, count as level 0). */
-export const activeLevel = (s: GameState): number => (s.plan.length ? (s.plan[s.plan.length - 1][2] ?? 0) : 0);
+/** [route, level] per slice of the map the rovers explore right now (a single one when they all follow the same). */
+export function activeSectors(s: GameState): readonly Sector[] {
+  const e = s.plan.at(-1);
+  if (!e) return [['circular', 0]]; // the starting order
+  return planSectors(e) ?? [[e[1] as RouteId, 0]]; // legacy entries count as level 0
+}
+/** [route, level] rover j explores its slice with right now. */
+export function activeSector(s: GameState, j: number): Sector {
+  const a = activeSectors(s);
+  return a.length === 1 ? a[0] : a[j] ?? a[0];
+}
+/** [route, level] per rover as they picked them (it takes over at the next ring). */
+export const roverSectors = (s: GameState): Sector[] => s.bots.map((b) => [b.route, routeLevel(s, b.route)]);
+/** Same key for the same order: one route for all compares equal whatever the rover count. */
+const sectorsKey = (x: readonly Sector[]): string => {
+  const keys = x.map(([r, l]) => `${r}:${l}`);
+  return keys.every((k) => k === keys[0]) ? keys[0] : keys.join(',');
+};
 /** Level bought for route `id`. */
 export const routeLevel = (s: GameState, id: RouteId): number => s.routeLevels[id] ?? 0;
 
-/** At the start of ring `s.ring`: re-orders the dark part of the map by the chosen route. Items and paths that are
+/** At the start of ring `s.ring`: re-orders the dark part of the map by the routes the rovers picked (each one its slice). Items and paths that are
  *  remembered by rank or item index are carried over by cell. */
 function switchRoute(s: GameState, w: World): void {
   const itemCell = (k: number) => w.order[w.itemRanks[k]];
   const fetchedCells = s.fetched.map(itemCell);
   const targetCells = s.bots.map((b) => (b.target >= 0 ? itemCell(b.target) : -1));
   const scoutCells = s.scouted.map((r) => w.order[r]);
-  const level = routeLevel(s, s.route);
-  reorder(w, s.ring, s.route, level);
-  s.plan.push([s.ring, s.route, level]);
+  const entry = planEntry(s.ring, roverSectors(s));
+  reorder(w, s.ring, planSectors(entry)!);
+  s.plan.push(entry);
   const itemIndex = new Map(Array.from(w.itemRanks, (r, k) => [w.order[r], k]));
   s.fetched = fetchedCells.map((i) => itemIndex.get(i)!);
   s.bots.forEach((b, j) => { if (targetCells[j] >= 0) b.target = itemIndex.get(targetCells[j])!; });
@@ -818,10 +834,12 @@ export function upgradeRoute(s: GameState, w: World, id: RouteId): boolean {
   return true;
 }
 
-/** Picks the route the rovers follow from the next ring on. */
-export function chooseRoute(s: GameState, id: RouteId): boolean {
-  if (!s.routes.includes(id)) return false;
+/** Picks the route rover `j` follows in its slice of the map from the next ring on (every rover without `j`). New rovers
+ *  follow the last route picked. */
+export function chooseRoute(s: GameState, id: RouteId, j?: number): boolean {
+  if (!s.routes.includes(id) || (j !== undefined && !s.bots[j])) return false;
   s.route = id;
+  for (const [k, b] of s.bots.entries()) if (j === undefined || k === j) b.route = id;
   return true;
 }
 

@@ -4,6 +4,7 @@ import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
 import type { RouteId } from '../content/routes';
+import type { PlanEntry } from './world';
 
 /** What a rover is doing: exploring its part of the ring, returning to camp to unload, heading back out to
  *  the frontier, or fetching an item the radar spotted. */
@@ -34,6 +35,8 @@ export interface Bot {
   log: BotLog;
   /** Levels bought for this rover alone, on top of the fleet's base levels (`GameState.upgrades`). */
   up: Record<RoverStat, number>;
+  /** Exploration route it follows in its slice of the map, from the next ring (one of `GameState.routes`). */
+  route: RouteId;
 }
 
 /** A rover's lifetime record. Saves from before it existed start at 0, with `since` -1 (unknown). */
@@ -59,7 +62,7 @@ export interface BotLog {
 export const newLog = (since = 0): BotLog => ({ since, cells: 0, steps: 0, gold: 0, best: 0, items: 0, trips: 0, detours: 0, gaveUp: 0 });
 
 export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0): Bot =>
-  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since), up: newUp() });
+  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since), up: newUp(), route: 'random' });
 
 export const newUp = (): Record<RoverStat, number> => Object.fromEntries(ROVER_STATS.map((id) => [id, 0])) as Record<RoverStat, number>;
 
@@ -111,14 +114,15 @@ export interface GameState {
    *  exploration, so exploring does not collect them again. Dropped once exploring has passed them. */
   fetched: number[];
   weather: Weather;
-  /** Exploration routes unlocked, the one the player picked, and the ones applied so far: [ring, route] pairs (the
-   *  map's order is rebuilt from them, since the world itself is never saved). */
+  /** Exploration routes unlocked, and the one last picked (new rovers follow it; each rover has its own `Bot.route`). */
   routes: RouteId[];
   route: RouteId;
   /** Entropy level bought for each route (missing = 0): higher levels stray less. */
   routeLevels: Partial<Record<RouteId, number>>;
-  /** [ring, route, level] entries; saves from before levels have [ring, route] (legacy fields, see `applyPlan`). */
-  plan: ([number, RouteId] | [number, RouteId, number])[];
+  /** Routes applied so far (the map's order is rebuilt from them, since the world itself is never saved): [ring, route,
+   *  level] entries, or [ring, [route, level] per rover] when the rovers follow different routes; saves from before
+   *  levels have [ring, route] (legacy fields, see `applyPlan`). */
+  plan: PlanEntry[];
   /** Cells (map indices) mined on radar detours ahead of normal exploration: exploring gets no bluetreri from them.
    *  Dropped once exploring has passed them. */
   mined: number[];

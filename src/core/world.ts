@@ -40,6 +40,10 @@ export interface World {
   fields: Map<RouteId, Float32Array>;
   /** Bumped whenever the order changes (a new route), so views can refresh what they derived from it. */
   version: number;
+  /** When the rovers follow different routes: how many slices the map is split into (1 = one route for all), from ring
+   *  `slicesFrom` on. Each ring's arcs are then cut at the slice boundaries (see `arcStarts`). */
+  slices: number;
+  slicesFrom: number;
   /** order[r] = cell revealed at position r. */
   order: Uint32Array;
   /** rank[i] = position at which cell i is revealed. */
@@ -163,7 +167,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     rank: new Uint32Array(n), goldPrefix: new Float64Array(n + 1), rings: count,
     stepBase: new Float64Array(n + 1), stepRough: new Float64Array(n + 1), ringSteps: new Float64Array(0),
     itemRanks: new Uint32Array(0), itemStart: new Uint32Array(0), itemCells: new Uint32Array(0), zoomRanks: [],
-    value, cost, road: Float32Array.from(D), fields: new Map(), version: 0,
+    value, cost, road: Float32Array.from(D), fields: new Map(), version: 0, slices: 1, slicesFrom: 0,
   };
   derive(w, 0);
   return w;
@@ -222,21 +226,50 @@ function derive(w: World, a: number): void {
 }
 
 
-/** One applied route: from ring `ring` on, the map is ordered by `route` at entropy level `level`. Entries saved
- *  before levels existed have no level and use the old (legacy) fields. */
-export type PlanEntry = readonly [number, RouteId] | readonly [number, RouteId, number];
+/** One rover's slice of a mixed route: [route, entropy level]. */
+export type Sector = readonly [RouteId, number];
+/** One applied route: from ring `ring` on, the map is ordered by `route` at entropy level `level`, or, when the rovers
+ *  follow different routes, by one [route, level] per rover: rover j's slice of the map around camp (see `sectorAt`)
+ *  follows sector j. Entries saved before levels existed have no level and use the old (legacy) fields. */
+export type PlanEntry = readonly [number, RouteId] | readonly [number, RouteId, number] | readonly [number, readonly Sector[]];
+
+/** The [route, level] per slice of a plan entry (one for a single route), or null for a legacy entry. */
+export function planSectors(e: PlanEntry): readonly Sector[] | null {
+  if (typeof e[1] !== 'string') return e[1];
+  return e.length > 2 ? [[e[1], (e as readonly [number, RouteId, number])[2]]] : null;
+}
+
+/** The plan entry for ring `ring` with these slices: a single [ring, route, level] when every rover follows the same. */
+export function planEntry(ring: number, sectors: readonly Sector[]): PlanEntry {
+  const [r, l] = sectors[0];
+  return sectors.every(([r2, l2]) => r2 === r && l2 === l) ? [ring, r, l] : [ring, sectors.map(([r2, l2]) => [r2, l2] as Sector)];
+}
 
 /** Rebuilds a world's order from a game's route history (see `GameState.plan`). */
 export function applyPlan(w: World, plan: readonly PlanEntry[]): void {
   let from = Infinity;
-  plan.forEach(([ring, route, level], k) => {
+  plan.forEach((e, k) => {
+    const ring = e[0];
     if (ring >= w.rings.length - 1) return;
     from = Math.min(from, w.rings[ring]);
     // Only the rings up to the next entry matter: that one re-sorts everything after them. The derived tables are
     // rebuilt once at the end.
-    reorder(w, ring, route, level, plan[k + 1]?.[0], k < plan.length - 1);
+    const upto = plan[k + 1]?.[0];
+    const lazy = k < plan.length - 1;
+    const sectors = planSectors(e);
+    if (sectors) reorder(w, ring, sectors, undefined, upto, lazy);
+    else reorder(w, ring, e[1] as RouteId, undefined, upto, lazy);
   });
   if (from < Infinity) derive(w, from);
+}
+
+/** Which of `n` slices around camp cell `i` falls in, by angle from the west going anticlockwise on screen (the order
+ *  rings are walked in on even rings): rover j works about slice j of every ring. */
+export function sectorAt(w: World, i: number, n: number): number {
+  if (n <= 1) return 0;
+  const x = i % w.size;
+  const a = Math.atan2((i - x) / w.size - w.cy, x - w.cx);
+  return Math.min(n - 1, Math.floor(((a + Math.PI) / (2 * Math.PI)) * n));
 }
 
 /** How each discovery algorithm decides what to explore next: a per-cell cost (cheap cells are explored first) and how
@@ -293,29 +326,40 @@ export function algoEntropy(route: RouteId, level: number): [number, number, num
   return a ? [a.noise * k, a.jitter * k, a.stray * k] : [0, 0, 0];
 }
 
-/** Distance field of an algorithm, grown from every explored cell (the first `a` cells). Any field grown with positive
- *  costs from sources inside the explored area keeps it connected (each cell's predecessor is explored or earlier). */
-function algoField(w: World, route: RouteId, level: number, a: number, ring: number, bands = Infinity): { field: Float32Array; cut: number } {
-  const algo = ALGOS[route]!;
+/** Distance field of an algorithm (one per rover slice), grown from every explored cell (the first `a` cells). Any field
+ *  grown with positive costs from sources inside the explored area keeps it connected (each cell's predecessor is
+ *  explored or earlier). */
+function algoField(w: World, sectors: readonly Sector[], a: number, ring: number, bands = Infinity): { field: Float32Array; cut: number } {
   const { size, order } = w;
   const n = size * size;
   const dice = w.seed + 401 + ring * 7919;
-  const [noise] = algoEntropy(route, level);
   const ctx: AlgoCtx = { meanValue: meanValue(w), frontier: w.road[order[Math.max(0, a - 1)]] };
+  const raws = sectors.map(([route, level]) => {
+    const algo = ALGOS[route]!;
+    const [noise] = algoEntropy(route, level);
+    return (i: number) => {
+      const x = i % size;
+      const y = (i - x) / size;
+      const wobble = 0.6 * (fbm(x, y, dice, 18, 3) - 0.5) + 0.4 * (rand2(x, y, dice + 1) - 0.5);
+      return algo.cost(w, i, ctx) * Math.exp(2 * noise * wobble);
+    };
+  });
+  // Normalise so a typical cell costs about 1 (rings stay about one cell thick, in every slice alike); the mean comes
+  // from a fixed sample.
+  const means = raws.map((raw) => {
+    let mean = 0;
+    let m = 0;
+    for (let i = 0; i < n; i += COST_SAMPLE, m++) mean += raw(i);
+    return mean / m;
+  });
+  const one = sectors.length === 1;
   const raw = (i: number) => {
-    const x = i % size;
-    const y = (i - x) / size;
-    const wobble = 0.6 * (fbm(x, y, dice, 18, 3) - 0.5) + 0.4 * (rand2(x, y, dice + 1) - 0.5);
-    return algo.cost(w, i, ctx) * Math.exp(2 * noise * wobble);
+    const k = one ? 0 : sectorAt(w, i, sectors.length);
+    return raws[k](i) / means[k];
   };
-  // Normalise so a typical cell costs about 1 (rings stay about one cell thick); the mean comes from a fixed sample.
-  let mean = 0;
-  let m = 0;
-  for (let i = 0; i < n; i += COST_SAMPLE, m++) mean += raw(i);
-  mean /= m;
   // Costs are worked out only for the cells the field reaches (a replayed route stops early, see below).
   const costs = new Float32Array(n).fill(NaN);
-  const fill = (i: number) => { if (costs[i] !== costs[i]) costs[i] = Math.max(0.02, raw(i) / mean); };
+  const fill = (i: number) => { if (costs[i] !== costs[i]) costs[i] = Math.max(0.02, raw(i)); };
   // With a band limit, stop growing the field once that many bands of unexplored cells are settled: every cell at or
   // beyond band `cut` gets a provisional distance and is left unsorted (a later reorder takes it from there).
   let cut = Infinity;
@@ -357,16 +401,23 @@ function legacyRandomField(w: World, a: number, ring: number): Float32Array {
 }
 
 /** Re-orders the unexplored part of the map (from the start of ring `ring` on) by `route` at entropy `level` (no level:
- *  a legacy route). Explored cells keep their ranks and rings; the rest get new rings counted on from `ring`. */
-export function reorder(w: World, ring: number, route: RouteId, level?: number, upto?: number, lazy = false): void {
+ *  a legacy route), or by one [route, level] per rover slice. Explored cells keep their ranks and rings; the rest get
+ *  new rings counted on from `ring`. */
+export function reorder(w: World, ring: number, route: RouteId | readonly Sector[], level?: number, upto?: number, lazy = false): void {
   const n = totalCells(w);
   const a = w.rings[ring];
   if (a >= n) return;
-  const legacy = level === undefined || !ALGOS[route];
-  const { field, scale, cut } = legacy
-    ? { ...legacyField(w, route, a, ring), cut: Infinity }
-    : { ...algoField(w, route, level, a, ring, upto === undefined ? Infinity : upto - ring), scale: 1 };
-  const [, jitter, stray] = legacy ? [0, 0, 0] : algoEntropy(route, level);
+  const sectors: readonly Sector[] | null = typeof route !== 'string' ? route : level === undefined || !ALGOS[route] ? null : [[route, level]];
+  const legacy = !sectors;
+  const { field, scale, cut } = !sectors
+    ? { ...legacyField(w, route as RouteId, a, ring), cut: Infinity }
+    : { ...algoField(w, sectors, a, ring, upto === undefined ? Infinity : upto - ring), scale: 1 };
+  w.slices = sectors?.length ?? 1;
+  w.slicesFrom = ring;
+  const ents = (sectors ?? []).map(([r, l]) => algoEntropy(r, l));
+  const slice = (i: number) => (ents.length === 1 ? 0 : sectorAt(w, i, ents.length));
+  const jitterAt = (i: number) => (legacy ? 0 : ents[slice(i)][1]);
+  const strayAt = (i: number) => (legacy ? 0 : ents[slice(i)][2]);
   const dice = w.seed + 733 + ring * 104729;
   const { order, size, cx, cy } = w;
   const rest = order.slice(a);
@@ -386,7 +437,7 @@ export function reorder(w: World, ring: number, route: RouteId, level?: number, 
   const sorted = new Uint32Array(rest.length);
   rest.forEach((i, q) => { sorted[fill[band[q] - lo]++] = i; });
   // Angle around camp, plus the algorithm's jitter: the more entropy, the more the rovers zig-zag along a ring.
-  const angle = (i: number) => Math.atan2(Math.floor(i / size) - cy, (i % size) - cx) + (jitter ? jitter * (rand2(i % size, Math.floor(i / size), dice) - 0.5) : 0);
+  const angle = (i: number) => { const jitter = jitterAt(i); return Math.atan2(Math.floor(i / size) - cy, (i % size) - cx) + (jitter ? jitter * (rand2(i % size, Math.floor(i / size), dice) - 0.5) : 0); };
   // Bands of an irregular field are scattered patches: walk each one cell to an adjacent cell where possible (the
   // next by angle among the neighbours), and only jump to another patch when stuck (or when the rover strays). A cell
   // is only placed once a neighbour is explored or placed, so the explored area stays one connected patch.
@@ -414,6 +465,7 @@ export function reorder(w: World, ring: number, route: RouteId, level?: number, 
     let cur = -1;
     while (k < at + cells.length) {
       let best = -1;
+      const stray = cur >= 0 ? strayAt(cur) : 0;
       if (cur >= 0 && !(stray && rand2(cur % size, Math.floor(cur / size), dice + 5) < stray)) {
         near(cur, (j) => { if (mark![j] === token && (best < 0 || pos![j] < pos![best])) best = j; });
       }
@@ -620,13 +672,30 @@ export function kingDistance(w: World, a: number, b: number): number {
 /** Number of rings (the last valid index is ringCount - 1). */
 export const ringCount = (w: World): number => w.rings.length - 1;
 
-/** First rank of each arc of ring `ring` split between `robots` (n + 1 values: the last is the ring's end). */
+/** First rank of each arc of ring `ring` split between `robots` (n + 1 values: the last is the ring's end). With one
+ *  route per rover, each arc is as long as that rover's slice of the ring (see `sectorAt`); otherwise they are even. */
 export function arcStarts(w: World, ring: number, robots: number): number[] {
+  if (w.slices > 1 && robots === w.slices && ring >= w.slicesFrom) return sliceStarts(w, ring);
   const a = w.rings[ring];
   const len = w.rings[ring + 1] - a;
   const arcs = Math.max(1, Math.min(robots, len));
   const starts: number[] = [];
   for (let k = 0; k <= arcs; k++) starts.push(a + Math.floor((k * len) / arcs));
+  return starts;
+}
+
+const sliceCache = new WeakMap<World, { version: number; ring: number; starts: number[] }>();
+/** Arcs of a ring cut by slice: on even rings (walked by rising angle) arc k is slice k, on odd ones slice n - 1 - k. */
+function sliceStarts(w: World, ring: number): number[] {
+  const hit = sliceCache.get(w);
+  if (hit && hit.version === w.version && hit.ring === ring) return hit.starts;
+  const n = w.slices;
+  const a = w.rings[ring];
+  const count = new Array<number>(n).fill(0);
+  for (let r = a; r < w.rings[ring + 1]; r++) count[sectorAt(w, w.order[r], n)]++;
+  const starts = [a];
+  for (let k = 0; k < n; k++) starts.push(starts[k] + count[arcOf(ring, k, n)]);
+  sliceCache.set(w, { version: w.version, ring, starts });
   return starts;
 }
 

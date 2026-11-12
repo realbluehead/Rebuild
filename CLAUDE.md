@@ -44,7 +44,14 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (saves from before Random was the default own Circular and keep it). Upgrades have levels 0..`maxLevel` (`upgradeRoute`,
   `routeUpgradeCost`): a level lowers its **entropy**
   (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level).
-  `chooseRoute`/a new level take over at the next ring start (`switchRoute` in `nextRing`, compared with `activeRoute`/`activeLevel`):
+  **Routes are picked per rover** (`Bot.route`, save v15; `chooseRoute(s, id, j?)`, no `j` = all; `s.route` = last pick, which
+  new rovers follow; unlocks and levels stay global). The Routes tab has the same rover picker as the Rover tab plus "All".
+  Rover j explores **slice j** of the map around camp (`sectorAt`: angle from the west, n = rover count): with mixed routes
+  `algoField` uses each slice's algorithm and normalisation, `reorder` each slice's jitter/stray, and `arcStarts` cuts the
+  ring's arcs at the slice boundaries (`w.slices`/`w.slicesFrom`, `sliceStarts`; arcs stay even with one route for all).
+  Plan entries are `[ring, route, level]` when all rovers agree (whatever their number) or `[ring, [route, level][]]`
+  (`planEntry`/`planSectors`); a mixed plan re-sorts again when the rover count changes.
+  A pick/a new level take over at the next ring start (`switchRoute` in `nextRing`, `roverSectors` vs `activeSectors`):
   `reorder` grows the algorithm's field (`algoField`: multi-source Dijkstra from every explored cell over the algorithm's
   per-cell costs, normalised to ~1) and re-sorts the unexplored cells by band, then walks each band cell to adjacent cell
   (`chain`: a cell is placed only next to explored/placed ones, so the explored area stays connected; jumps only when stuck
