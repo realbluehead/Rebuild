@@ -221,42 +221,129 @@ function derive(w: World, a: number): void {
   w.version++;
 }
 
-/** How strongly a directional route pulls towards its side: a step that way costs (1 - PULL), the opposite (1 + PULL). */
-const ROUTE_PULL = 0.7;
-/** Directional routes use thinner bands (rings) than the circular one, since their steps are cheaper along the pull. */
-const ROUTE_BAND: Record<RouteId, number> = { circular: 1, north: 1.5, south: 1.5, east: 1.5, west: 1.5, random: 1 };
-const ROUTE_DIR: Partial<Record<RouteId, [number, number]>> = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
+
+/** One applied route: from ring `ring` on, the map is ordered by `route` at entropy level `level`. Entries saved
+ *  before levels existed have no level and use the old (legacy) fields. */
+export type PlanEntry = readonly [number, RouteId] | readonly [number, RouteId, number];
 
 /** Rebuilds a world's order from a game's route history (see `GameState.plan`). */
-export function applyPlan(w: World, plan: readonly (readonly [number, RouteId])[]): void {
-  for (const [ring, route] of plan) if (ring < w.rings.length - 1) reorder(w, ring, route);
+export function applyPlan(w: World, plan: readonly PlanEntry[]): void {
+  let from = Infinity;
+  plan.forEach(([ring, route, level], k) => {
+    if (ring >= w.rings.length - 1) return;
+    from = Math.min(from, w.rings[ring]);
+    // Only the rings up to the next entry matter: that one re-sorts everything after them. The derived tables are
+    // rebuilt once at the end.
+    reorder(w, ring, route, level, plan[k + 1]?.[0], k < plan.length - 1);
+  });
+  if (from < Infinity) derive(w, from);
 }
 
-/** Path distance for an exploration route: from camp for the fixed routes, or from the explored area (the first `a`
- *  cells) for the random one. Any field grown with positive costs from sources inside the explored area keeps it
- *  connected, whatever was explored before (each cell's predecessor is either explored or earlier). */
-export function routeField(w: World, route: RouteId, a = 1, ring = 0): Float32Array {
-  if (route === 'circular') return w.road;
-  if (route === 'random') return randomField(w, a, ring);
-  const cached = w.fields.get(route);
-  if (cached) return cached;
-  const { size, cx, cy, cost } = w;
-  const dir = ROUTE_DIR[route];
-  let field: Float64Array;
-  if (dir) {
-    const mult = DX.map((dx, k) => 1 - (ROUTE_PULL * (dx * dir[0] + DY[k] * dir[1])) / Math.hypot(dx, DY[k]));
-    field = pathDistance(size, cx, cy, cost, mult);
-  } else {
-    field = pathDistance(size, cx, cy, cost);
+/** How each discovery algorithm decides what to explore next: a per-cell cost (cheap cells are explored first) and how
+ *  much entropy (noise in the costs, jitter in the walking order) it has at level 0. Each level multiplies the entropy by
+ *  its `decay`: the rovers stray less and waste fewer steps. */
+interface Algo {
+  cost: (w: World, i: number, ctx: AlgoCtx) => number;
+  noise: number;
+  jitter: number;
+  /** Chance that a rover leaves the patch it is sweeping for the next one along the ring (wasted walking). */
+  stray: number;
+  /** Entropy left after each level. */
+  decay: number;
+}
+interface AlgoCtx { meanValue: number; frontier: number }
+/** Every COST_SAMPLE-th cell is used to normalise an algorithm's costs. */
+const COST_SAMPLE = 61;
+const meanValues = new WeakMap<World, number>();
+/** Mean bluetreri value of a cell (it does not depend on the order). */
+function meanValue(w: World): number {
+  let v = meanValues.get(w);
+  if (v === undefined) {
+    v = 0;
+    for (let i = 0; i < w.value.length; i++) v += w.value[i];
+    v /= w.value.length;
+    meanValues.set(w, v);
   }
-  const out = Float32Array.from(field);
-  w.fields.set(route, out);
-  return out;
+  return v;
 }
 
-/** Random route: grows from the edge of what is already explored (every explored cell is a source), along random
- *  cheap and costly patches, so it pushes out at a few spots of the frontier at a time. New dice at every switch. */
-function randomField(w: World, a: number, ring: number): Float32Array {
+const ALGOS: Partial<Record<RouteId, Algo>> = {
+  // Random: every direction equally likely; lots of noise, so the frontier frays, rovers zig-zag and leave patches half done.
+  random: { cost: () => 1, noise: 1.4, jitter: 0.8, stray: 0.3, decay: 0.6 },
+  // Rings: the nearest ground first, by terrain crossing cost.
+  circular: { cost: (w, i) => TERRAINS[w.terrain[i]].cost, noise: 2.2, jitter: 0, stray: 0, decay: 0.85 },
+  // Trail: easy ground that still pays (a mild bluetreri-per-step pull on top of the crossing cost).
+  trail: { cost: (w, i, c) => TERRAINS[w.terrain[i]].cost * (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.4, noise: 0.45, jitter: 0.2, stray: 0, decay: 0.6 },
+  // Prospector: the most bluetreri per step first (deposits pull hard).
+  prospect: { cost: (w, i, c) => (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.9, noise: 0.7, jitter: 0.3, stray: 0, decay: 0.6 },
+  // Survey: like the prospector, but keeps the explored area compact so trips home stay short.
+  survey: {
+    cost: (w, i, c) => (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 1.1 * (1 + Math.max(0, w.road[i] - c.frontier) / 8),
+    noise: 0.3,
+    jitter: 0.1,
+    stray: 0,
+    decay: 0.6,
+  },
+};
+
+/** Entropy of `route` at `level`: [cost noise, angle jitter, stray chance]. */
+export function algoEntropy(route: RouteId, level: number): [number, number, number] {
+  const a = ALGOS[route];
+  const k = a ? a.decay ** level : 0;
+  return a ? [a.noise * k, a.jitter * k, a.stray * k] : [0, 0, 0];
+}
+
+/** Distance field of an algorithm, grown from every explored cell (the first `a` cells). Any field grown with positive
+ *  costs from sources inside the explored area keeps it connected (each cell's predecessor is explored or earlier). */
+function algoField(w: World, route: RouteId, level: number, a: number, ring: number, bands = Infinity): { field: Float32Array; cut: number } {
+  const algo = ALGOS[route]!;
+  const { size, order } = w;
+  const n = size * size;
+  const dice = w.seed + 401 + ring * 7919;
+  const [noise] = algoEntropy(route, level);
+  const ctx: AlgoCtx = { meanValue: meanValue(w), frontier: w.road[order[Math.max(0, a - 1)]] };
+  const raw = (i: number) => {
+    const x = i % size;
+    const y = (i - x) / size;
+    const wobble = 0.6 * (fbm(x, y, dice, 18, 3) - 0.5) + 0.4 * (rand2(x, y, dice + 1) - 0.5);
+    return algo.cost(w, i, ctx) * Math.exp(2 * noise * wobble);
+  };
+  // Normalise so a typical cell costs about 1 (rings stay about one cell thick); the mean comes from a fixed sample.
+  let mean = 0;
+  let m = 0;
+  for (let i = 0; i < n; i += COST_SAMPLE, m++) mean += raw(i);
+  mean /= m;
+  // Costs are worked out only for the cells the field reaches (a replayed route stops early, see below).
+  const costs = new Float32Array(n).fill(NaN);
+  const fill = (i: number) => { if (costs[i] !== costs[i]) costs[i] = Math.max(0.02, raw(i) / mean); };
+  // With a band limit, stop growing the field once that many bands of unexplored cells are settled: every cell at or
+  // beyond band `cut` gets a provisional distance and is left unsorted (a later reorder takes it from there).
+  let cut = Infinity;
+  let seen = 0;
+  let last = -1;
+  const explored = bands === Infinity ? null : new Uint8Array(n);
+  if (explored) for (let r = 0; r < a; r++) explored[order[r]] = 1;
+  const stop = !explored ? undefined : (d: number, i: number) => {
+    if (explored[i]) return false;
+    const b = Math.floor(d);
+    if (b !== last) { last = b; if (++seen > bands) { cut = b; return true; } }
+    return false;
+  };
+  const field = Float32Array.from(pathDistance(size, w.cx, w.cy, costs, DIAG, order.subarray(0, Math.max(1, a)), stop, fill));
+  return { field, cut };
+}
+
+/** Legacy routes (saves from before levels): the four directions grown from camp, and the first random route. */
+const LEGACY_PULL = 0.7;
+const LEGACY_DIR: Partial<Record<RouteId, [number, number]>> = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
+function legacyField(w: World, route: RouteId, a: number, ring: number): { field: Float32Array; scale: number } {
+  if (route === 'circular') return { field: w.road, scale: 1 };
+  if (route === 'random') return { field: legacyRandomField(w, a, ring), scale: 1 };
+  const dir = LEGACY_DIR[route]!;
+  const mult = DX.map((dx, k) => 1 - (LEGACY_PULL * (dx * dir[0] + DY[k] * dir[1])) / Math.hypot(dx, DY[k]));
+  return { field: Float32Array.from(pathDistance(w.size, w.cx, w.cy, w.cost, mult)), scale: 1.5 };
+}
+function legacyRandomField(w: World, a: number, ring: number): Float32Array {
   const { size, cost, seed, order } = w;
   const n = size * size;
   const dice = seed + 401 + ring * 7919;
@@ -269,21 +356,25 @@ function randomField(w: World, a: number, ring: number): Float32Array {
   return Float32Array.from(pathDistance(size, w.cx, w.cy, noisy, DIAG, order.subarray(0, Math.max(1, a))));
 }
 
-/** Re-orders the unexplored part of the map (from the start of ring `ring` on) by `route`. Explored cells keep their
- *  ranks and rings; the rest get new rings counted on from `ring`. */
-export function reorder(w: World, ring: number, route: RouteId): void {
+/** Re-orders the unexplored part of the map (from the start of ring `ring` on) by `route` at entropy `level` (no level:
+ *  a legacy route). Explored cells keep their ranks and rings; the rest get new rings counted on from `ring`. */
+export function reorder(w: World, ring: number, route: RouteId, level?: number, upto?: number, lazy = false): void {
   const n = totalCells(w);
   const a = w.rings[ring];
   if (a >= n) return;
-  const field = routeField(w, route, a, ring);
-  const scale = ROUTE_BAND[route];
+  const legacy = level === undefined || !ALGOS[route];
+  const { field, scale, cut } = legacy
+    ? { ...legacyField(w, route, a, ring), cut: Infinity }
+    : { ...algoField(w, route, level, a, ring, upto === undefined ? Infinity : upto - ring), scale: 1 };
+  const [, jitter, stray] = legacy ? [0, 0, 0] : algoEntropy(route, level);
+  const dice = w.seed + 733 + ring * 104729;
   const { order, size, cx, cy } = w;
   const rest = order.slice(a);
   const band = new Int32Array(rest.length);
   let lo = Infinity;
   let hi = -Infinity;
   rest.forEach((i, q) => {
-    band[q] = Math.floor(field[i] * scale);
+    band[q] = Math.min(cut, Math.floor(field[i] * scale));
     lo = Math.min(lo, band[q]);
     hi = Math.max(hi, band[q]);
   });
@@ -294,7 +385,48 @@ export function reorder(w: World, ring: number, route: RouteId): void {
   const fill = count.slice();
   const sorted = new Uint32Array(rest.length);
   rest.forEach((i, q) => { sorted[fill[band[q] - lo]++] = i; });
-  const angle = (i: number) => Math.atan2(Math.floor(i / size) - cy, (i % size) - cx);
+  // Angle around camp, plus the algorithm's jitter: the more entropy, the more the rovers zig-zag along a ring.
+  const angle = (i: number) => Math.atan2(Math.floor(i / size) - cy, (i % size) - cx) + (jitter ? jitter * (rand2(i % size, Math.floor(i / size), dice) - 0.5) : 0);
+  // Bands of an irregular field are scattered patches: walk each one cell to an adjacent cell where possible (the
+  // next by angle among the neighbours), and only jump to another patch when stuck (or when the rover strays). A cell
+  // is only placed once a neighbour is explored or placed, so the explored area stays one connected patch.
+  const mark = legacy ? null : new Int32Array(n);
+  const pos = legacy ? null : new Int32Array(n);
+  const placed = legacy ? null : new Uint8Array(n);
+  const queued = legacy ? null : new Int32Array(n); // band token of cells already in the ready heap
+  if (placed) for (let r = 0; r < a; r++) placed[order[r]] = 1;
+  const near = (i: number, f: (j: number) => void) => {
+    const x = i % size;
+    const y = (i - x) / size;
+    for (let d = 0; d < 8; d++) {
+      const nx = x + DX[d];
+      const ny = y + DY[d];
+      if (nx >= 0 && ny >= 0 && nx < size && ny < size) f(ny * size + nx);
+    }
+  };
+  const chain = (cells: number[], out: Uint32Array, at: number, token: number) => {
+    cells.forEach((i, q) => { mark![i] = token; pos![i] = q; });
+    // Cells of this band next to the placed area, by their angle order.
+    const ready = new MinHeap(cells.length);
+    const offer = (j: number) => { if (mark![j] === token && queued![j] !== token) { queued![j] = token; ready.push(pos![j], j); } };
+    for (const i of cells) near(i, (j) => { if (placed![j] && queued![i] !== token) { queued![i] = token; ready.push(pos![i], i); } });
+    let k = at;
+    let cur = -1;
+    while (k < at + cells.length) {
+      let best = -1;
+      if (cur >= 0 && !(stray && rand2(cur % size, Math.floor(cur / size), dice + 5) < stray)) {
+        near(cur, (j) => { if (mark![j] === token && (best < 0 || pos![j] < pos![best])) best = j; });
+      }
+      if (best < 0) {
+        do best = ready.pop(); while (mark![best] !== token);
+      }
+      mark![best] = -token;
+      placed![best] = 1;
+      out[k++] = best;
+      near(best, offer);
+      cur = best;
+    }
+  };
   const rings = Array.from(w.rings.subarray(0, ring + 1));
   let idx = ring - 1; // ring index of the band being placed
   for (let b = 0; b < count.length - 1; b++) {
@@ -302,14 +434,16 @@ export function reorder(w: World, ring: number, route: RouteId): void {
     const s1 = count[b + 1];
     if (s1 === s0) continue;
     if (++idx > ring) rings.push(a + s0);
+    if (lo + b >= cut) break; // the unsorted rest (see `algoField`): left as it is
     const dirn = idx % 2 ? -1 : 1;
     const part = Array.from(sorted.subarray(s0, s1), (i) => [i, angle(i)] as const).sort((p, q) => dirn * (p[1] - q[1]));
-    part.forEach(([i], q) => { sorted[s0 + q] = i; });
+    if (legacy) part.forEach(([i], q) => { sorted[s0 + q] = i; });
+    else chain(part.map(([i]) => i), sorted, s0, b + 1);
   }
   rings.push(n);
   order.set(sorted, a);
   w.rings = Uint32Array.from(rings);
-  derive(w, a);
+  if (!lazy) derive(w, a);
 }
 
 const SQRT2 = Math.SQRT2;
@@ -319,7 +453,7 @@ const DIAG = [1, 1, 1, 1, 1, 1, 1, 1];
 
 /** Path distance (Dijkstra, 8 neighbours) from (cx, cy); moving between two cells costs the mean of their costs. */
 function pathDistance(size: number, cx: number, cy: number, cost: Float32Array, mult: readonly number[] = DIAG,
-  sources?: ArrayLike<number>): Float64Array {
+  sources?: ArrayLike<number>, stop?: (d: number, i: number) => boolean, fill?: (i: number) => void): Float64Array {
   const n = size * size;
   const dist = new Float64Array(n).fill(Infinity);
   const heap = new MinHeap(n);
@@ -331,6 +465,8 @@ function pathDistance(size: number, cx: number, cy: number, cost: Float32Array, 
     const d = heap.topKey();
     const i = heap.pop();
     if (d > dist[i]) continue; // stale entry
+    if (stop?.(d, i)) break; // cells not settled yet keep a distance >= d
+    fill?.(i);
     const x = i % size;
     const y = (i - x) / size;
     for (let k = 0; k < 8; k++) {
@@ -338,6 +474,7 @@ function pathDistance(size: number, cx: number, cy: number, cost: Float32Array, 
       const ny = y + DY[k];
       if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
       const j = ny * size + nx;
+      fill?.(j);
       const nd = d + ((cost[i] + cost[j]) / 2) * (k < 4 ? 1 : SQRT2) * mult[k];
       if (nd < dist[j]) {
         dist[j] = nd;

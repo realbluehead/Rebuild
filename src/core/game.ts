@@ -12,8 +12,8 @@ import { newBot, type Bot, type GameState } from './state';
 import { ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
 import { ZOOMS } from '../content/world';
 import { WEATHER_EPOCH } from '../content/weather';
-import { workById, workCost, ITEMS, type WorkId } from '../content/collection';
-import { routeById, type RouteId } from '../content/routes';
+import { workById, workCost, ITEMS, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
+import { ROUTE_LEVEL_GROWTH, ROUTE_MAX_LEVEL, routeById, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, cellsReached, itemsBetween, kingDistance, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 
@@ -158,6 +158,8 @@ export interface TickEvents {
   deposited: number;
   /** Zoom unlocked in this step (number of levels), if any. */
   zoomUnlocked?: number;
+  /** The whole map was explored and everything unloaded in this step. */
+  completed?: boolean;
 }
 
 /** Arc rover j works on the current ring: [start, end) and its length in steps; null if it has none. */
@@ -187,7 +189,7 @@ const cellOf = (w: World, grip: number, a: Arc, prog: number): number =>
 function nextRing(s: GameState, w: World, explorers: number): void {
   s.ring++;
   while (s.ring < ringCount(w) && w.rings[s.ring + 1] === w.rings[s.ring]) s.ring++;
-  if (s.ring < ringCount(w) && s.route !== activeRoute(s)) switchRoute(s, w);
+  if (s.ring < ringCount(w) && (s.route !== activeRoute(s) || routeLevel(s, s.route) !== activeLevel(s))) switchRoute(s, w);
   while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s, w)));
   s.ringRobots = s.bots.length;
   for (const b of s.bots) b.prog = 0;
@@ -201,6 +203,10 @@ function nextRing(s: GameState, w: World, explorers: number): void {
 
 /** The route the map is ordered by right now. */
 export const activeRoute = (s: GameState): RouteId => (s.plan.length ? s.plan[s.plan.length - 1][1] : 'circular');
+/** The entropy level of the active route (the starting circular order, and legacy entries, count as level 0). */
+export const activeLevel = (s: GameState): number => (s.plan.length ? (s.plan[s.plan.length - 1][2] ?? 0) : 0);
+/** Level bought for route `id`. */
+export const routeLevel = (s: GameState, id: RouteId): number => s.routeLevels[id] ?? 0;
 
 /** At the start of ring `s.ring`: re-orders the dark part of the map by the chosen route. Items and paths that are
  *  remembered by rank or item index are carried over by cell. */
@@ -209,8 +215,9 @@ function switchRoute(s: GameState, w: World): void {
   const fetchedCells = s.fetched.map(itemCell);
   const targetCells = s.bots.map((b) => (b.target >= 0 ? itemCell(b.target) : -1));
   const scoutCells = s.scouted.map((r) => w.order[r]);
-  reorder(w, s.ring, s.route);
-  s.plan.push([s.ring, s.route]);
+  const level = routeLevel(s, s.route);
+  reorder(w, s.ring, s.route, level);
+  s.plan.push([s.ring, s.route, level]);
   const itemIndex = new Map(Array.from(w.itemRanks, (r, k) => [w.order[r], k]));
   s.fetched = fetchedCells.map((i) => itemIndex.get(i)!);
   s.bots.forEach((b, j) => { if (targetCells[j] >= 0) b.target = itemIndex.get(targetCells[j])!; });
@@ -416,6 +423,10 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     s.zoomUnlocked++;
     ev.zoomUnlocked = s.zoomUnlocked;
   }
+  if (s.doneAt === undefined && isComplete(s, w)) {
+    s.doneAt = s.playTime;
+    ev.completed = true;
+  }
   return ev;
 }
 
@@ -438,7 +449,12 @@ function collect(s: GameState, w: World, k: number, ev: TickEvents, b: Bot): voi
 /** Items the next work of this kind costs. */
 export const nextWorkCost = (s: GameState, id: WorkId): number => workCost(workById(id), s.works[id]);
 
-export const canCraft = (s: GameState, id: WorkId): boolean => s.items[workById(id).item] >= nextWorkCost(s, id);
+export const canCraft = (s: GameState, id: WorkId): boolean =>
+  s.works[id] < WORKS_MAX && s.items[workById(id).item] >= nextWorkCost(s, id);
+
+/** Share of the library finished: one collection, or all of them. */
+export const libraryShare = (s: GameState, id?: WorkId): number =>
+  id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
 /** Crafts the next work (book, record or album) from the collected items. */
 export function craft(s: GameState, id: WorkId): boolean {
@@ -486,6 +502,29 @@ export function unlockRoute(s: GameState, id: RouteId): boolean {
   s.gold = s.gold.sub(def.gold);
   for (const [k, n] of Object.entries(def.items)) s.items[k as keyof GameState['items']] -= n ?? 0;
   s.routes.push(id);
+  return true;
+}
+
+/** Price of the next level of route `id` (null when it is locked or maxed out). */
+export function routeUpgradeCost(s: GameState, id: RouteId): { gold: number; items: Partial<Record<ItemId, number>> } | null {
+  const def = routeById(id);
+  const lv = routeLevel(s, id);
+  if (!def || !s.routes.includes(id) || lv >= ROUTE_MAX_LEVEL) return null;
+  const items: Partial<Record<ItemId, number>> = {};
+  for (const [k, n] of Object.entries(def.levelItems)) items[k as ItemId] = (n ?? 0) * (lv + 1);
+  return { gold: Math.round(def.levelGold * ROUTE_LEVEL_GROWTH ** lv), items };
+}
+export function canUpgradeRoute(s: GameState, id: RouteId): boolean {
+  const c = routeUpgradeCost(s, id);
+  return !!c && s.gold.gte(c.gold) && Object.entries(c.items).every(([k, n]) => s.items[k as ItemId] >= (n ?? 0));
+}
+/** Pays for the next level of route `id`; it takes effect at the next ring if that route is in use. */
+export function upgradeRoute(s: GameState, id: RouteId): boolean {
+  if (!canUpgradeRoute(s, id)) return false;
+  const c = routeUpgradeCost(s, id)!;
+  s.gold = s.gold.sub(c.gold);
+  for (const [k, n] of Object.entries(c.items)) s.items[k as ItemId] -= n ?? 0;
+  s.routeLevels[id] = routeLevel(s, id) + 1;
   return true;
 }
 

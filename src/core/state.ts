@@ -79,7 +79,10 @@ export interface GameState {
    *  map's order is rebuilt from them, since the world itself is never saved). */
   routes: RouteId[];
   route: RouteId;
-  plan: [number, RouteId][];
+  /** Entropy level bought for each route (missing = 0): higher levels stray less. */
+  routeLevels: Partial<Record<RouteId, number>>;
+  /** [ring, route, level] entries; saves from before levels have [ring, route] (legacy fields, see `applyPlan`). */
+  plan: ([number, RouteId] | [number, RouteId, number])[];
   /** Paths walked on radar detours, ahead of normal exploration: flat triples [fromRank, toRank, maxRank]. Their
    *  cells show as revealed (no bluetreri: that still comes when exploring reaches them). Dropped once explored. */
   scouted: number[];
@@ -89,6 +92,8 @@ export interface GameState {
   zoom: number;
   /** Accumulated play time, in seconds. */
   playTime: number;
+  /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
+  doneAt?: number;
   /** Old saves (v3 or earlier): total steps, converted once the world exists (`fromLegacy`). */
   legacyWalked?: number;
 }
@@ -108,6 +113,7 @@ export function newGame(seed = randomSeed()): GameState {
     weather: { epoch: 0, storms: [], nextId: 0 },
     routes: ['circular'],
     route: 'circular',
+    routeLevels: {},
     plan: [],
     scouted: [],
     zoomUnlocked: 1,

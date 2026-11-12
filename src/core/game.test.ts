@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from './state';
-import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, nextWorkCost, progress, setZoom, stats, tick, unlockRoute } from './game';
+import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, libraryShare, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
-import { applyPlan, createWorld, goldBetween, kingDistance, pathCells, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type World } from './world';
-import type { RouteId } from '../content/routes';
+import { applyPlan, createWorld, goldBetween, kingDistance, pathCells, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
+import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
+import { collectionCost, ITEMS, WORKS, WORKS_MAX } from '../content/collection';
 
 // Small map so the tests run fast (the real one is MAP_SIZE).
 const SIZE = 128;
@@ -325,13 +326,37 @@ describe('game', () => {
   it('with enough items a work is made, and the next costs more', () => {
     const s = newGame(42);
     expect(canCraft(s, 'book')).toBe(false);
-    s.items.page = 10;
+    s.items.page = 15;
     const speed = stats(s).speed;
     expect(craft(s, 'book')).toBe(true);
     expect(s.items.page).toBe(0);
     expect(s.works.book).toBe(1);
     expect(stats(s).speed).toBeGreaterThan(speed);
-    expect(nextWorkCost(s, 'book')).toBeGreaterThan(10);
+    expect(nextWorkCost(s, 'book')).toBeGreaterThan(15);
+  });
+
+  it('each collection ends at WORKS_MAX works, and the library share reaches 100%', () => {
+    const s = newGame(42);
+    s.items = { page: 1e9, note: 1e9, photo: 1e9 };
+    for (const wd of WORKS) while (craft(s, wd.id));
+    for (const wd of WORKS) expect(s.works[wd.id]).toBe(WORKS_MAX);
+    expect(libraryShare(s)).toBe(1);
+    expect(libraryShare(s, 'book')).toBe(1);
+  });
+
+  it('the map holds enough items to finish the whole library and every route and level', () => {
+    const need: Record<string, number> = { page: 0, note: 0, photo: 0 };
+    for (const wd of WORKS) need[wd.item] += collectionCost(wd);
+    for (const rd of ROUTES) {
+      for (const [k, n] of Object.entries(rd.items)) need[k] += n ?? 0;
+      for (let lv = 0; lv < ROUTE_MAX_LEVEL; lv++) for (const [k, n] of Object.entries(rd.levelItems)) need[k] += (n ?? 0) * (lv + 1);
+    }
+    for (const seed of [7, 99999]) {
+      const w = createWorld(seed);
+      const have = [0, 0, 0, 0];
+      for (let i = 0; i < w.item.length; i++) have[w.item[i]]++;
+      ITEMS.forEach((it, k) => expect(need[it.id]).toBeLessThan(0.85 * have[k + 1]));
+    }
   });
 
   it('cannot buy without bluetreri', () => {
@@ -410,34 +435,41 @@ describe('routes', () => {
     }
     return found === k;
   };
-  /** Plays until the map is done, switching route at the given rings. Returns cells of items and deposits seen. */
-  const play = (w: World, switches: [number, RouteId][], dt = 0.1) => {
+  /** Plays until the map is done, switching route (and level) at the given rings. Returns cells of items and deposits seen. */
+  const play = (w: World, switches: [number, RouteId, number][], dt = 0.1) => {
     const s = newGame(42);
     Object.assign(s.upgrades, { speed: 30, cargo: 20, radar: 2, explorers: 2 });
-    s.routes = ['circular', 'north', 'south', 'east', 'west', 'random'];
+    s.routes = ROUTES.map((r) => r.id);
     const items = new Set<number>();
     let specials = 0;
+    let completed = 0;
     for (let t = 0; t < 100000 && !isComplete(s, w); t += dt) {
       const next = switches.find(([ring]) => s.ring >= ring && s.plan.every(([r]) => r < ring));
-      if (next) chooseRoute(s, next[1]);
+      if (next) { chooseRoute(s, next[1]); s.routeLevels[next[1]] = next[2]; }
       const e = tick(s, w, dt);
+      if (e.completed) completed++;
       specials += e.specials.length;
       for (const i of e.items) { expect(items.has(i)).toBe(false); items.add(i); }
     }
-    return { s, items, specials };
+    tick(s, w, 1);
+    return { s, items, specials, completed };
   };
 
   it('every route keeps the explored area connected, and keeps what was already explored', () => {
-    for (const route of ['north', 'south', 'east', 'west', 'random'] as RouteId[]) {
+    const plans: PlanEntry[] = [
+      ...ROUTES.flatMap((r) => [[10, r.id, 0], [10, r.id, ROUTE_MAX_LEVEL]] as PlanEntry[]),
+      ...(['north', 'south', 'east', 'west', 'random'] as RouteId[]).map((id) => [10, id] as PlanEntry), // legacy
+    ];
+    for (const entry of plans) {
       const w = createWorld(42, SIZE);
       const before = w.order.slice(0, w.rings[10]);
-      applyPlan(w, [[10, route]]);
+      applyPlan(w, [entry]);
       expect(w.order.slice(0, w.rings[10])).toEqual(before);
       for (const k of [w.rings[10] + 50, w.rings[10] + 900, 6000, 12000]) expect(connected(w, k)).toBe(true);
     }
   });
 
-  it('a directional route pushes that way first', () => {
+  it('a legacy directional route (old saves) still pushes that way first', () => {
     const w = createWorld(42, SIZE);
     applyPlan(w, [[3, 'north']]);
     let dy = 0;
@@ -448,7 +480,7 @@ describe('routes', () => {
   it('the random route grows from the edge of what is explored, differently at each switch', () => {
     const w = createWorld(42, SIZE);
     const a = w.rings[20];
-    applyPlan(w, [[20, 'random']]);
+    applyPlan(w, [[20, 'random', 0]]);
     const near = (i: number) => {
       const x = i % SIZE;
       const y = Math.floor(i / SIZE);
@@ -461,16 +493,19 @@ describe('routes', () => {
     for (let r = w.rings[20]; r < w.rings[21]; r++) expect(near(w.order[r])).toBe(true);
     // Another switch at a different ring rolls new dice.
     const other = createWorld(42, SIZE);
-    applyPlan(other, [[21, 'random']]);
+    applyPlan(other, [[21, 'random', 0]]);
     const b = other.rings[22];
     expect(Array.from(other.order.subarray(b, b + 300))).not.toEqual(Array.from(w.order.subarray(b, b + 300)));
   });
 
   it('switching routes mid-game still collects every item, deposit and bluetreri exactly once', () => {
     const w = createWorld(42, SIZE);
-    const { s, items, specials } = play(w, [[10, 'north'], [40, 'random'], [90, 'west']]);
+    const { s, items, specials, completed } = play(w, [[10, 'trail', 0], [25, 'random', 1], [40, 'random', 3], [55, 'survey', 4]]);
     expect(isComplete(s, w)).toBe(true);
-    expect(s.plan.map(([, id]) => id)).toEqual(['north', 'random', 'west']);
+    // Each pick takes over at the start of the next ring.
+    expect(s.plan).toEqual([[11, 'trail', 0], [26, 'random', 1], [41, 'random', 3], [56, 'survey', 4]]);
+    expect(completed).toBe(1);
+    expect(s.doneAt).toBeGreaterThan(0);
     expect(items.size).toBe(w.itemRanks.length);
     expect(specials).toBe(w.special.reduce((a, b) => a + b, 0));
     expect(s.totalGold.toNumber() / w.goldPrefix[totalCells(w)]).toBeCloseTo(1, 6);
@@ -487,8 +522,9 @@ describe('routes', () => {
     const b = newGame(42);
     for (const s of [a, b]) {
       Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 2 });
-      s.routes.push('east');
-      s.route = 'east';
+      s.routes.push('prospect');
+      s.route = 'prospect';
+      s.routeLevels.prospect = 2;
     }
     tick(a, wa, 600);
     for (let k = 0; k < 6000; k++) tick(b, wb, 0.1);
@@ -499,17 +535,52 @@ describe('routes', () => {
     expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 3);
   });
 
-  it('routes are unlocked with bluetreri and items', () => {
+  it('routes are unlocked with bluetreri and items, and levelled up', () => {
     const s = newGame(1);
-    expect(canUnlockRoute(s, 'north')).toBe(false);
-    expect(chooseRoute(s, 'north')).toBe(false);
+    expect(canUnlockRoute(s, 'random')).toBe(false);
+    expect(chooseRoute(s, 'random')).toBe(false);
+    expect(unlockRoute(s, 'north')).toBe(false); // withdrawn
     s.gold = D(1000);
     s.items.page = 8;
-    expect(unlockRoute(s, 'north')).toBe(true);
-    expect(s.items.page).toBe(0);
+    expect(unlockRoute(s, 'random')).toBe(true);
+    expect(s.items.page).toBe(5);
     expect(s.gold.toNumber()).toBe(700);
-    expect(chooseRoute(s, 'north')).toBe(true);
-    expect(s.route).toBe('north');
-    expect(unlockRoute(s, 'north')).toBe(false);
+    expect(chooseRoute(s, 'random')).toBe(true);
+    expect(s.route).toBe('random');
+    expect(unlockRoute(s, 'random')).toBe(false);
+    // Levels: bluetreri x ROUTE_LEVEL_GROWTH and items x level each time, up to ROUTE_MAX_LEVEL.
+    expect(routeUpgradeCost(s, 'random')).toEqual({ gold: 400, items: { page: 2 } });
+    expect(upgradeRoute(s, 'random')).toBe(true);
+    expect(routeLevel(s, 'random')).toBe(1);
+    expect(s.gold.toNumber()).toBe(300);
+    expect(routeUpgradeCost(s, 'random')).toEqual({ gold: 1600, items: { page: 4 } });
+    expect(upgradeRoute(s, 'random')).toBe(false);
+    s.gold = D(1e9);
+    s.items.page = 1000;
+    while (upgradeRoute(s, 'random'));
+    expect(routeLevel(s, 'random')).toBe(ROUTE_MAX_LEVEL);
+    expect(routeUpgradeCost(s, 'random')).toBeNull();
+    expect(upgradeRoute(s, 'trail')).toBe(false); // locked
+  });
+
+  it('better routes cost more to unlock and to level up', () => {
+    for (let k = 1; k < ROUTES.length; k++) {
+      if (ROUTES[k].id === 'circular') continue; // the free starting one
+      const prev = ROUTES[k - 1].id === 'circular' ? ROUTES[k - 2] : ROUTES[k - 1];
+      expect(ROUTES[k].gold).toBeGreaterThan(prev.gold);
+    }
+    for (let k = 1; k < ROUTES.length; k++) expect(ROUTES[k].levelGold).toBeGreaterThan(ROUTES[k - 1].levelGold);
+  });
+
+  it('a new level of the route in use takes over at the next ring', () => {
+    const w = createWorld(42, SIZE);
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 20, explorers: 1 });
+    s.gold = D(1e6);
+    s.items.page = 100;
+    expect(upgradeRoute(s, 'circular')).toBe(true);
+    const ring = s.ring;
+    while (s.ring === ring) tick(s, w, 0.5);
+    expect(s.plan).toEqual([[s.ring, 'circular', 1]]);
   });
 });

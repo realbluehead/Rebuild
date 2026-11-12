@@ -1,10 +1,10 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { UPGRADES, type StatId } from '../content/upgrades';
-import { ITEMS, WORKS, workCost, workTitle, type WorkId } from '../content/collection';
+import { ITEMS, WORKS, WORKS_MAX, workCost, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
-import { ROUTES, type RouteId } from '../content/routes';
-import { activeRoute, canUnlockRoute, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
+import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { GameState } from '../core/state';
@@ -16,6 +16,7 @@ import { COIN, FLAT, ITEM_SPRITES, robotFrames, spriteCanvas } from './sprites';
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
   chooseRoute(id: RouteId): void;
+  upgradeRoute(id: RouteId): void;
   buy(id: StatId): void;
   craft(id: WorkId): void;
   zoom(delta: number): void;
@@ -35,6 +36,8 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: s
 const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el.textContent = text; };
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+/** Percentage rounded down (100% only when really complete). */
+const whole = (x: number) => `${Math.floor(x * 100 + 1e-9)}%`;
 
 /** Short effect text (now -> next level), so it fits the narrow mobile cards. */
 export function effectText(id: StatId, a: Stats, b: Stats): string {
@@ -116,7 +119,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const toast = h('div', 'toast px-box');
 
   // Game speed multiplier, for testing (remembered in this browser).
-  const SPEEDS = [1, 2, 5, 10, 50, 100];
+  const SPEEDS = [1, 2, 5, 10, 50, 100, 1000];
   let speed = 1;
   try { speed = SPEEDS.includes(Number(localStorage.getItem('rebuild:speed'))) ? Number(localStorage.getItem('rebuild:speed')) : 1; } catch { /* no storage */ }
   const speedBtn = h('button', 'px-btn speed-ctl');
@@ -219,19 +222,19 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
 
   const panel = h('aside', 'panel');
-  // Tabs: upgrades (bought with bluetreri) and works (made from pages, notes and photos).
+  // Tabs: upgrades (bought with bluetreri), routes, and the library (works made from pages, notes and photos).
   const tabs = h('div', 'tabs');
   const tabUpg = h('button', 'px-btn tab on', 'Rover');
   const tabRoutes = h('button', 'px-btn tab', 'Routes');
-  const tabWorks = h('button', 'px-btn tab', 'Works');
-  tabs.append(tabUpg, tabRoutes, tabWorks);
+  const tabLibrary = h('button', 'px-btn tab', 'Library');
+  tabs.append(tabUpg, tabRoutes, tabLibrary);
   const showTab = (k: number) => {
-    [tabUpg, tabRoutes, tabWorks].forEach((t, q) => t.classList.toggle('on', q === k));
+    [tabUpg, tabRoutes, tabLibrary].forEach((t, q) => t.classList.toggle('on', q === k));
     [list, routesList, worksList].forEach((l, q) => { l.hidden = q !== k; });
   };
   tabUpg.addEventListener('click', () => showTab(0));
   tabRoutes.addEventListener('click', () => showTab(1));
-  tabWorks.addEventListener('click', () => showTab(2));
+  tabLibrary.addEventListener('click', () => showTab(2));
   const list = h('div', 'list rover');
   // Rover parts in a 3x2 grid: everything within thumb reach, no scrolling.
   const rows = UPGRADES.map((u) => {
@@ -251,7 +254,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return { def: u, lvl, eff, btn, cost };
   });
   // Exploration routes: unlock with bluetreri + items, then pick the one the rovers follow from the next ring.
-  const routesList = h('div', 'list rover');
+  const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
   const routeCards = ROUTES.map((rd) => {
     const card = h('div', 'upg px-box');
@@ -260,19 +263,19 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     head.append(h('span', 'name', rd.name), state);
     const eff = h('div', 'eff');
     const btn = h('button', 'px-btn buy');
-    const label = h('span');
-    const coin = h('i', 'coin');
-    btn.append(coin, label);
     btn.addEventListener('click', () => {
       const s = current;
       if (!s) return;
       if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id);
       else actions.unlockRoute(rd.id);
     });
+    // Next level: less entropy (shown once the route is unlocked).
+    const up = h('button', 'px-btn buy up');
+    up.addEventListener('click', () => actions.upgradeRoute(rd.id));
     card.title = rd.desc;
-    card.append(head, eff, btn);
+    card.append(head, eff, btn, up);
     routesList.append(card);
-    return { rd, state, eff, btn, label, coin };
+    return { rd, state, eff, btn, up, btnKey: '', upKey: '' };
   });
   const worksList = h('div', 'list');
   worksList.hidden = true;
@@ -298,6 +301,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   shelfBtn.addEventListener('click', () => openShelf());
   shelfCard.append(h('div', 'head'), shelfInfo, shelfBtn);
   shelfCard.firstElementChild!.append(h('span', 'name', 'Collection'));
+  /** Button content for a price (bluetreri + item icons), rebuilt only when it changes. */
+  type Keyed = { btnKey: string; upKey: string };
+  function price(c: Keyed, key: keyof Keyed, btn: HTMLElement, gold: number, items: Partial<Record<ItemId, number>>, prefix = '') {
+    const k = `${prefix}|${gold}|${JSON.stringify(items)}`;
+    if (c[key] === k) return;
+    c[key] = k;
+    btn.replaceChildren();
+    // Each part (level, bluetreri, each item) stays in one piece; the button wraps between them when narrow.
+    const part = (...kids: Node[]) => { const p = h('span', 'part'); p.append(...kids); btn.append(p); };
+    if (prefix) part(document.createTextNode(prefix));
+    if (gold > 0) part(h('i', 'coin'), document.createTextNode(fmt(gold)));
+    for (const [id, n] of Object.entries(items)) part(itemIcon(ITEMS.findIndex((it) => it.id === id)), document.createTextNode(`${n}`));
+  }
+  function label(c: Keyed, key: keyof Keyed, btn: HTMLElement, text: string) {
+    if (c[key] === text) return;
+    c[key] = text;
+    btn.replaceChildren(h('span', '', text));
+  }
   worksList.append(shelfCard);
   panel.append(tabs, list, routesList, worksList);
 
@@ -306,14 +327,14 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const s = current;
     if (!s) return;
     const m = modal('help');
-    m.box.append(h('div', 'name', 'Shelf'));
+    m.box.append(h('div', 'name', `Shelf · ${whole(libraryShare(s))}`));
     const body = h('div', 'help-body');
     for (const wd of WORKS) {
       const n = s.works[wd.id];
-      body.append(h('h3', '', `${wd.name}: ${wd.effect} ×${fmt(wd.bonus ** n)}`));
+      body.append(h('h3', '', `${wd.name} ${n}/${WORKS_MAX}: ${wd.effect} ×${fmt(wd.bonus ** n)}`));
       if (!n) body.append(h('p', 'info', 'None yet.'));
       for (let k = 0; k < n; k++) body.append(h('p', '', `${k + 1}. ${workTitle(wd, k)}`));
-      body.append(h('p', 'info', `Next: ${workTitle(wd, n)} (${workCost(wd, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
+      if (n < WORKS_MAX) body.append(h('p', 'info', `Next: ${workTitle(wd, n)} (${workCost(wd, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
     }
     m.box.append(body);
     m.addClose('Close');
@@ -365,15 +386,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
         'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them.',
-        'On the Works tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
-      { on: crafted, title: 'Works', lines: [
-        'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.'] },
+        'On the Library tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
+      { on: crafted, title: 'Library', lines: [
+        'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.',
+        `Each collection has ${WORKS_MAX} works and the tab shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark around that rover: they light up as the needle passes.',
         'The rover that spots an item leaves its exploring, fetches it (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
-        'The Routes tab sets how the rovers push into the dark: rings around camp, a push north, east, south or west, or random wandering fingers.',
-        'New routes cost bluetreri plus pages, notes or photos. The one you pick takes over when the next ring starts; what is already explored stays as it is.'] },
+        'The Routes tab sets how the rovers push into the dark. From the least to the most efficient: Random, Circular, Trail, Prospector and Survey.',
+        'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each route has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
+        'The route you pick (or a new level) takes over when the next ring starts; what is already explored stays as it is.'] },
       { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring around camp; each ring is split between all of them, and each works at its own pace.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
@@ -514,34 +537,41 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       for (const x of works) {
         const n = s.works[x.wd.id];
-        set(x.lvl, `${n}`);
-        set(x.next, workTitle(x.wd, n));
-        set(x.cost, `${s.items[x.wd.item]}/${nextWorkCost(s, x.wd.id)}`);
+        set(x.lvl, `${n}/${WORKS_MAX} · ${whole(libraryShare(s, x.wd.id))}`);
+        set(x.next, n >= WORKS_MAX ? 'Complete!' : workTitle(x.wd, n));
+        set(x.cost, n >= WORKS_MAX ? 'done' : `${s.items[x.wd.item]}/${nextWorkCost(s, x.wd.id)}`);
         x.btn.classList.toggle('can', canCraft(s, x.wd.id));
       }
       const ready = WORKS.some((wd) => canCraft(s, wd.id));
-      tabWorks.classList.toggle('alert', ready);
+      tabLibrary.classList.toggle('alert', ready);
       const active = activeRoute(s);
+      const activeLv = activeLevel(s);
       for (const c of routeCards) {
         const id = c.rd.id;
         const owned = s.routes.includes(id);
-        c.coin.style.display = owned ? 'none' : '';
+        const lv = routeLevel(s, id);
         if (!owned) {
-          const items = Object.entries(c.rd.items).map(([k, n]) => `${n} ${ITEMS.find((it) => it.id === k)!.plural}`).join(' + ');
           set(c.state, '');
-          set(c.eff, `+ ${items}`);
-          set(c.label, fmt(c.rd.gold));
+          set(c.eff, c.rd.short);
+          price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items);
           c.btn.classList.toggle('can', canUnlockRoute(s, id));
+          c.up.style.display = 'none'; // (the hidden attribute loses to the button's display rule)
         } else {
-          const pending = s.route === id && active !== id;
-          set(c.state, active === id ? 'on' : pending ? 'next' : '');
+          const running = active === id && activeLv === lv;
+          const pending = s.route === id && !running;
+          set(c.state, `lv${lv}`);
           set(c.eff, pending ? 'from next ring' : c.rd.short);
-          set(c.label, active === id && s.route === id ? 'Active' : pending ? 'Queued' : 'Use');
+          label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
           c.btn.classList.toggle('can', s.route !== id);
+          const next = routeUpgradeCost(s, id);
+          c.up.style.display = '';
+          if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`);
+          else label(c, 'upKey', c.up, `lv${ROUTE_MAX_LEVEL} max`);
+          c.up.classList.toggle('can', canUpgradeRoute(s, id));
         }
       }
-      tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, rd.id)));
-      set(shelfInfo, `${s.works.book + s.works.cd + s.works.album} works`);
+      tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, rd.id) || canUpgradeRoute(s, rd.id)));
+      set(shelfInfo, `Library ${whole(libraryShare(s))} complete`);
     },
     /** Bluetreri from a revealed deposit, floating over the map. */
     specialFound(cell: number, amount: string, now: number) {
@@ -576,6 +606,19 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       m.box.append(h('div', 'name', `New version: ${version}`), h('div', 'info', notes));
       m.addClose('Download', onInstall);
       m.addClose('Later');
+    },
+    /** The whole map explored and every bluetreri at camp. */
+    showComplete(s: GameState) {
+      const m = modal();
+      m.box.append(
+        h('div', 'name', 'Congratulations!'),
+        h('div', '', 'The whole world is explored and every resource is back at camp.'),
+        h('div', 'gain', fmtTime(s.doneAt ?? s.playTime)),
+        h('div', 'info', 'of play to rebuild it all.'),
+        h('div', 'gain gold-text', `${fmt(s.totalGold)} bluetreri gathered`),
+        h('div', 'info', `Library ${whole(libraryShare(s))} complete`),
+      );
+      m.addClose('Wonderful');
     },
     showOffline(r: OfflineReport) {
       const m = modal();

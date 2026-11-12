@@ -9,7 +9,7 @@ Exploration idle with a **retro pixel** look, set in a **post-apocalyptic city**
 toxic dumps, toxic water and urban jungle). Top-down view of a 2D map (1024×1024 cells) that starts completely dark;
 rovers reveal it on their own, little by little, over time. 4 zoom levels (Street 16 → District 64 → City 256 → Metropolis 1024
 cells per side); you start at the closest and the next unlocks when 80% of the current zoom's square is revealed.
-- Bottom panel tabs: Rover, Routes, Works.
+- Bottom panel tabs: Rover, Routes, Library.
 - Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), all on the **Rover** tab (3×2 grid): Engine (speed),
   Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
   Radar (range in cells around each rover), Rovers (count). Steps/s = speed × rovers. Bluetreri comes from every cell
@@ -30,17 +30,27 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (`SEVERE_MULT`). Storms are irregular blobs (`stormReach`: seeded lobes by storm id) that slow exploring and detours
   (`weatherFactor`, softened by Body); home/out trips are not affected. `s.weather` is saved (storms + `nextId`). The map
   glides each storm towards its simulated position and draws it as a translucent textured layer.
-- **Routes** (`content/routes.ts`, Routes tab): circular (default), north, east, south, west, random. Unlocked with bluetreri +
-  items (`unlockRoute`), picked with `chooseRoute`; the pick takes over at the next ring start (`switchRoute` in `nextRing`):
-  `reorder` re-sorts the unexplored cells by the route's distance field (`routeField`: anisotropic Dijkstra from camp for
-  the four directions; for random, a multi-source Dijkstra from every explored cell with noisy costs re-rolled at each switch,
-  so it grows from the explored edge; any positive field rooted in the explored area keeps it connected) and renumbers
-  the remaining rings. The world is never saved, so `s.plan` ([ring, route] pairs) is replayed with `applyPlan` after
-  `createWorld` on load. Ranks and item indices change on a switch: `fetched`, bot targets and `scouted` are carried over by
-  cell, and `TickEvents` report map cells, not ranks. Home distance comes from `w.road` (the circular field) at the rover's
-  cell. A switch costs one ~0.5 s hitch on the full map (the field's Dijkstra; fixed fields are cached in `w.fields`, the random one is not).
+- **Routes** = discovery algorithms (`content/routes.ts`, Routes tab), from the least to the most efficient: Random,
+  Circular (free, the starting order), Trail, Prospector, Survey; dearer ones cost more bluetreri + items (`unlockRoute`).
+  Each has levels 0..`ROUTE_MAX_LEVEL` (`upgradeRoute`, `routeUpgradeCost`): a level lowers its **entropy**
+  (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level).
+  `chooseRoute`/a new level take over at the next ring start (`switchRoute` in `nextRing`, compared with `activeRoute`/`activeLevel`):
+  `reorder` grows the algorithm's field (`algoField`: multi-source Dijkstra from every explored cell over the algorithm's
+  per-cell costs, normalised to ~1) and re-sorts the unexplored cells by band, then walks each band cell to adjacent cell
+  (`chain`: a cell is placed only next to explored/placed ones, so the explored area stays connected; jumps only when stuck
+  or straying). The world is never saved: `s.plan` ([ring, route, level]; old v7 entries are [ring, route] and replay the
+  legacy fields, incl. the withdrawn north/south/east/west) is replayed by `applyPlan`, which grows each non-final field only
+  as far as the next entry needs and derives once at the end. A live switch costs a ~1 s hitch; each replayed entry ~0.17 s
+  on load. Ranks and item indices change on a switch: `fetched`, bot targets and `scouted` are carried over by cell, and
+  `TickEvents` report map cells. Home distance comes from `w.road` (the circular field). Measure efficiency with
+  `npx vite-node tools/routes.ts -- <warmHours> <runHours>` (bluetreri and cells per algorithm at levels 0/1/max from the
+  same mid-game state) whenever `ALGOS` or prices change; keep prices rising with efficiency (there is a test for prices).
 - Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Collected on
-  arrival; the Works tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, cost ×1.9 each time.
+  arrival; the Library tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, cost ×1.35
+  each time, `WORKS_MAX` (15) per collection; the tab shows each collection's and the whole library's % complete. The map must
+  hold enough items for the whole library plus every route and level (test: < 85% of each kind on real seeds).
+- End of the game: the tick where the map is done and everything is unloaded sets `s.doneAt` (play time) and
+  `TickEvents.completed`; `main.ts` shows the congratulations dialog (also after offline catch-up), once per device.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that
   rover fetches it (`trip` 'detour', `target`, at exploring speed × weather). `s.fetched` lists claimed items so exploring does
   not collect them again (pruned in `nextRing`). The detour starts from the rover's cell (`Bot.from`)
@@ -67,11 +77,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (cost per terrain + noise) walked by rings and angle: the explored area is always one connected patch (there is a test).
   Offline progress is exact. If generation changes, saves will see a different map.
 - Format: **always a portrait phone**. On mobile it fills the screen; on desktop it is a centred 9:19.5 phone frame (`#app` in `style.css`).
-  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rover/Works tabs at the bottom. Dialogs open inside the phone.
+  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rover/Routes/Library tabs at the bottom. Dialogs open inside the phone.
 - Rendering (`ui/map.ts`): low-resolution canvas (~256 logical px on the short side) scaled with crisp pixels; 16×16 tiles generated by
   code (`ui/sprites.ts`, own palette) up close, flat colour further out and a 4×4 mipmap at zoom 4. Bundled pixel fonts (work offline): `Press Start 2P` for numbers and titles (class/var `--font-num`), `VT323` for text (clear digits; Pixelify Sans was dropped because its 5 looked like an S).
-- Current balance (sim, `BASE_SPEED` 0.18 steps/s): zoom 2 ~45 min, zoom 3 ~3 h 15, zoom 4 ~7 h 20, full map ~17 h 30 (the sim does not buy Radar).
-  `BASE_SPEED` scales the whole pace linearly (bluetreri also comes from exploring). For testing: the "Speed ×N" button on the map (×1 to ×100).
+- Current balance (sim, `BASE_SPEED` 0.18 steps/s, circular route only): zoom 2 ~40 min, zoom 3 ~3 h 10, zoom 4 ~7 h, full
+  map ~12 h 25, library complete at ~10 h 30 (the sim does not buy Radar or routes).
+  `BASE_SPEED` scales the whole pace linearly (bluetreri also comes from exploring). For testing: the "Speed ×N" button on the map (×1 to ×1000).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.
 
 ## Commands

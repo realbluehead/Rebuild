@@ -183,6 +183,10 @@ button { font: inherit; color: inherit; }
 .list.rover .upg { padding: 6px; gap: 2px; }
 .list.rover .upg .eff { font-size: 16px; }
 .list.rover .upg .buy { min-height: 34px; }
+.routes .upg .buy { flex-wrap: wrap; gap: 2px 6px; font-size: 8px; padding: 3px; }
+.routes .upg .buy .part { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.routes .upg .buy .item-icon { width: 12px; height: 12px; }
+.routes .upg .buy .coin { transform: scale(0.8); }
 .upg .buy {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px; padding: 4px; font: 10px/1 var(--font-num);

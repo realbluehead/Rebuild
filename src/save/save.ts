@@ -7,15 +7,27 @@
 // v4: independent rovers (each with cargo, trip and arc); `walked` becomes `legacyWalked` and is converted
 //     when the world is loaded (`fromLegacy`).
 // v5: radar detours reveal the cells on their path (`scouted`, `Bot.from`).
-// v7: exploration routes (`routes` unlocked, `route` chosen, `plan` applied: the order is rebuilt from it).
 // v6: each rover's radar works around it (`fetched` replaces `radarNext`), weather, `Bot.found`, Tyres and Body.
+// v7: exploration routes (`routes` unlocked, `route` chosen, `plan` applied: the order is rebuilt from it).
+// v8: discovery algorithms with levels (`routeLevels`, plan entries [ring, route, level]); the north/south/east/west
+//     routes are withdrawn and refunded; `doneAt` (play time when the map was finished).
 import { D } from '../core/decimal';
 import { newBot, newGame, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
-import { ROUTES, type RouteId } from '../content/routes';
+import { WORKS_MAX } from '../content/collection';
+import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
+
+/** What the v7 routes cost, refunded when they are withdrawn (random stays unlocked, but its old price is refunded too). */
+const V7_PRICES: Record<string, [number, Record<string, number>]> = {
+  north: [300, { page: 8 }],
+  east: [1500, { note: 4 }],
+  south: [6000, { photo: 12 }],
+  west: [25000, { page: 20 }],
+  random: [100000, { note: 10, photo: 10 }],
+};
 
 /** JSON shape of the game: Decimals are stored as text. */
 export interface SaveData {
@@ -36,12 +48,14 @@ export interface SaveData {
   fetched: number[];
   routes: RouteId[];
   route: RouteId;
-  plan: [number, RouteId][];
+  routeLevels: Partial<Record<RouteId, number>>;
+  plan: ([number, RouteId] | [number, RouteId, number])[];
   weather: { epoch: number; storms: Storm[]; nextId: number };
   scouted: number[];
   zoomUnlocked: number;
   zoom: number;
   playTime: number;
+  doneAt?: number;
 }
 
 type RawSave = { v: number } & Record<string, unknown>;
@@ -84,6 +98,22 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   // v6 -> v7: only the circular route, never changed.
   // v6 -> v7: also drifting storms (the sky starts clear again).
   6: (s) => ({ ...s, v: 7, routes: ['circular'], route: 'circular', plan: [], weather: { epoch: 0, storms: [], nextId: 0 } }),
+  // v7 -> v8: the four directions are withdrawn and their price refunded (and the old, dearer random's); a rover
+  // fleet following one goes back to circular at the next ring. The plan keeps its legacy [ring, route] entries.
+  7: (s) => {
+    const owned = Array.isArray(s.routes) ? (s.routes as string[]) : [];
+    let gold = D(typeof s.gold === 'string' || typeof s.gold === 'number' ? s.gold : 0);
+    const items = { ...((s.items ?? {}) as Record<string, number>) };
+    for (const id of owned) {
+      const price = V7_PRICES[id];
+      if (!price) continue;
+      gold = gold.add(price[0]);
+      for (const [k, n] of Object.entries(price[1])) items[k] = (Number(items[k]) || 0) + n;
+    }
+    const routes = owned.filter((id) => !(LEGACY_ROUTES as string[]).includes(id));
+    const route = typeof s.route === 'string' && routes.includes(s.route) ? s.route : 'circular';
+    return { ...s, v: 8, gold: gold.toString(), items, routes, route, routeLevels: {} };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -103,12 +133,14 @@ export function serialize(s: GameState, now: number): SaveData {
     fetched: [...s.fetched],
     routes: [...s.routes],
     route: s.route,
-    plan: s.plan.map(([r, id]) => [r, id] as [number, RouteId]),
+    routeLevels: { ...s.routeLevels },
+    plan: s.plan.map((p) => [...p] as [number, RouteId] | [number, RouteId, number]),
     weather: { epoch: s.weather.epoch, storms: s.weather.storms.map((st) => ({ ...st })), nextId: s.weather.nextId },
     scouted: [...s.scouted],
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
     playTime: s.playTime,
+    ...(s.doneAt !== undefined ? { doneAt: s.doneAt } : {}),
   };
 }
 
@@ -135,14 +167,23 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
+  if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   const routeIds = ROUTES.map((d) => d.id) as string[];
   const isRoute = (x: unknown): x is RouteId => typeof x === 'string' && routeIds.includes(x);
+  // Plans may still name withdrawn routes (they rebuild the map as it was).
+  const isPlanned = (x: unknown): x is RouteId => isRoute(x) || (LEGACY_ROUTES as unknown[]).includes(x);
   state.routes = [...new Set<RouteId>(['circular', ...(Array.isArray(data.routes) ? data.routes : []).filter(isRoute)])];
   state.route = isRoute(data.route) && state.routes.includes(data.route) ? data.route : 'circular';
+  state.routeLevels = {};
+  for (const id of state.routes) {
+    const lv = Math.min(ROUTE_MAX_LEVEL, Math.floor(num(data.routeLevels?.[id])));
+    if (lv > 0) state.routeLevels[id] = lv;
+  }
   state.plan = [];
   for (const p of Array.isArray(data.plan) ? data.plan : []) {
     const ring = Math.floor(num(p?.[0]));
-    if (isRoute(p?.[1]) && ring > (state.plan.at(-1)?.[0] ?? -1)) state.plan.push([ring, p[1]]);
+    if (!isPlanned(p?.[1]) || ring <= (state.plan.at(-1)?.[0] ?? -1)) continue;
+    state.plan.push(p.length > 2 ? [ring, p[1], Math.min(ROUTE_MAX_LEVEL, Math.floor(num(p[2])))] : [ring, p[1]]);
   }
   const kinds = STORMS.map((d) => d.id) as string[];
   state.weather = {
@@ -178,7 +219,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   // Only the upgrades that still exist; new ones stay at 0.
   for (const id of Object.keys(state.upgrades) as (keyof GameState['upgrades'])[]) state.upgrades[id] = num(data.upgrades?.[id]);
   for (const id of Object.keys(state.items) as (keyof GameState['items'])[]) state.items[id] = num(data.items?.[id]);
-  for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = num(data.works?.[id]);
+  for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = Math.min(WORKS_MAX, Math.floor(num(data.works?.[id])));
   return { state, savedAt: data.savedAt };
 }
 

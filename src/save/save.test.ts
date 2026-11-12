@@ -84,6 +84,28 @@ describe('save', () => {
     expect(back.scouted).toEqual([1, 9, 12]);
   });
 
+  it('migrates a v7 save: the four directions are refunded and withdrawn, the plan still replays', () => {
+    const v7 = {
+      v: 7, savedAt: 9, seed: 3, ring: 30, ringRobots: 1, bots: [{ trip: 'explore', prog: 0, cargo: 0, travel: 0, travelLen: 0, target: -1 }],
+      gold: '100', totalGold: '200', upgrades: {}, items: { page: 1, note: 0, photo: 2 }, works: { book: 3 }, fetched: [],
+      routes: ['circular', 'north', 'east', 'random'], route: 'east', plan: [[5, 'north'], [12, 'east']],
+      weather: { epoch: 0, storms: [], nextId: 0 }, scouted: [], zoomUnlocked: 1, zoom: 0, playTime: 99,
+    };
+    const { state } = deserialize(v7);
+    // north 300 + 8 pages, east 1500 + 4 notes, random 100000 + 10 notes + 10 photos (random stays unlocked).
+    expect(state.gold.toNumber()).toBe(100 + 300 + 1500 + 100000);
+    expect(state.items).toEqual({ page: 9, note: 14, photo: 12 });
+    expect(state.routes).toEqual(['circular', 'random']);
+    expect(state.route).toBe('circular');
+    expect(state.routeLevels).toEqual({});
+    expect(state.plan).toEqual([[5, 'north'], [12, 'east']]);
+    expect(state.doneAt).toBeUndefined();
+    const back = deserialize(JSON.parse(JSON.stringify(serialize({ ...state, routeLevels: { random: 2 }, plan: [...state.plan, [40, 'random', 2]], doneAt: 50 }, 0)))).state;
+    expect(back.routeLevels).toEqual({ random: 2 });
+    expect(back.plan.at(-1)).toEqual([40, 'random', 2]);
+    expect(back.doneAt).toBe(50);
+  });
+
   it('rejects versions from the future', () => {
     expect(() => migrate({ v: 999 })).toThrow();
   });

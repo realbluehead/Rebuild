@@ -1,7 +1,7 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './ui/style.css';
-import { buy, chooseRoute, craft, fromLegacy, unlockRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buy, chooseRoute, craft, fromLegacy, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
 import { applyPlan, createWorld, type World } from './core/world';
 import { fmt } from './core/format';
@@ -19,6 +19,17 @@ const AUTOSAVE_MS = 30_000;
 const MAX_FRAME_SEC = 5;
 
 const app = document.getElementById('app')!;
+
+/** Whether the end-of-game message is still owed (and marks it as shown). Kept per device, not in the save. */
+function finishedUnseen(s: GameState): boolean {
+  if (s.doneAt === undefined) return false;
+  const key = `rebuild:done:${s.seed}`;
+  try {
+    if (localStorage.getItem(key)) return false;
+    localStorage.setItem(key, '1');
+  } catch { /* no storage: show it once per session */ }
+  return true;
+}
 
 async function boot() {
   app.innerHTML = '<div class="splash">Building the world…</div>';
@@ -43,6 +54,12 @@ async function boot() {
     unlockRoute: (id) => {
       if (!unlockRoute(state, id)) return;
       view.toast(`Route unlocked: ${routeById(id)!.name}`);
+      void save();
+    },
+    upgradeRoute: (id) => {
+      if (!upgradeRoute(state, id)) return;
+      const lv = routeLevel(state, id);
+      view.toast(`${routeById(id)!.name} lv${lv}: less entropy${state.route === id ? '\nfrom the next ring' : ''}`);
       void save();
     },
     chooseRoute: (id) => {
@@ -75,6 +92,9 @@ async function boot() {
   if (loaded) {
     const report = applyOffline(state, world, loaded.savedAt, Date.now());
     if (report) view.showOffline(report);
+    // Finished while away (or a save that was finished before the message existed): the tick that ends the map
+    // sets `doneAt` without anyone to tell.
+    if (finishedUnseen(state)) view.showComplete(state);
   }
   await cancelReminders();
 
@@ -83,6 +103,7 @@ async function boot() {
     for (const i of ev.specials) view.specialFound(i, fmt(world.value[i] * loot), now);
     for (const i of ev.items) view.itemFound(i, now);
     if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
+    if (ev.completed) { finishedUnseen(state); view.showComplete(state); void save(); }
     if (ev.zoomUnlocked) {
       view.toast(`New zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);
       setZoom(state, ev.zoomUnlocked - 1); // show the new view right away
