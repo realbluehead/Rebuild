@@ -151,6 +151,8 @@ button { font: inherit; color: inherit; }
 .bar { height: 8px; margin-top: 4px; background: var(--void); border: 2px solid var(--edge); }
 .bar i { display: block; height: 100%; background: var(--ok); }
 .bar[hidden] { display: none; }
+.bar.slim { height: 7px; margin: 0; border-width: 1px; }
+.bar.slim i { background: var(--ok); box-shadow: 0 0 4px var(--ok); }
 
 .speed-ctl { position: absolute; right: 8px; bottom: 8px; font: 10px/1 var(--font-num); padding: 8px 10px; }
 

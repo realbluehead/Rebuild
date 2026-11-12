@@ -244,9 +244,14 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.append(h('i', 'coin'), cost);
     btn.addEventListener('click', () => actions.buy(u.id));
     card.title = u.desc;
-    card.append(head, eff, btn);
+    // Rovers: a new one waits for the next ring; the bar shows how much of the current ring is done.
+    const bar = h('div', 'bar slim');
+    const fill = h('i');
+    bar.append(fill);
+    bar.hidden = true;
+    card.append(head, eff, bar, btn);
     list.append(card);
-    return { def: u, lvl, eff, btn, cost };
+    return { def: u, lvl, eff, btn, cost, bar, fill };
   });
   // Exploration routes: unlock with bluetreri + items, then pick the one the rovers follow from the next ring.
   const routesList = h('div', 'list rover routes');
@@ -539,13 +544,22 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       zout.disabled = s.zoom >= s.zoomUnlocked - 1;
       if (isComplete(s, world)) set(cellSky, 'Map complete!');
 
+      // How much of the current ring is done: new rovers, and a queued route or level, start with the next ring.
+      const ringNow = progress(s, world);
+      const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
+      const waiting = ringNow.b > ringNow.a ? Math.max(0, st.explorers - s.bots.length) : 0;
       for (const r of rows) {
         const lvl = s.upgrades[r.def.id];
         set(r.lvl, `lv${lvl}`);
         s.upgrades[r.def.id]++;
         const next = stats(s);
         s.upgrades[r.def.id]--;
-        set(r.eff, effectText(r.def.id, st, next));
+        const wait = r.def.id === 'explorers' && waiting > 0;
+        r.bar.hidden = !wait;
+        if (wait) {
+          set(r.eff, `+${waiting} · ring ${whole(Math.min(0.99, ringDone))}`);
+          r.fill.style.width = `${Math.min(99, ringDone * 100).toFixed(1)}%`;
+        } else set(r.eff, effectText(r.def.id, st, next));
         set(r.cost, fmt(costOf(r.def, lvl)));
         r.btn.classList.toggle('can', canBuy(s, r.def.id));
       }
@@ -560,9 +574,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       tabLibrary.classList.toggle('alert', ready);
       const active = activeRoute(s);
       const activeLv = activeLevel(s);
-      // How much of the current ring is done: a queued route (or level) takes over when it is complete.
-      const ringNow = progress(s, world);
-      const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
       for (const c of routeCards) {
         const id = c.rd.id;
         const owned = s.routes.includes(id);
