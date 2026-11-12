@@ -25,8 +25,8 @@ interface Popup { wx: number; wy: number; text: string; t0: number; }
 /** What a rover does when not exploring: going to or from camp, or fetching an item (`target`, a rank, walking
  *  from the cell of rank `from`). */
 export interface TripView { kind: 'explore' | 'home' | 'out' | 'detour'; f: number; target?: number; from?: number; }
-/** Each rover's radar: range in cells, and items (indices into `itemRanks`) already claimed by a rover. */
-export interface RadarView { range: number; fetched: readonly number[]; }
+/** Each rover's radar range in cells (same order as the trips), and items (indices into `itemRanks`) already claimed. */
+export interface RadarView { ranges: readonly number[]; fetched: readonly number[]; }
 
 const darken = (c: number) => (((c >>> 2) & 0x3f3f3f) | 0xff000000) >>> 0;
 /** Mixes two ABGR colours (t = 0 -> a, t = 1 -> b). */
@@ -72,6 +72,8 @@ export class MapView {
   private itemIcons = ITEM_SPRITES.map(spriteCanvas);
   /** Drawn position of each rover: follows the real one smoothly so it creeps forward without jumps. */
   private bots: { x: number; y: number; face: 1 | -1 }[] = [];
+  /** Rover picked on the Rover tab: marked with a chevron when there are several, and the edge arrow points to it. */
+  focus = 0;
   private popups: Popup[] = [];
   /** View centre, in cells. The player moves it; the map never moves on its own. */
   camX: number;
@@ -220,7 +222,7 @@ export class MapView {
     this.clampCam();
   }
 
-  /** The view flies to the lead rover. */
+  /** The view flies to the picked rover (`focus`). */
   goToRobot(): void {
     this.flying = true;
   }
@@ -255,7 +257,7 @@ export class MapView {
 
   /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState); `storms`: the weather;
    *  `selected`: the cell (map index) the player tapped, or -1. */
-  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { range: 0, fetched: [] },
+  render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { ranges: [], fetched: [] },
     scouted: number[] = [], minedCells: readonly number[] = [], storms: readonly Storm[] = [], selected = -1): void {
     const { w, W, H, buf } = this;
     if (this.version !== w.version) this.refreshRanks();
@@ -341,10 +343,11 @@ export class MapView {
       if (d > 0) { b.x += (dx / d) * move; b.y += (dy / d) * move; }
       if (Math.abs(dx) > 0.01) b.face = dx > 0 ? 1 : -1;
     });
-    if (this.flying && this.bots[0]) {
+    const followed = this.bots[this.focus] ?? this.bots[0];
+    if (this.flying && followed) {
       const fly = 1 - Math.exp(-dt * 5);
-      this.camX += (this.bots[0].x - this.camX) * fly;
-      this.camY += (this.bots[0].y - this.camY) * fly;
+      this.camX += (followed.x - this.camX) * fly;
+      this.camY += (followed.y - this.camY) * fly;
     }
     const left = this.camX - W / 2 / cp;
     const top = this.camY - H / 2 / cp;
@@ -554,10 +557,11 @@ export class MapView {
     // Submarine-style radar around each rover: radius = radar range in cells, a rotating needle with a fading
     // trail, and detected items light up as the needle sweeps over them.
     const sweep = ((now / SWEEP_MS) % 1) * Math.PI * 2;
-    if (radar.range > 0) {
-      const R = radar.range * cp;
+    if (radar.ranges.some((r) => r > 0)) {
       ctx.save();
-      for (const b of this.bots) {
+      for (const [e, b] of this.bots.entries()) {
+        const R = (radar.ranges[e] ?? 0) * cp;
+        if (R <= 0) continue;
         const bx = (b.x - left) * cp;
         const by = (b.y - top) * cp;
         if (bx < -R || by < -R || bx > W + R || by > H + R) continue;
@@ -599,9 +603,10 @@ export class MapView {
       // Items inside some rover's radar circle (the ones it will fetch): they light up when the needle hits them.
       const claimed = new Set(radar.fetched);
       const inRange = new Set<number>();
-      for (const b of this.bots) {
+      for (const [e, b] of this.bots.entries()) {
         const cell = Math.floor(b.y) * size + Math.floor(b.x);
-        if (cell >= 0 && cell < n) forItemsNear(w, cell, radar.range, (k) => inRange.add(k));
+        const range = radar.ranges[e] ?? 0;
+        if (range > 0 && cell >= 0 && cell < n) forItemsNear(w, cell, range, (k) => inRange.add(k));
       }
       for (const k of inRange) {
         const r = w.itemRanks[k];
@@ -650,11 +655,22 @@ export class MapView {
         ctx.fillStyle = e === 0 ? '#5ff0ff' : '#a9b4c2';
         ctx.fillRect(sx - 1, sy - 1, 3, 3);
       }
+      // A bobbing green chevron over the picked rover (only worth it with more than one).
+      if (e === this.focus && this.bots.length > 1) {
+        const top = (cp >= TILE_MIN_PX ? sy - this.robot[0].height + 1 : sy - 5) - (Math.floor(now / 400) % 2);
+        ctx.fillStyle = '#1b1420';
+        ctx.fillRect(sx - 3, top - 4, 7, 3);
+        ctx.fillRect(sx - 2, top - 1, 5, 2);
+        ctx.fillStyle = '#7dff9a';
+        ctx.fillRect(sx - 2, top - 3, 5, 1);
+        ctx.fillRect(sx - 1, top - 2, 3, 1);
+        ctx.fillRect(sx, top - 1, 1, 1);
+      }
     });
 
     // If the rover leaves the view, an arrow at the edge points to it (tapping it goes there).
     this.pointer = null;
-    const lead = this.bots[0];
+    const lead = this.bots[this.focus] ?? this.bots[0];
     if (lead) {
       const rx = (lead.x - left) * cp;
       const ry = (lead.y - top) * cp;

@@ -240,3 +240,7 @@ button { font: inherit; color: inherit; }
 .help-btn.alert { color: var(--haz); background: var(--stripes); text-shadow: 2px 2px 0 var(--haz-k), -2px -2px 0 var(--haz-k), 2px -2px 0 var(--haz-k), -2px 2px 0 var(--haz-k); animation: blink 1s steps(2) infinite; }
 .upg[hidden], .routes-more[hidden] { display: none; }
 .routes-more { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }
+.rover-pick { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
+.rover-pick .pick-label { color: var(--muted); font-size: 16px; margin-right: 2px; }
+.rover-pick .pick { flex: 1; min-height: 26px; padding: 2px 0; font-family: var(--font-num); font-size: 9px; }
+.rover-pick .pick.on { filter: brightness(1.35); outline: 2px solid var(--ok); outline-offset: -2px; }

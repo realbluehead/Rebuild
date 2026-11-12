@@ -4,7 +4,7 @@ import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '..
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -17,7 +17,8 @@ export interface ViewActions {
   unlockRoute(id: RouteId): void;
   chooseRoute(id: RouteId): void;
   upgradeRoute(id: RouteId): void;
-  buy(id: StatId): void;
+  /** Buys a level of `id` for rover `rover` (the rover count is for the fleet). */
+  buy(id: StatId, rover: number): void;
   craft(id: WorkId): void;
   zoom(delta: number): void;
   exportText(): string;
@@ -237,6 +238,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   tabRoutes.addEventListener('click', () => showTab(1));
   tabLibrary.addEventListener('click', () => showTab(2));
   const list = h('div', 'list rover');
+  // Upgrades are per rover: pick which one the cards buy for (the Rovers card is for the whole fleet).
+  let rover = 0;
+  const picker = h('div', 'rover-pick');
+  list.append(picker);
+  let pickerCount = -1;
+  function fillPicker(s: GameState) {
+    if (rover >= s.bots.length) rover = 0;
+    if (pickerCount !== s.bots.length) {
+      pickerCount = s.bots.length;
+      picker.replaceChildren(h('span', 'pick-label', 'Rover'));
+      s.bots.forEach((_, j) => {
+        const b = h('button', 'px-btn pick', `#${j + 1}`);
+        b.addEventListener('click', () => { rover = j; map.focus = j; map.goToRobot(); });
+        picker.append(b);
+      });
+    }
+    [...picker.querySelectorAll('.pick')].forEach((b, j) => b.classList.toggle('on', j === rover));
+  }
   // Rover parts in a 3x2 grid: everything within thumb reach, no scrolling.
   const rows = UPGRADES.map((u) => {
     const card = h('div', 'upg px-box');
@@ -248,7 +267,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const btn = h('button', 'px-btn buy');
     const cost = h('span');
     btn.append(h('i', 'coin'), cost);
-    btn.addEventListener('click', () => actions.buy(u.id));
+    btn.addEventListener('click', () => actions.buy(u.id, u.id === 'explorers' ? 0 : rover));
     card.title = u.desc;
     // Rovers: a new one waits for the next ring; the bar shows how much of the current ring is done.
     const bar = h('div', 'bar slim');
@@ -338,7 +357,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   function detourShare(b: Bot): number {
     const s = current;
     if (!s || b.target < 0 || b.from < 0) return 0;
-    const plan = detourPlan(world, stats(s).grip, b.from, b.target);
+    const plan = detourPlan(world, stats(s, b).grip, b.from, b.target);
     const n = plan.path.length - 1;
     if (n <= 0) return 0.5;
     if (b.travel < plan.out) {
@@ -377,7 +396,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     };
     s.bots.forEach((b, j) => {
       body.append(h('h3', '', `Rover #${j + 1} · ${TRIP_NAMES[b.trip]}`));
-      line('Hold', `${fmt(b.cargo)} / ${fmt(st.cargo)} (${whole(Math.min(1, b.cargo / st.cargo))})`);
+      const bs = stats(s, b);
+      line('Hold', `${fmt(b.cargo)} / ${fmt(bs.cargo)} (${whole(Math.min(1, b.cargo / bs.cargo))})`);
+      line('Levels', UPGRADES.filter((u) => u.id !== 'explorers').map((u) => `${u.name} ${levelOn(s, u.id, b)}`).join(' · '));
       line('On the job', b.log.since < 0 ? 'since before records' : fmtTime(Math.max(0, s.playTime - b.log.since)));
       line('Cells explored', fmt(b.log.cells));
       line('Distance', `${fmt(b.log.steps)} steps`);
@@ -428,7 +449,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
 
   /** Field-note entries: each appears once the player has found what it explains. */
   function helpEntries(s: GameState) {
-    const u = s.upgrades;
+    // An upgrade counts as found once any rover has a level of it.
+    const u = Object.fromEntries(UPGRADES.map((x) => [x.id, Math.max(0, ...s.bots.map((b) => levelOn(s, x.id, b)))])) as Record<StatId, number>;
     const itemsFound = s.items.page + s.items.note + s.items.photo + s.works.book + s.works.cd + s.works.album > 0;
     const crafted = s.works.book + s.works.cd + s.works.album > 0;
     const deposited = s.totalGold.gt(0);
@@ -448,8 +470,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: seenTerrain.size > 0 && deposited, title: 'Terrain', legend: true, lines: [
         'Each cell yields bluetreri by terrain (and the farther from camp, the more). Rough terrain is slower to explore: streets are fast, jungle and rubble are slow. Found so far:'] },
       { on: seenSpecial, title: 'Deposits', lines: ['Cells with blue crystals are bluetreri deposits: they yield far more than the rest.'] },
-      { on: u.speed > 0, title: 'Engine', lines: ['Rovers explore and travel faster. Every upgrade costs more at each level; the button lights up when you can afford it.'] },
-      { on: u.cargo > 0, title: 'Hold', lines: ['Each rover can carry more bluetreri, so it returns to camp less often. A loaded rover drives home slowly: the fuller, the slower.'] },
+      { on: u.speed > 0, title: 'Engine', lines: ['The rover explores and travels faster. Every upgrade costs more at each level; the button lights up when you can afford it.',
+        'Upgrades are fitted to one rover at a time: with several, pick which one at the top of the Rover tab (a green chevron marks it on the map). A new rover is built like your weakest one. Each card shows how much more bluetreri per second its next level would bring.'] },
+      { on: u.cargo > 0, title: 'Hold', lines: ['The rover can carry more bluetreri, so it returns to camp less often. A loaded rover drives home slowly: the fuller, the slower.'] },
       { on: u.tyres > 0, title: 'Tyres', lines: ['Better grip on rough ground: rubble, jungle, ruins and towers slow the rovers down less.'] },
       { on: s.weather.storms.length > 0 || u.body > 0, title: 'Weather', lines: [
         'Storms drift over the city with the wind and slow down any rover working under them. They form and die out one at a time; now and then a severe one hits much harder.',
@@ -581,7 +604,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         from: b.from >= 0 ? b.from : undefined,
       }));
       if (selected >= 0 && selected >= totalCells(world)) selected = -1;
-      map.render(prog, s.zoom, now, dt, trips, { range: st.radar, fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected);
+      map.focus = rover;
+      map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected);
       showCell(s, st);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
@@ -598,7 +622,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       set(cargoText, `${fmt(load)}/${fmt(cap)} ${doing}`);
       const lv = explorerLevel(cells, n);
       const lvText = lv.level >= lv.max ? `Lv ${lv.level} MAX` : `Lv ${lv.level}/${lv.max} · ${Math.floor(lv.frac * 100)}%`;
-      set(explored, `${lvText} · ${fmt(st.stepsPerSec)} steps/s · ${s.bots.length}R`);
+      set(explored, `${lvText} · ${fmt(fleetSpeed(s))} steps/s · ${s.bots.length}R`);
       levelBar.style.width = `${(lv.frac * 100).toFixed(1)}%`;
       if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nNext at ${fmt(Math.ceil(lv.to))} cells`);
       shownLevel = lv.level;
@@ -612,21 +636,26 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const ringNow = progress(s, world);
       const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
       const waiting = ringNow.b > ringNow.a ? Math.max(0, st.explorers - s.bots.length) : 0;
+      fillPicker(s);
+      const bot = s.bots[rover];
       for (const r of rows) {
-        const lvl = s.upgrades[r.def.id];
+        const id = r.def.id;
+        const own = id !== 'explorers' && bot;
+        const lvl = levelOn(s, id, own ? bot : undefined);
         set(r.lvl, `lv${lvl}`);
-        s.upgrades[r.def.id]++;
-        const next = stats(s);
-        s.upgrades[r.def.id]--;
+        const cur = stats(s, bot);
+        if (own) bot.up[id]++; else s.upgrades[id]++;
+        const next = stats(s, bot);
+        if (own) bot.up[id]--; else s.upgrades[id]--;
         const wait = r.def.id === 'explorers' && waiting > 0;
         r.bar.hidden = !wait;
         if (wait) {
           set(r.eff, `+${waiting} · ring ${whole(Math.min(0.99, ringDone))}`);
           r.fill.style.width = `${Math.min(99, ringDone * 100).toFixed(1)}%`;
-        } else set(r.eff, effectText(r.def.id, st, next));
+        } else set(r.eff, effectText(r.def.id, cur, next));
         set(r.cost, fmt(costOf(r.def, lvl)));
-        r.btn.classList.toggle('can', canBuy(s, r.def.id));
-        const g = upgradeGain(s, world, r.def.id);
+        r.btn.classList.toggle('can', canBuy(s, id, 1, rover));
+        const g = upgradeGain(s, world, id, rover);
         set(r.gain, g === null ? (r.def.id === 'radar' ? 'finds items' : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}% bluetreri/s`);
       }
       const myLevel = levelOf(s, world);
@@ -701,9 +730,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       showToast(`New: ${workTitle(wd, n - 1)}\n${workEffect(wd.effect, before, after)}`, 4200);
     },
     /** An upgrade was bought: what it changed. */
-    bought(id: StatId, level: number, before: Stats, after: Stats) {
+    bought(id: StatId, level: number, before: Stats, after: Stats, rover?: number) {
       const u = UPGRADES.find((x) => x.id === id)!;
-      showToast(`${u.name} lv${level}\n${effectText(id, before, after)}`, 2600);
+      showToast(`${rover === undefined ? '' : `Rover #${rover + 1} · `}${u.name} lv${level}\n${effectText(id, before, after)}`, 2600);
     },
     /** Chosen speed multiplier (1 = normal). */
     gameSpeed: () => speed,

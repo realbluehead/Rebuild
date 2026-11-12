@@ -1,5 +1,5 @@
 import { D, Decimal } from './decimal';
-import { UPGRADES, type StatId } from '../content/upgrades';
+import { ROVER_STATS, UPGRADES, type RoverStat, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
@@ -32,6 +32,8 @@ export interface Bot {
   walked: number;
   /** Its record since it joined (for the fleet screen). */
   log: BotLog;
+  /** Levels bought for this rover alone, on top of the fleet's base levels (`GameState.upgrades`). */
+  up: Record<RoverStat, number>;
 }
 
 /** A rover's lifetime record. Saves from before it existed start at 0, with `since` -1 (unknown). */
@@ -57,7 +59,9 @@ export interface BotLog {
 export const newLog = (since = 0): BotLog => ({ since, cells: 0, steps: 0, gold: 0, best: 0, items: 0, trips: 0, detours: 0, gaveUp: 0 });
 
 export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0): Bot =>
-  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since) });
+  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since), up: newUp() });
+
+export const newUp = (): Record<RoverStat, number> => Object.fromEntries(ROVER_STATS.map((id) => [id, 0])) as Record<RoverStat, number>;
 
 /** A storm drifting over the map: an irregular blob of about `r` cells around (x, y). */
 export interface Storm {
@@ -96,6 +100,8 @@ export interface GameState {
   gold: Decimal;
   /** Total bluetreri earned since the start. */
   totalGold: Decimal;
+  /** Rover count, and the fleet's base level of every other upgrade (levels bought before they were per rover, save v14;
+   *  each rover adds its own `Bot.up`). */
   upgrades: Record<StatId, number>;
   /** Items found and not spent yet. */
   items: Record<ItemId, number>;

@@ -1,7 +1,7 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './ui/style.css';
-import { buy, chooseRoute, craft, fromLegacy, recountItems, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buy, levelOn, chooseRoute, craft, fromLegacy, recountItems, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
 import { applyPlan, createWorld, type World } from './core/world';
 import { fmt } from './core/format';
@@ -46,10 +46,11 @@ async function boot() {
   const save = () => (locked ? Promise.resolve() : saveGame(state));
 
   const view = createView(app, world, state, {
-    buy: (id) => {
-      const before = stats(state);
-      if (!buy(state, world, id)) return;
-      view.bought(id, state.upgrades[id], before, stats(state));
+    buy: (id, rover) => {
+      const bot = id === 'explorers' ? undefined : state.bots[rover];
+      const before = stats(state, bot);
+      if (!buy(state, world, id, 1, rover)) return;
+      view.bought(id, levelOn(state, id, bot), before, stats(state, bot), bot ? rover : undefined);
       void save();
     },
     unlockRoute: (id) => {

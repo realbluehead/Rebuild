@@ -27,6 +27,7 @@ describe('save', () => {
     s.weather = { epoch: 4, storms: [{ id: 3, kind: 'acid', x: 10.5, y: 12.25, vx: 0.1, vy: -0.2, r: 4.5, size: 6, age: 7, life: 90, severe: true }], nextId: 4 };
     s.bots[0].bag = [1, 0, 2];
     s.bots[0].found = 3;
+    s.bots[0].up.tyres = 2;
     s.zoomUnlocked = 3;
     s.zoom = 2;
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));

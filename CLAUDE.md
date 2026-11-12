@@ -10,6 +10,13 @@ toxic dumps, toxic water and urban jungle). Top-down view of a 2D map (1024×102
 rovers reveal it on their own, little by little, over time. 4 zoom levels (Street 16 → District 64 → City 256 → Metropolis 1024
 cells per side); you start at the closest and the next unlocks when 80% of the current zoom's square is revealed.
 - Bottom panel tabs: Rover, Routes, Library.
+- **Upgrades are per rover** (save v14): `Bot.up` holds each rover's own levels; `GameState.upgrades` holds the rover
+  count and a fleet base level (levels bought before v14) added to every rover. `stats(s, b)` (default: first rover),
+  `levelOn(s, id, b)`, `buy`/`canBuy`/`upgradeGain` take the rover index; `tick`, `progress`, `goldPerSec` and the map's
+  radar work per rover (each with its own grip, speed, hold, armour, radar). A new rover is built like the weakest one
+  (`newRover`: each level the lowest among the rovers). The Rover tab has a picker (#1, #2…) and the map marks the picked
+  rover with a chevron (`MapView.focus`). Prices were cut 4× when this came in so the pace stays similar; the sim buys the
+  best (upgrade, rover) pair and saves up for the next route once it is open.
 - Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), all on the **Rover** tab (3×2 grid): Engine (speed),
   Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
   Radar (range in cells around each rover), Rovers (count). Steps/s = speed × rovers. Bluetreri comes from every cell
@@ -105,9 +112,9 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   code (`ui/sprites.ts`, own palette) up close, flat colour further out and a 4×4 mipmap at zoom 4. Bundled pixel fonts (work offline): `Press Start 2P` for numbers and titles (class/var `--font-num`), `VT323` for text (clear digits; Pixelify Sans was dropped because its 5 looked like an S).
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s; greedy stats, unlocks each route as soon as it can and levels the one in
   use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit further apart each
-  time** (~20–40 min early, ~1 h mid-game, 1–2 h late). Seed 12345: Circular ~18 min, zoom 2 ~43 min, rover #2 ~1 h 20,
-  zoom 3 ~2 h 55, Trail ~4 h 25, rover #3 ~4 h 55, zoom 4 ~8 h 30, Prospector ~9 h 10, rover #5 ~12 h 30, Survey ~13 h 35,
-  library ~16 h 40, full map ~22 h 40. `npm run sim` prints this timeline ("Big advances") with the gap before each one;
+  time** (~10–40 min early, ~1 h mid-game, 1–4 h late). Seed 12345: Circular ~9 min, zoom 2 ~22 min, rover #2 ~42 min,
+  zoom 3 ~1 h 30, Trail ~2 h 20, rover #3 ~2 h 55, zoom 4 ~5 h 45, Prospector ~5 h 55, Survey ~10 h 45, rover #5 ~11 h 15,
+  library ~15 h 30, full map ~20 h 55. `npm run sim` prints this timeline ("Big advances") with the gap before each one;
   run it whenever prices or speeds change. `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.
 

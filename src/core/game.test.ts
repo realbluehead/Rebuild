@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newGame as freshGame } from './state';
-import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, newRover, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { UPGRADES } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -186,6 +186,42 @@ describe('game', () => {
       expect(bot.trip).toBe(b.bots[j].trip);
       expect(bot.prog).toBeCloseTo(b.bots[j].prog, 3);
       expect(bot.cargo).toBeCloseTo(b.bots[j].cargo, 3);
+    });
+  });
+
+  it('upgrades are bought per rover, and rovers with different levels stay exact', () => {
+    const a = newGame(42);
+    const b = newGame(42);
+    for (const s of [a, b]) {
+      Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 1 });
+      s.bots[0].up.tyres = 3;
+      s.bots[0].up.radar = 2;
+    }
+    // The second rover joins at the next ring, built like the weakest rover out (here the only one).
+    while (a.bots.length < 2) tick(a, world, 1);
+    while (b.bots.length < 2) tick(b, world, 1);
+    expect(a.bots[1].up).toEqual(a.bots[0].up);
+    a.bots[1].up.tyres = 0;
+    b.bots[1].up.tyres = 0;
+    expect(stats(a, a.bots[1]).grip).toBeGreaterThan(stats(a, a.bots[0]).grip);
+    expect(newRover(a).up.tyres).toBe(0); // the lowest level among them
+    a.gold = D(1e9);
+    b.gold = D(1e9);
+    const cost0 = costOf(UPGRADES.find((u) => u.id === 'speed')!, 12).toNumber();
+    expect(buy(a, world, 'speed', 1, 1)).toBe(true);
+    expect(a.gold.toNumber()).toBe(1e9 - cost0); // its own level: 12 from the fleet + 0
+    expect(stats(a, a.bots[1]).speed).toBeGreaterThan(stats(a, a.bots[0]).speed);
+    expect(a.bots[0].up.speed).toBe(0);
+    buy(b, world, 'speed', 1, 1);
+    // Tyres on one rover keep it on its cell; the rest of the game stays exact.
+    for (const s of [a, b]) buy(s, world, 'tyres', 2, 1);
+    tick(a, world, 600);
+    for (let k = 0; k < 6000; k++) tick(b, world, 0.1);
+    expect(a.ring).toBe(b.ring);
+    expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 2);
+    a.bots.forEach((bot, j) => {
+      expect(bot.trip).toBe(b.bots[j].trip);
+      expect(bot.prog).toBeCloseTo(b.bots[j].prog, 2);
     });
   });
 
