@@ -95,14 +95,14 @@ describe('save', () => {
     // north 300 + 8 pages, east 1500 + 4 notes, random 100000 + 10 notes + 10 photos (random stays unlocked).
     expect(state.gold.toNumber()).toBe(100 + 300 + 1500 + 100000);
     expect(state.items).toEqual({ page: 9, note: 14, photo: 12 });
-    expect(state.routes).toEqual(['circular', 'random']);
+    expect(state.routes).toEqual(['random', 'circular']);
     expect(state.route).toBe('circular');
     expect(state.routeLevels).toEqual({});
     expect(state.plan).toEqual([[5, 'north'], [12, 'east']]);
     expect(state.doneAt).toBeUndefined();
-    const back = deserialize(JSON.parse(JSON.stringify(serialize({ ...state, routeLevels: { random: 2 }, plan: [...state.plan, [40, 'random', 2]], doneAt: 50 }, 0)))).state;
-    expect(back.routeLevels).toEqual({ random: 2 });
-    expect(back.plan.at(-1)).toEqual([40, 'random', 2]);
+    const back = deserialize(JSON.parse(JSON.stringify(serialize({ ...state, routeLevels: { circular: 2, random: 3 }, plan: [...state.plan, [40, 'circular', 2]], doneAt: 50 }, 0)))).state;
+    expect(back.routeLevels).toEqual({ circular: 2 }); // Random has no levels
+    expect(back.plan.at(-1)).toEqual([40, 'circular', 2]);
     expect(back.doneAt).toBe(50);
   });
 

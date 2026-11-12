@@ -172,11 +172,12 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   const isRoute = (x: unknown): x is RouteId => typeof x === 'string' && routeIds.includes(x);
   // Plans may still name withdrawn routes (they rebuild the map as it was).
   const isPlanned = (x: unknown): x is RouteId => isRoute(x) || (LEGACY_ROUTES as unknown[]).includes(x);
-  state.routes = [...new Set<RouteId>(['circular', ...(Array.isArray(data.routes) ? data.routes : []).filter(isRoute)])];
-  state.route = isRoute(data.route) && state.routes.includes(data.route) ? data.route : 'circular';
+  // Random is the free starting route (saves from before it was, own circular instead: it used to be the free one).
+  state.routes = [...new Set<RouteId>(['random', ...(Array.isArray(data.routes) ? data.routes : []).filter(isRoute)])];
+  state.route = isRoute(data.route) && state.routes.includes(data.route) ? data.route : state.routes.includes('circular') ? 'circular' : 'random';
   state.routeLevels = {};
   for (const id of state.routes) {
-    const lv = Math.min(ROUTE_MAX_LEVEL, Math.floor(num(data.routeLevels?.[id])));
+    const lv = Math.min(ROUTES.find((d) => d.id === id)!.maxLevel, Math.floor(num(data.routeLevels?.[id])));
     if (lv > 0) state.routeLevels[id] = lv;
   }
   state.plan = [];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newGame } from './state';
+import { newGame as freshGame } from './state';
 import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, fromLegacy, homeSpeed, isComplete, libraryShare, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { UPGRADES } from '../content/upgrades';
@@ -14,6 +14,15 @@ import { collectionCost, ITEMS, WORKS, WORKS_MAX } from '../content/collection';
 const SIZE = 128;
 const world = createWorld(42, SIZE);
 const botes = UPGRADES.find((u) => u.id === 'speed')!;
+
+/** Most tests share one world: they play on the starting circular order (a new game's Random would re-sort that world
+ *  at its first ring). Route tests use `freshGame` and their own worlds. */
+const newGame = (seed?: number) => {
+  const s = freshGame(seed);
+  s.routes.push('circular');
+  s.route = 'circular';
+  return s;
+};
 
 describe('world', () => {
   it('scatters pages, notes and photos by weight', () => {
@@ -535,41 +544,53 @@ describe('routes', () => {
     expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 3);
   });
 
+  it('a new game starts on Random, with no levels, and the rest are upgrades', () => {
+    const s = freshGame(1);
+    expect(s.routes).toEqual(['random']);
+    expect(s.route).toBe('random');
+    expect(routeUpgradeCost(s, 'random')).toBeNull();
+    s.gold = D(1e9);
+    s.items.page = 1000;
+    expect(upgradeRoute(s, 'random')).toBe(false);
+    // Its first ring after camp already follows Random.
+    const w = createWorld(42, SIZE);
+    const g = freshGame(42);
+    while (g.ring < 2) tick(g, w, 0.5);
+    expect(g.plan).toEqual([[1, 'random', 0]]);
+  });
+
   it('routes are unlocked with bluetreri and items, and levelled up', () => {
-    const s = newGame(1);
-    expect(canUnlockRoute(s, 'random')).toBe(false);
-    expect(chooseRoute(s, 'random')).toBe(false);
+    const s = freshGame(1);
+    expect(canUnlockRoute(s, 'circular')).toBe(false);
+    expect(chooseRoute(s, 'circular')).toBe(false);
     expect(unlockRoute(s, 'north')).toBe(false); // withdrawn
     s.gold = D(1000);
     s.items.page = 8;
-    expect(unlockRoute(s, 'random')).toBe(true);
-    expect(s.items.page).toBe(5);
-    expect(s.gold.toNumber()).toBe(700);
-    expect(chooseRoute(s, 'random')).toBe(true);
-    expect(s.route).toBe('random');
-    expect(unlockRoute(s, 'random')).toBe(false);
+    expect(unlockRoute(s, 'circular')).toBe(true);
+    expect(s.items.page).toBe(6);
+    expect(s.gold.toNumber()).toBe(880);
+    expect(chooseRoute(s, 'circular')).toBe(true);
+    expect(s.route).toBe('circular');
+    expect(unlockRoute(s, 'circular')).toBe(false);
     // Levels: bluetreri x ROUTE_LEVEL_GROWTH and items x level each time, up to ROUTE_MAX_LEVEL.
-    expect(routeUpgradeCost(s, 'random')).toEqual({ gold: 400, items: { page: 2 } });
-    expect(upgradeRoute(s, 'random')).toBe(true);
-    expect(routeLevel(s, 'random')).toBe(1);
-    expect(s.gold.toNumber()).toBe(300);
-    expect(routeUpgradeCost(s, 'random')).toEqual({ gold: 1600, items: { page: 4 } });
-    expect(upgradeRoute(s, 'random')).toBe(false);
+    s.gold = D(2500);
+    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 2000, items: { page: 3 } });
+    expect(upgradeRoute(s, 'circular')).toBe(true);
+    expect(routeLevel(s, 'circular')).toBe(1);
+    expect(s.gold.toNumber()).toBe(500);
+    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 8000, items: { page: 6 } });
+    expect(upgradeRoute(s, 'circular')).toBe(false);
     s.gold = D(1e9);
     s.items.page = 1000;
-    while (upgradeRoute(s, 'random'));
-    expect(routeLevel(s, 'random')).toBe(ROUTE_MAX_LEVEL);
-    expect(routeUpgradeCost(s, 'random')).toBeNull();
+    while (upgradeRoute(s, 'circular'));
+    expect(routeLevel(s, 'circular')).toBe(ROUTE_MAX_LEVEL);
+    expect(routeUpgradeCost(s, 'circular')).toBeNull();
     expect(upgradeRoute(s, 'trail')).toBe(false); // locked
   });
 
   it('better routes cost more to unlock and to level up', () => {
-    for (let k = 1; k < ROUTES.length; k++) {
-      if (ROUTES[k].id === 'circular') continue; // the free starting one
-      const prev = ROUTES[k - 1].id === 'circular' ? ROUTES[k - 2] : ROUTES[k - 1];
-      expect(ROUTES[k].gold).toBeGreaterThan(prev.gold);
-    }
-    for (let k = 1; k < ROUTES.length; k++) expect(ROUTES[k].levelGold).toBeGreaterThan(ROUTES[k - 1].levelGold);
+    for (let k = 1; k < ROUTES.length; k++) expect(ROUTES[k].gold).toBeGreaterThan(ROUTES[k - 1].gold);
+    for (let k = 2; k < ROUTES.length; k++) expect(ROUTES[k].levelGold).toBeGreaterThan(ROUTES[k - 1].levelGold);
   });
 
   it('a new level of the route in use takes over at the next ring', () => {

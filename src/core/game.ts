@@ -13,7 +13,7 @@ import { ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, 
 import { ZOOMS } from '../content/world';
 import { WEATHER_EPOCH } from '../content/weather';
 import { workById, workCost, ITEMS, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
-import { ROUTE_LEVEL_GROWTH, ROUTE_MAX_LEVEL, routeById, type RouteId } from '../content/routes';
+import { ROUTE_LEVEL_GROWTH, routeById, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, cellsReached, itemsBetween, kingDistance, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 
@@ -509,7 +509,7 @@ export function unlockRoute(s: GameState, id: RouteId): boolean {
 export function routeUpgradeCost(s: GameState, id: RouteId): { gold: number; items: Partial<Record<ItemId, number>> } | null {
   const def = routeById(id);
   const lv = routeLevel(s, id);
-  if (!def || !s.routes.includes(id) || lv >= ROUTE_MAX_LEVEL) return null;
+  if (!def || !s.routes.includes(id) || lv >= def.maxLevel) return null;
   const items: Partial<Record<ItemId, number>> = {};
   for (const [k, n] of Object.entries(def.levelItems)) items[k as ItemId] = (n ?? 0) * (lv + 1);
   return { gold: Math.round(def.levelGold * ROUTE_LEVEL_GROWTH ** lv), items };

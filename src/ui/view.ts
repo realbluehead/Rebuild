@@ -3,7 +3,7 @@ import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, WORKS_MAX, workCost, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
-import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
+import { ROUTES, type RouteId } from '../content/routes';
 import { activeLevel, activeRoute, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
@@ -394,10 +394,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark around that rover: they light up as the needle passes.',
         'The rover that spots an item leaves its exploring, fetches it (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
-        'The Routes tab sets how the rovers push into the dark. From the least to the most efficient: Random, Circular, Trail, Prospector and Survey.',
-        'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each route has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
+        'The Routes tab sets how the rovers push into the dark. They start out wandering at random; the upgrades, from the least to the most efficient, are Circular, Trail, Prospector and Survey.',
+        'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
         'The route you pick (or a new level) takes over when the next ring starts; what is already explored stays as it is.'] },
-      { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring around camp; each ring is split between all of them, and each works at its own pace.'] },
+      { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring (the next band of dark ground); each ring is split between all of them, and each works at its own pace.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
         'Menu ≡: export and import your game (to move it to another device) or restart with a new map. Speed ×N speeds up time for testing.'] },
@@ -559,14 +559,14 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         } else {
           const running = active === id && activeLv === lv;
           const pending = s.route === id && !running;
-          set(c.state, `lv${lv}`);
+          set(c.state, c.rd.maxLevel ? `lv${lv}` : '');
           set(c.eff, pending ? 'from next ring' : c.rd.short);
           label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
           c.btn.classList.toggle('can', s.route !== id);
           const next = routeUpgradeCost(s, id);
-          c.up.style.display = '';
+          c.up.style.display = c.rd.maxLevel ? '' : 'none'; // Random has no levels
           if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`);
-          else label(c, 'upKey', c.up, `lv${ROUTE_MAX_LEVEL} max`);
+          else label(c, 'upKey', c.up, `lv${c.rd.maxLevel} max`);
           c.up.classList.toggle('can', canUpgradeRoute(s, id));
         }
       }

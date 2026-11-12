@@ -111,8 +111,8 @@ export function newGame(seed = randomSeed()): GameState {
     works: Object.fromEntries(WORKS.map((x) => [x.id, 0])) as Record<WorkId, number>,
     fetched: [],
     weather: { epoch: 0, storms: [], nextId: 0 },
-    routes: ['circular'],
-    route: 'circular',
+    routes: ['random'],
+    route: 'random', // the starting route: it takes over when the first ring after camp starts
     routeLevels: {},
     plan: [],
     scouted: [],

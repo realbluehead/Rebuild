@@ -2,7 +2,7 @@
 // Usage: npm run sim [-- hours [seed]]
 import { UPGRADES } from '../src/content/upgrades';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
-import { buy, canBuy, craft, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
+import { buy, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, costOf, explored, goldPerSec, isComplete, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -46,7 +46,19 @@ function score(id: (typeof UPGRADES)[number]['id']): number {
   return (after / before - 1) / costOf(UPGRADES.find((u) => u.id === id)!, s.upgrades[id]).toNumber();
 }
 
+/** Routes: the player leaves Random for Circular as soon as it can and then levels it (NOROUTES=1 keeps Random). */
+const useRoutes = !process.env.NOROUTES;
+
 for (let t = 0; t < hours * 3600; t += DT) {
+  if (useRoutes && canUnlockRoute(s, 'circular')) {
+    unlockRoute(s, 'circular');
+    chooseRoute(s, 'circular');
+    console.log(`${fmtTime(t).padStart(12)}  route: circular`);
+  }
+  if (useRoutes && s.route === 'circular' && canUpgradeRoute(s, 'circular')) {
+    upgradeRoute(s, 'circular');
+    console.log(`${fmtTime(t).padStart(12)}  route: circular lv${routeLevel(s, 'circular')}`);
+  }
   for (const id of ['book', 'cd', 'album'] as const) while (craft(s, id));
   for (;;) {
     let best = UPGRADES[0].id;
