@@ -15,6 +15,7 @@
 import { DIST_VALUE_SCALE, MAP_SIZE, SPECIAL_CHANCE, SPECIAL_MULT, T, TERRAINS, ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
 import { ITEM_CHANCE, ITEMS } from '../content/collection';
 import { fbm, rand2 } from './rng';
+import type { RouteId } from '../content/routes';
 
 export interface World {
   seed: number;
@@ -30,6 +31,15 @@ export interface World {
   item: Uint8Array;
   /** Ranks (sorted) of the cells that hold an item. */
   itemRanks: Uint32Array;
+  /** Bluetreri of each cell (before multipliers) and its crossing cost (for the exploration order). */
+  value: Float32Array;
+  cost: Float32Array;
+  /** Path distance from camp along the roads (the circular route's field): how far a rover drives home. */
+  road: Float32Array;
+  /** Distance fields of the other exploration routes, computed when first needed. */
+  fields: Map<RouteId, Float32Array>;
+  /** Bumped whenever the order changes (a new route), so views can refresh what they derived from it. */
+  version: number;
   /** order[r] = cell revealed at position r. */
   order: Uint32Array;
   /** rank[i] = position at which cell i is revealed. */
@@ -146,35 +156,43 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     order.set(part, a);
   }
 
-  const rank = new Uint32Array(n);
-  const goldPrefix = new Float64Array(n + 1);
-  for (let r = 0; r < n; r++) {
+  if (order[0] !== cy * size + cx) throw new Error('The camp must be the first cell');
+
+  const w: World = {
+    seed, size, cx, cy, terrain, special, item, order,
+    rank: new Uint32Array(n), goldPrefix: new Float64Array(n + 1), rings: count,
+    stepBase: new Float64Array(n + 1), stepRough: new Float64Array(n + 1), ringSteps: new Float64Array(0),
+    itemRanks: new Uint32Array(0), itemStart: new Uint32Array(0), itemCells: new Uint32Array(0), zoomRanks: [],
+    value, cost, road: Float32Array.from(D), fields: new Map(), version: 0,
+  };
+  derive(w, 0);
+  return w;
+}
+
+/** Recomputes everything that depends on the order from rank `a` on (ranks, bluetreri and step prefix sums), plus
+ *  the item and zoom indexes. */
+function derive(w: World, a: number): void {
+  const { order, rank, goldPrefix, stepBase, stepRough, value, terrain, item, size, cx, cy } = w;
+  const n = size * size;
+  for (let r = a; r < n; r++) {
     rank[order[r]] = r;
     goldPrefix[r + 1] = goldPrefix[r] + value[order[r]];
   }
+  // Steps: reaching cell r means coming from cell r - 1 (king distance: 1 if adjacent), times the extra
+  // roughness of the cell (streets are fast, jungle and rubble slow; tyres soften it).
+  if (a === 0) stepBase[1] = 1; // the camp itself
+  for (let r = Math.max(1, a); r < n; r++) {
+    const p = order[r - 1];
+    const q = order[r];
+    const d = Math.max(Math.abs((p % size) - (q % size)), Math.abs(Math.floor(p / size) - Math.floor(q / size)));
+    stepBase[r + 1] = stepBase[r] + d;
+    stepRough[r + 1] = stepRough[r] + d * (TERRAINS[terrain[q]].rough - 1);
+  }
+  w.ringSteps = Float64Array.from(w.rings, (r) => stepBase[r] + stepRough[r]);
 
   const itemList: number[] = [];
   for (let r = 0; r < n; r++) if (item[order[r]]) itemList.push(r);
   const itemRanks = Uint32Array.from(itemList);
-
-  if (order[0] !== cy * size + cx) throw new Error('El campament ha de ser la primera casella');
-
-  // Steps: reaching cell r means coming from cell r - 1 (king distance: 1 if adjacent), multiplied by the
-  // cell's roughness.
-  const stepBase = new Float64Array(n + 1);
-  const stepRough = new Float64Array(n + 1);
-  stepBase[1] = 1; // the camp itself
-  for (let r = 1; r < n; r++) {
-    const p = order[r - 1];
-    const q = order[r];
-    const d = Math.max(Math.abs((p % size) - (q % size)), Math.abs(Math.floor(p / size) - Math.floor(q / size)));
-    // Entering and exploring the cell costs by terrain roughness (streets are fast, jungle and rubble slow).
-    stepBase[r + 1] = stepBase[r] + d;
-    stepRough[r + 1] = stepRough[r] + d * (TERRAINS[terrain[q]].rough - 1);
-  }
-  const ringSteps = new Float64Array(count.length);
-  for (let k = 0; k < count.length; k++) ringSteps[k] = stepBase[count[k]] + stepRough[count[k]];
-
   const nb = Math.ceil(size / ITEM_BUCKET);
   const itemStart = new Uint32Array(nb * nb + 1);
   const bucketOf = (k: number) => {
@@ -186,8 +204,11 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
   const itemCells = new Uint32Array(itemRanks.length);
   const put = itemStart.slice();
   for (let k = 0; k < itemRanks.length; k++) itemCells[put[bucketOf(k)]++] = k;
+  w.itemRanks = itemRanks;
+  w.itemStart = itemStart;
+  w.itemCells = itemCells;
 
-  const zoomRanks = ZOOMS.map(({ view }) => {
+  w.zoomRanks = ZOOMS.map(({ view }) => {
     const x0 = Math.max(0, cx - (view >> 1));
     const y0 = Math.max(0, cy - (view >> 1));
     const x1 = Math.min(size, cx + (view >> 1));
@@ -197,16 +218,93 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) out[k++] = rank[y * size + x];
     return out.sort();
   });
+  w.version++;
+}
 
-  return { seed, size, cx, cy, terrain, special, item, itemRanks, order, rank, goldPrefix, rings: count, stepBase, stepRough, ringSteps, itemStart, itemCells, zoomRanks };
+/** How strongly a directional route pulls towards its side: a step that way costs (1 - PULL), the opposite (1 + PULL). */
+const ROUTE_PULL = 0.7;
+/** Directional routes use thinner bands (rings) than the circular one, since their steps are cheaper along the pull. */
+const ROUTE_BAND: Record<RouteId, number> = { circular: 1, north: 1.5, south: 1.5, east: 1.5, west: 1.5, random: 1 };
+const ROUTE_DIR: Partial<Record<RouteId, [number, number]>> = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
+
+/** Rebuilds a world's order from a game's route history (see `GameState.plan`). */
+export function applyPlan(w: World, plan: readonly (readonly [number, RouteId])[]): void {
+  for (const [ring, route] of plan) if (ring < w.rings.length - 1) reorder(w, ring, route);
+}
+
+/** Path distance from camp for an exploration route. Any field grown from the camp with positive costs keeps the
+ *  explored area connected, whatever was explored before (each cell's predecessor is either explored or earlier). */
+export function routeField(w: World, route: RouteId): Float32Array {
+  if (route === 'circular') return w.road;
+  const cached = w.fields.get(route);
+  if (cached) return cached;
+  const { size, cx, cy, cost, seed } = w;
+  const dir = ROUTE_DIR[route];
+  let field: Float64Array;
+  if (dir) {
+    const mult = DX.map((dx, k) => 1 - (ROUTE_PULL * (dx * dir[0] + DY[k] * dir[1])) / Math.hypot(dx, DY[k]));
+    field = pathDistance(size, cx, cy, cost, mult);
+  } else {
+    // Random: wandering fingers that follow cheap valleys of a large-scale noise.
+    const noisy = new Float32Array(cost.length);
+    for (let i = 0; i < noisy.length; i++) noisy[i] = cost[i] * Math.exp(4.4 * (fbm(i % size, Math.floor(i / size), seed + 401, 36, 3) - 0.5));
+    field = pathDistance(size, cx, cy, noisy);
+  }
+  const out = Float32Array.from(field);
+  w.fields.set(route, out);
+  return out;
+}
+
+/** Re-orders the unexplored part of the map (from the start of ring `ring` on) by `route`. Explored cells keep their
+ *  ranks and rings; the rest get new rings counted on from `ring`. */
+export function reorder(w: World, ring: number, route: RouteId): void {
+  const n = totalCells(w);
+  const a = w.rings[ring];
+  if (a >= n) return;
+  const field = routeField(w, route);
+  const scale = ROUTE_BAND[route];
+  const { order, size, cx, cy } = w;
+  const rest = order.slice(a);
+  const band = new Int32Array(rest.length);
+  let lo = Infinity;
+  let hi = -Infinity;
+  rest.forEach((i, q) => {
+    band[q] = Math.floor(field[i] * scale);
+    lo = Math.min(lo, band[q]);
+    hi = Math.max(hi, band[q]);
+  });
+  // Counting sort by band, then each band by angle around camp, alternating direction so the rovers keep walking.
+  const count = new Uint32Array(hi - lo + 2);
+  for (const b of band) count[b - lo + 1]++;
+  for (let b = 1; b < count.length; b++) count[b] += count[b - 1];
+  const fill = count.slice();
+  const sorted = new Uint32Array(rest.length);
+  rest.forEach((i, q) => { sorted[fill[band[q] - lo]++] = i; });
+  const angle = (i: number) => Math.atan2(Math.floor(i / size) - cy, (i % size) - cx);
+  const rings = Array.from(w.rings.subarray(0, ring + 1));
+  let idx = ring - 1; // ring index of the band being placed
+  for (let b = 0; b < count.length - 1; b++) {
+    const s0 = count[b];
+    const s1 = count[b + 1];
+    if (s1 === s0) continue;
+    if (++idx > ring) rings.push(a + s0);
+    const dirn = idx % 2 ? -1 : 1;
+    const part = Array.from(sorted.subarray(s0, s1), (i) => [i, angle(i)] as const).sort((p, q) => dirn * (p[1] - q[1]));
+    part.forEach(([i], q) => { sorted[s0 + q] = i; });
+  }
+  rings.push(n);
+  order.set(sorted, a);
+  w.rings = Uint32Array.from(rings);
+  derive(w, a);
 }
 
 const SQRT2 = Math.SQRT2;
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];
 const DY = [0, 0, 1, -1, 1, -1, 1, -1];
+const DIAG = [1, 1, 1, 1, 1, 1, 1, 1];
 
 /** Path distance (Dijkstra, 8 neighbours) from (cx, cy); moving between two cells costs the mean of their costs. */
-function pathDistance(size: number, cx: number, cy: number, cost: Float32Array): Float64Array {
+function pathDistance(size: number, cx: number, cy: number, cost: Float32Array, mult: readonly number[] = DIAG): Float64Array {
   const n = size * size;
   const dist = new Float64Array(n).fill(Infinity);
   const heap = new MinHeap(n);
@@ -224,7 +322,7 @@ function pathDistance(size: number, cx: number, cy: number, cost: Float32Array):
       const ny = y + DY[k];
       if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
       const j = ny * size + nx;
-      const nd = d + ((cost[i] + cost[j]) / 2) * (k < 4 ? 1 : SQRT2);
+      const nd = d + ((cost[i] + cost[j]) / 2) * (k < 4 ? 1 : SQRT2) * mult[k];
       if (nd < dist[j]) {
         dist[j] = nd;
         heap.push(nd, j);

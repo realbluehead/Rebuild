@@ -3,8 +3,9 @@ import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, workCost, workTitle, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
-import { canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
-import { stormAt, stormDef } from '../core/weather';
+import { ROUTES, type RouteId } from '../content/routes';
+import { activeRoute, canUnlockRoute, canBuy, canCraft, capacity, carried, costOf, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { GameState } from '../core/state';
 import { totalCells, type World } from '../core/world';
@@ -13,6 +14,8 @@ import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, robotFrames, spriteCanvas } from './sprites';
 
 export interface ViewActions {
+  unlockRoute(id: RouteId): void;
+  chooseRoute(id: RouteId): void;
   buy(id: StatId): void;
   craft(id: WorkId): void;
   zoom(delta: number): void;
@@ -212,24 +215,23 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     if (mined) set(cellLine, `Mined out (gave ${fmt(value)})${gone ? ` · ${it!.name} taken` : ''}`);
     else set(cellLine, `${fmt(value)} bluetreri${gone ? ` · ${it!.name} taken` : ' · ???'}`);
     const storm = stormAt(s.weather.storms, world.size, i);
-    const def = storm ? stormDef(storm.kind) : null;
-    set(cellSky, def ? `${def.name}: −${pct((1 - def.factor) * st.armour)} speed` : 'Sky: clear');
+    set(cellSky, storm ? `${stormName(storm)}: −${pct((1 - stormFactor(storm)) * st.armour)} speed` : 'Sky: clear');
   }
 
   const panel = h('aside', 'panel');
   // Tabs: upgrades (bought with bluetreri) and works (made from pages, notes and photos).
   const tabs = h('div', 'tabs');
   const tabUpg = h('button', 'px-btn tab on', 'Rover');
+  const tabRoutes = h('button', 'px-btn tab', 'Routes');
   const tabWorks = h('button', 'px-btn tab', 'Works');
-  tabs.append(tabUpg, tabWorks);
-  const showTab = (works: boolean) => {
-    tabUpg.classList.toggle('on', !works);
-    tabWorks.classList.toggle('on', works);
-    list.hidden = works;
-    worksList.hidden = !works;
+  tabs.append(tabUpg, tabRoutes, tabWorks);
+  const showTab = (k: number) => {
+    [tabUpg, tabRoutes, tabWorks].forEach((t, q) => t.classList.toggle('on', q === k));
+    [list, routesList, worksList].forEach((l, q) => { l.hidden = q !== k; });
   };
-  tabUpg.addEventListener('click', () => showTab(false));
-  tabWorks.addEventListener('click', () => showTab(true));
+  tabUpg.addEventListener('click', () => showTab(0));
+  tabRoutes.addEventListener('click', () => showTab(1));
+  tabWorks.addEventListener('click', () => showTab(2));
   const list = h('div', 'list rover');
   // Rover parts in a 3x2 grid: everything within thumb reach, no scrolling.
   const rows = UPGRADES.map((u) => {
@@ -247,6 +249,30 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     card.append(head, eff, btn);
     list.append(card);
     return { def: u, lvl, eff, btn, cost };
+  });
+  // Exploration routes: unlock with bluetreri + items, then pick the one the rovers follow from the next ring.
+  const routesList = h('div', 'list rover');
+  routesList.hidden = true;
+  const routeCards = ROUTES.map((rd) => {
+    const card = h('div', 'upg px-box');
+    const head = h('div', 'head');
+    const state = h('span', 'lvl');
+    head.append(h('span', 'name', rd.name), state);
+    const eff = h('div', 'eff');
+    const btn = h('button', 'px-btn buy');
+    const label = h('span');
+    const coin = h('i', 'coin');
+    btn.append(coin, label);
+    btn.addEventListener('click', () => {
+      const s = current;
+      if (!s) return;
+      if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id);
+      else actions.unlockRoute(rd.id);
+    });
+    card.title = rd.desc;
+    card.append(head, eff, btn);
+    routesList.append(card);
+    return { rd, state, eff, btn, label, coin };
   });
   const worksList = h('div', 'list');
   worksList.hidden = true;
@@ -273,7 +299,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   shelfCard.append(h('div', 'head'), shelfInfo, shelfBtn);
   shelfCard.firstElementChild!.append(h('span', 'name', 'Collection'));
   worksList.append(shelfCard);
-  panel.append(tabs, list, worksList);
+  panel.append(tabs, list, routesList, worksList);
 
   /** Shelf: every work made and the bonus it gives. */
   function openShelf() {
@@ -332,7 +358,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: u.cargo > 0, title: 'Hold', lines: ['Each rover can carry more bluetreri, so it returns to camp less often. A loaded rover drives home slowly: the fuller, the slower.'] },
       { on: u.tyres > 0, title: 'Tyres', lines: ['Better grip on rough ground: rubble, jungle, ruins and towers slow the rovers down less.'] },
       { on: s.weather.storms.length > 0 || u.body > 0, title: 'Weather', lines: [
-        'Storms drift over the city and slow down any rover working under them. They change every few minutes.',
+        'Storms drift over the city with the wind and slow down any rover working under them. They form and die out one at a time; now and then a severe one hits much harder.',
         ...STORMS.map((d) => `${d.name}: ${d.desc}`),
         'The Body upgrade armours the rovers, so storms slow them down less.'] },
       { on: s.zoomUnlocked > 1, title: 'Zoom', lines: [
@@ -345,6 +371,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark around that rover: they light up as the needle passes.',
         'The rover that spots an item leaves its exploring, fetches it (the one it is after is framed) and returns to where it was. You lose a little exploring, but the items arrive sooner.'] },
+      { on: s.routes.length > 1, title: 'Routes', lines: [
+        'The Routes tab sets how the rovers push into the dark: rings around camp, a push north, east, south or west, or random wandering fingers.',
+        'New routes cost bluetreri plus pages, notes or photos. The one you pick takes over when the next ring starts; what is already explored stays as it is.'] },
       { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring around camp; each ring is split between all of them, and each works at its own pace.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
@@ -492,20 +521,40 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       const ready = WORKS.some((wd) => canCraft(s, wd.id));
       tabWorks.classList.toggle('alert', ready);
+      const active = activeRoute(s);
+      for (const c of routeCards) {
+        const id = c.rd.id;
+        const owned = s.routes.includes(id);
+        c.coin.style.display = owned ? 'none' : '';
+        if (!owned) {
+          const items = Object.entries(c.rd.items).map(([k, n]) => `${n} ${ITEMS.find((it) => it.id === k)!.plural}`).join(' + ');
+          set(c.state, '');
+          set(c.eff, `+ ${items}`);
+          set(c.label, fmt(c.rd.gold));
+          c.btn.classList.toggle('can', canUnlockRoute(s, id));
+        } else {
+          const pending = s.route === id && active !== id;
+          set(c.state, active === id ? 'on' : pending ? 'next' : '');
+          set(c.eff, pending ? 'from next ring' : c.rd.short);
+          set(c.label, active === id && s.route === id ? 'Active' : pending ? 'Queued' : 'Use');
+          c.btn.classList.toggle('can', s.route !== id);
+        }
+      }
+      tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, rd.id)));
       set(shelfInfo, `${s.works.book + s.works.cd + s.works.album} works`);
     },
     /** Bluetreri from a revealed deposit, floating over the map. */
-    specialFound(rank: number, amount: string, now: number) {
-      map.popup(rank, `+${amount}`, now);
+    specialFound(cell: number, amount: string, now: number) {
+      map.popup(cell, `+${amount}`, now);
     },
     /** Collected item (page, note or photo), floating over its cell. */
-    itemFound(rank: number, now: number) {
-      const it = ITEMS[world.item[world.order[rank]] - 1];
-      map.popup(rank, `+1 ${it.name}`, now);
+    itemFound(cell: number, now: number) {
+      const it = ITEMS[world.item[cell] - 1];
+      map.popup(cell, `+1 ${it.name}`, now);
     },
     /** Bluetreri unloaded at camp. */
     deposited(amount: string, now: number) {
-      map.popup(0, `+${amount}`, now);
+      map.popup(world.cy * world.size + world.cx, `+${amount}`, now);
     },
     /** Field notes on the first game. */
     openHelp: () => openHelp(),

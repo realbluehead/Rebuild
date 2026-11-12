@@ -103,7 +103,7 @@ export class MapView {
         this.flat[i] = w.special[i] ? PAL.blu : this.plainFlat[i];
       }
     }
-    // Mipmap: mean colour and minimum rank of each 4x4 block.
+    // Mipmap: mean colour of each 4x4 block (its minimum rank comes from refreshRanks).
     this.mipSize = w.size / MIP;
     const m = this.mipSize;
     this.mipColor = new Uint32Array(m * m);
@@ -111,27 +111,46 @@ export class MapView {
     this.mipMin = new Uint32Array(m * m);
     for (let by = 0; by < m; by++) {
       for (let bx = 0; bx < m; bx++) {
-        let r = 0, g = 0, b = 0, min = 0xffffffff, special = false;
+        let r = 0, g = 0, b = 0, special = false;
         for (let y = 0; y < MIP; y++) {
           for (let x = 0; x < MIP; x++) {
             const i = (by * MIP + y) * w.size + bx * MIP + x;
             const c = this.plainFlat[i];
             r += c & 0xff; g += (c >>> 8) & 0xff; b += (c >>> 16) & 0xff;
-            if (w.rank[i] < min) min = w.rank[i];
             if (w.special[i]) special = true;
           }
         }
         const k = MIP * MIP;
         this.mipPlain[by * m + bx] = drain((0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0);
         this.mipColor[by * m + bx] = special ? PAL.blu : this.mipPlain[by * m + bx];
-        this.mipMin[by * m + bx] = min;
       }
     }
+    this.refreshRanks();
     this.cellPx = ZOOM_PX[zoom];
     // The game opens looking at the start; afterwards the view only moves when the player wants.
     this.camX = w.cx + 0.5;
     this.camY = w.cy + 0.5;
     this.resize();
+  }
+
+  /** Drawn position and size of each storm (by id): eases towards the simulated one, so storms glide. */
+  private stormDraw = new Map<number, { x: number; y: number; r: number }>();
+
+  /** Order version the rank-based caches were built for. */
+  private version = -1;
+
+  /** Minimum rank of each mipmap block: depends on the exploration order, which a new route changes. */
+  private refreshRanks(): void {
+    const { w } = this;
+    const m = this.mipSize;
+    for (let by = 0; by < m; by++) {
+      for (let bx = 0; bx < m; bx++) {
+        let min = 0xffffffff;
+        for (let y = 0; y < MIP; y++) for (let x = 0; x < MIP; x++) min = Math.min(min, w.rank[(by * MIP + y) * w.size + bx * MIP + x]);
+        this.mipMin[by * m + bx] = min;
+      }
+    }
+    this.version = w.version;
   }
 
   resize(): void {
@@ -168,8 +187,8 @@ export class MapView {
     return Math.abs(lx - this.pointer.x) < 20 && Math.abs(ly - this.pointer.y) < 20;
   }
 
-  popup(rank: number, text: string, now: number): void {
-    const i = this.w.order[rank];
+  /** Floating text over map cell `i`. */
+  popup(i: number, text: string, now: number): void {
     this.popups.push({ wx: (i % this.w.size) + 0.5, wy: Math.floor(i / this.w.size), text, t0: now });
     if (this.popups.length > 12) this.popups.shift();
   }
@@ -230,6 +249,7 @@ export class MapView {
   render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { range: 0, fetched: [] },
     scouted: number[] = [], storms: readonly Storm[] = [], selected = -1): void {
     const { w, W, H, buf } = this;
+    if (this.version !== w.version) this.refreshRanks();
     const size = w.size;
     const n = size * size;
     // How far each rover has got on the current ring: it has only revealed what it has stepped on.
@@ -394,8 +414,22 @@ export class MapView {
       }
     }
 
-    // Weather: each storm is a translucent disc with its own texture (acid rain, snow, lightning).
-    for (const st of storms) {
+    // Weather: each storm is a translucent blob with its own texture (acid rain, snow, lightning). It glides towards
+    // where the simulation has it, and severe storms are denser.
+    const glide = 1 - Math.exp(-dt * 0.8);
+    const live = new Set<number>();
+    const drawn = storms.map((real) => {
+      live.add(real.id);
+      let d = this.stormDraw.get(real.id);
+      if (!d || Math.hypot(d.x - real.x, d.y - real.y) > 6) d = { x: real.x, y: real.y, r: real.r };
+      d.x += (real.x - d.x) * glide;
+      d.y += (real.y - d.y) * glide;
+      d.r += (real.r - d.r) * glide;
+      this.stormDraw.set(real.id, d);
+      return { ...real, x: d.x, y: d.y, r: d.r };
+    });
+    for (const id of this.stormDraw.keys()) if (!live.has(id)) this.stormDraw.delete(id);
+    for (const st of drawn) {
       const sx = (st.x + 0.5 - left) * cp;
       const sy = (st.y + 0.5 - top) * cp;
       const R = Math.max(2, st.r * cp * 1.5);
@@ -403,9 +437,10 @@ export class MapView {
       const rgb = STORM_RGB[st.kind];
       ctx.save();
       const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
-      g.addColorStop(0, `rgba(${rgb}, 0.36)`);
-      g.addColorStop(0.55, `rgba(${rgb}, 0.24)`);
-      g.addColorStop(1, `rgba(${rgb}, 0.1)`);
+      const k = st.severe ? 1.5 : 1;
+      g.addColorStop(0, `rgba(${rgb}, ${0.36 * k})`);
+      g.addColorStop(0.55, `rgba(${rgb}, ${0.24 * k})`);
+      g.addColorStop(1, `rgba(${rgb}, ${0.1 * k})`);
       ctx.fillStyle = g;
       // Irregular outline (the same one the simulation uses to decide who is caught in the storm).
       ctx.beginPath();
@@ -420,8 +455,8 @@ export class MapView {
       ctx.closePath();
       ctx.fill();
       ctx.clip();
-      const seed = st.x * 31 + st.y * 17;
-      const count = Math.min(140, Math.round((R * R) / 40) + 4);
+      const seed = st.id * 31 + 7;
+      const count = Math.min(st.severe ? 220 : 140, Math.round(((R * R) / 40) * (st.severe ? 1.8 : 1)) + 4);
       if (st.kind === 'acid' || st.kind === 'snow') {
         const fall = st.kind === 'acid' ? now / 9 : now / 45;
         ctx.fillStyle = st.kind === 'acid' ? 'rgba(200, 255, 90, 0.7)' : 'rgba(255, 255, 255, 0.85)';
@@ -439,7 +474,7 @@ export class MapView {
         ctx.fillRect(sx - R, sy - R, 2 * R, 2 * R);
         const beat = Math.floor(now / 140);
         const h = hash2(beat, seed, 91);
-        if (h % 9 === 0) {
+        if (h % (st.severe ? 4 : 9) === 0) {
           ctx.fillStyle = 'rgba(220, 200, 255, 0.18)';
           ctx.fillRect(sx - R, sy - R, 2 * R, 2 * R);
           ctx.strokeStyle = 'rgba(240, 230, 255, 0.95)';

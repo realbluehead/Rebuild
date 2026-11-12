@@ -3,6 +3,7 @@ import { UPGRADES, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
+import type { RouteId } from '../content/routes';
 
 /** What a rover is doing: exploring its part of the ring, returning to camp to unload, heading back out to
  *  the frontier, or fetching an item the radar spotted. */
@@ -28,18 +29,30 @@ export interface Bot {
 
 export const newBot = (trip: Trip = 'explore', travelLen = 0): Bot => ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0 });
 
-/** A storm on the map: a disc of `r` cells around (x, y). */
+/** A storm drifting over the map: an irregular blob of about `r` cells around (x, y). */
 export interface Storm {
+  id: number;
   kind: StormId;
   x: number;
   y: number;
+  /** Its own drift per weather step (the shared wind is added on top). */
+  vx: number;
+  vy: number;
+  /** Current radius, and the full one it grows to. */
   r: number;
+  size: number;
+  /** Weather steps lived, and how many it will last. */
+  age: number;
+  life: number;
+  severe: boolean;
 }
 
-/** The sky during one weather epoch (see content/weather.ts). */
+/** The sky at one weather step (see content/weather.ts). */
 export interface Weather {
   epoch: number;
   storms: Storm[];
+  /** Id for the next storm that forms. */
+  nextId: number;
 }
 
 export interface GameState {
@@ -62,6 +75,11 @@ export interface GameState {
    *  exploration, so exploring does not collect them again. Dropped once exploring has passed them. */
   fetched: number[];
   weather: Weather;
+  /** Exploration routes unlocked, the one the player picked, and the ones applied so far: [ring, route] pairs (the
+   *  map's order is rebuilt from them, since the world itself is never saved). */
+  routes: RouteId[];
+  route: RouteId;
+  plan: [number, RouteId][];
   /** Paths walked on radar detours, ahead of normal exploration: flat triples [fromRank, toRank, maxRank]. Their
    *  cells show as revealed (no bluetreri: that still comes when exploring reaches them). Dropped once explored. */
   scouted: number[];
@@ -87,7 +105,10 @@ export function newGame(seed = randomSeed()): GameState {
     items: Object.fromEntries(ITEMS.map((i) => [i.id, 0])) as Record<ItemId, number>,
     works: Object.fromEntries(WORKS.map((x) => [x.id, 0])) as Record<WorkId, number>,
     fetched: [],
-    weather: { epoch: 0, storms: [] },
+    weather: { epoch: 0, storms: [], nextId: 0 },
+    routes: ['circular'],
+    route: 'circular',
+    plan: [],
     scouted: [],
     zoomUnlocked: 1,
     zoom: 0,

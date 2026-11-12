@@ -7,13 +7,15 @@
 // v4: independent rovers (each with cargo, trip and arc); `walked` becomes `legacyWalked` and is converted
 //     when the world is loaded (`fromLegacy`).
 // v5: radar detours reveal the cells on their path (`scouted`, `Bot.from`).
+// v7: exploration routes (`routes` unlocked, `route` chosen, `plan` applied: the order is rebuilt from it).
 // v6: each rover's radar works around it (`fetched` replaces `radarNext`), weather, `Bot.found`, Tyres and Body.
 import { D } from '../core/decimal';
 import { newBot, newGame, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
+import { ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /** JSON shape of the game: Decimals are stored as text. */
 export interface SaveData {
@@ -32,7 +34,10 @@ export interface SaveData {
   items: Record<string, number>;
   works: Record<string, number>;
   fetched: number[];
-  weather: { epoch: number; storms: Storm[] };
+  routes: RouteId[];
+  route: RouteId;
+  plan: [number, RouteId][];
+  weather: { epoch: number; storms: Storm[]; nextId: number };
   scouted: number[];
   zoomUnlocked: number;
   zoom: number;
@@ -76,6 +81,9 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     const fetched = bots.filter((b) => b?.trip === 'detour' && Number.isInteger(b.target) && b.target >= 0).map((b) => b.target);
     return { ...rest, v: 6, fetched, weather: { epoch: 0, storms: [] } };
   },
+  // v6 -> v7: only the circular route, never changed.
+  // v6 -> v7: also drifting storms (the sky starts clear again).
+  6: (s) => ({ ...s, v: 7, routes: ['circular'], route: 'circular', plan: [], weather: { epoch: 0, storms: [], nextId: 0 } }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -93,7 +101,10 @@ export function serialize(s: GameState, now: number): SaveData {
     items: { ...s.items },
     works: { ...s.works },
     fetched: [...s.fetched],
-    weather: { epoch: s.weather.epoch, storms: s.weather.storms.map((st) => ({ ...st })) },
+    routes: [...s.routes],
+    route: s.route,
+    plan: s.plan.map(([r, id]) => [r, id] as [number, RouteId]),
+    weather: { epoch: s.weather.epoch, storms: s.weather.storms.map((st) => ({ ...st })), nextId: s.weather.nextId },
     scouted: [...s.scouted],
     zoomUnlocked: s.zoomUnlocked,
     zoom: s.zoom,
@@ -124,12 +135,28 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
+  const routeIds = ROUTES.map((d) => d.id) as string[];
+  const isRoute = (x: unknown): x is RouteId => typeof x === 'string' && routeIds.includes(x);
+  state.routes = [...new Set<RouteId>(['circular', ...(Array.isArray(data.routes) ? data.routes : []).filter(isRoute)])];
+  state.route = isRoute(data.route) && state.routes.includes(data.route) ? data.route : 'circular';
+  state.plan = [];
+  for (const p of Array.isArray(data.plan) ? data.plan : []) {
+    const ring = Math.floor(num(p?.[0]));
+    if (isRoute(p?.[1]) && ring > (state.plan.at(-1)?.[0] ?? -1)) state.plan.push([ring, p[1]]);
+  }
   const kinds = STORMS.map((d) => d.id) as string[];
   state.weather = {
     epoch: Math.floor(num(data.weather?.epoch)),
     storms: (Array.isArray(data.weather?.storms) ? data.weather.storms : [])
       .filter((st) => kinds.includes(st?.kind))
-      .map((st) => ({ kind: st.kind, x: Math.floor(num(st.x)), y: Math.floor(num(st.y)), r: num(st.r) })),
+      .map((st) => {
+        const fin = (x: unknown) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+        return {
+          id: Math.floor(num(st.id)), kind: st.kind, x: fin(st.x), y: fin(st.y), vx: fin(st.vx), vy: fin(st.vy),
+          r: num(st.r), size: num(st.size), age: Math.floor(num(st.age)), life: Math.floor(num(st.life)), severe: !!st.severe,
+        };
+      }),
+    nextId: Math.floor(num(data.weather?.nextId)),
   };
   state.bots = (Array.isArray(data.bots) && data.bots.length ? data.bots : [newBot()]).map((b) => {
     const bot = newBot(TRIPS.includes(b?.trip) ? b.trip : 'explore', num(b?.travelLen));

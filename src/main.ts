@@ -1,11 +1,12 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './ui/style.css';
-import { buy, craft, fromLegacy, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buy, chooseRoute, craft, fromLegacy, unlockRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
-import { createWorld, goldBetween, type World } from './core/world';
+import { applyPlan, createWorld, type World } from './core/world';
 import { fmt } from './core/format';
 import { ZOOMS } from './content/world';
+import { routeById } from './content/routes';
 import { applyOffline } from './save/offline';
 import { loadGame, saveGame, wipeGame } from './save/persist';
 import { deserialize, exportSave, importSave, serialize } from './save/save';
@@ -26,6 +27,7 @@ async function boot() {
   const loaded = await loadGame();
   const state: GameState = loaded?.state ?? newGame();
   const world: World = createWorld(state.seed);
+  applyPlan(world, state.plan); // the routes the rovers have followed so far
   fromLegacy(state, world); // saves from before independent rovers
   /** On restart or import the current game must not be saved any more (pagehide would write it back). */
   let locked = false;
@@ -36,6 +38,16 @@ async function boot() {
       const before = stats(state);
       if (!buy(state, world, id)) return;
       view.bought(id, state.upgrades[id], before, stats(state));
+      void save();
+    },
+    unlockRoute: (id) => {
+      if (!unlockRoute(state, id)) return;
+      view.toast(`Route unlocked: ${routeById(id)!.name}`);
+      void save();
+    },
+    chooseRoute: (id) => {
+      if (!chooseRoute(state, id)) return;
+      view.toast(`Route: ${routeById(id)!.name}\nfrom the next ring`);
       void save();
     },
     craft: (id) => {
@@ -68,8 +80,8 @@ async function boot() {
 
   const handle = (ev: ReturnType<typeof tick>, now: number) => {
     const loot = stats(state).loot;
-    for (const r of ev.specials) view.specialFound(r, fmt(goldBetween(world, r, r + 1) * loot), now);
-    for (const r of ev.items) view.itemFound(r, now);
+    for (const i of ev.specials) view.specialFound(i, fmt(world.value[i] * loot), now);
+    for (const i of ev.items) view.itemFound(i, now);
     if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
     if (ev.zoomUnlocked) {
       view.toast(`New zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);

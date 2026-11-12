@@ -9,6 +9,7 @@ Exploration idle with a **retro pixel** look, set in a **post-apocalyptic city**
 toxic dumps, toxic water and urban jungle). Top-down view of a 2D map (1024×1024 cells) that starts completely dark;
 rovers reveal it on their own, little by little, over time. 4 zoom levels (Street 16 → District 64 → City 256 → Metropolis 1024
 cells per side); you start at the closest and the next unlocks when 80% of the current zoom's square is revealed.
+- Bottom panel tabs: Rover, Routes, Works.
 - Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), all on the **Rover** tab (3×2 grid): Engine (speed),
   Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
   Radar (range in cells around each rover), Rovers (count). Steps/s = speed × rovers. Bluetreri comes from every cell
@@ -23,10 +24,20 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - **Roughness** (`TERRAINS[].rough`): exploring a cell costs `distance × (1 + grip × (rough − 1))` steps (streets 1, jungle 1.8,
   towers 2.6…). The world keeps `stepBase` and `stepRough` prefix sums; always use `stepsAt(w, grip, r)`. Buying Tyres rescales each
   rover's `prog` so it stays on the same cell (`buy` needs the world). `cost` only decides the exploration order.
-- **Weather** (`content/weather.ts`, `core/weather.ts`): every `WEATHER_EPOCH` s of play the sky changes (`s.weather`, stored, made
-  by `makeWeather` from seed + epoch + explored area; none before ring 6, some epochs calm). Storms are static discs (acid, snow,
-  electric) that slow exploring and detours (`weatherFactor`, softened by Body); home/out trips are not affected. Drawn as a
-  translucent textured layer on the map.
+- **Weather** (`content/weather.ts`, `core/weather.ts`): every `WEATHER_EPOCH` (12) s of play is a weather step, an event in
+  `tick`: `evolveWeather` moves each storm with the shared wind (slowly turning) plus its own drift, grows it when it forms
+  and fades it before it dies; at most one new storm forms per step (near the frontier, none before ring 6), ~20% severe
+  (`SEVERE_MULT`). Storms are irregular blobs (`stormReach`: seeded lobes by storm id) that slow exploring and detours
+  (`weatherFactor`, softened by Body); home/out trips are not affected. `s.weather` is saved (storms + `nextId`). The map
+  glides each storm towards its simulated position and draws it as a translucent textured layer.
+- **Routes** (`content/routes.ts`, Routes tab): circular (default), north, east, south, west, random. Unlocked with bluetreri +
+  items (`unlockRoute`), picked with `chooseRoute`; the pick takes over at the next ring start (`switchRoute` in `nextRing`):
+  `reorder` re-sorts the unexplored cells by the route's distance field from camp (`routeField`: anisotropic Dijkstra for the
+  four directions, noisy costs for random; any camp-rooted positive field keeps the explored area connected) and renumbers
+  the remaining rings. The world is never saved, so `s.plan` ([ring, route] pairs) is replayed with `applyPlan` after
+  `createWorld` on load. Ranks and item indices change on a switch: `fetched`, bot targets and `scouted` are carried over by
+  cell, and `TickEvents` report map cells, not ranks. Home distance comes from `w.road` (the circular field) at the rover's
+  cell. A switch costs one ~0.5 s hitch on the full map (the field's Dijkstra; fields are cached in `w.fields`).
 - Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Collected on
   arrival; the Works tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, cost ×1.9 each time.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that

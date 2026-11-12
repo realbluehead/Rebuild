@@ -13,8 +13,9 @@ import { ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, 
 import { ZOOMS } from '../content/world';
 import { WEATHER_EPOCH } from '../content/weather';
 import { workById, workCost, ITEMS, type WorkId } from '../content/collection';
-import { arcOf, arcStarts, cellsReached, itemsBetween, kingDistance, nearestItem, pathCells, prefixAt, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
-import { makeWeather, weatherFactor } from './weather';
+import { routeById, type RouteId } from '../content/routes';
+import { arcOf, arcStarts, cellsReached, itemsBetween, kingDistance, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
+import { evolveWeather, weatherFactor } from './weather';
 
 export const TICK_RATE = 10; // ticks per second
 export const TICK_SEC = 1 / TICK_RATE;
@@ -59,8 +60,10 @@ export const capacity = (s: GameState): number => stats(s).cargo * s.bots.length
 /** Bluetreri all rovers are carrying right now. */
 export const carried = (s: GameState): number => s.bots.reduce((a, b) => a + b.cargo, 0);
 
-/** Steps from camp to the frontier (the ring's path distance). */
-export const homeDistance = (s: GameState): number => s.ring + 1;
+/** Steps from camp to the cell of rank `r` along the roads (by default the start of the current ring). */
+export function homeDistance(s: GameState, w: World, r = s.ring < ringCount(w) ? w.rings[s.ring] : totalCells(w) - 1): number {
+  return Math.floor(w.road[w.order[Math.min(r, totalCells(w) - 1)]]) + 1;
+}
 
 /** Speed of a rover driving home with `cargo` on board (`st.cargo` = full hold). */
 export const homeSpeed = (st: Stats, cargo: number): number => st.travelSpeed / (1 + LOAD_DRAG * Math.min(1, cargo / st.cargo));
@@ -134,7 +137,7 @@ export function goldPerSec(s: GameState, w: World): number {
   const b = w.rings[s.ring + 1];
   const g = ((w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, stepsAt(w, st.grip, b) - stepsAt(w, st.grip, a))) * st.loot; // per step
   if (!(g > 0)) return 0;
-  const d = homeDistance(s);
+  const d = homeDistance(s, w);
   const perBot = st.cargo / (st.cargo / (g * st.speed) + d / homeSpeed(st, st.cargo) + d / st.travelSpeed);
   return perBot * s.bots.length;
 }
@@ -147,9 +150,9 @@ export function costOf(def: UpgradeDef, owned: number, qty = 1): Decimal {
 }
 
 export interface TickEvents {
-  /** Ranks of the deposits revealed in this step. */
+  /** Map cells of the deposits revealed in this step (cells, not ranks: a new route renumbers ranks). */
   specials: number[];
-  /** Ranks of the cells whose items were collected in this step. */
+  /** Map cells whose items were collected in this step. */
   items: number[];
   /** Bluetreri unloaded at camp in this step (0 if none). */
   deposited: number;
@@ -184,7 +187,8 @@ const cellOf = (w: World, grip: number, a: Arc, prog: number): number =>
 function nextRing(s: GameState, w: World, explorers: number): void {
   s.ring++;
   while (s.ring < ringCount(w) && w.rings[s.ring + 1] === w.rings[s.ring]) s.ring++;
-  while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s)));
+  if (s.ring < ringCount(w) && s.route !== activeRoute(s)) switchRoute(s, w);
+  while (s.bots.length < explorers) s.bots.push(newBot('out', homeDistance(s, w)));
   s.ringRobots = s.bots.length;
   for (const b of s.bots) b.prog = 0;
   // Detour paths and fetched items that exploring has caught up with are no longer needed.
@@ -195,10 +199,36 @@ function nextRing(s: GameState, w: World, explorers: number): void {
   s.fetched = s.fetched.filter((k) => w.itemRanks[k] >= a || s.bots.some((b) => b.target === k));
 }
 
-function goHome(s: GameState, b: Bot): void {
+/** The route the map is ordered by right now. */
+export const activeRoute = (s: GameState): RouteId => (s.plan.length ? s.plan[s.plan.length - 1][1] : 'circular');
+
+/** At the start of ring `s.ring`: re-orders the dark part of the map by the chosen route. Items and paths that are
+ *  remembered by rank or item index are carried over by cell. */
+function switchRoute(s: GameState, w: World): void {
+  const itemCell = (k: number) => w.order[w.itemRanks[k]];
+  const fetchedCells = s.fetched.map(itemCell);
+  const targetCells = s.bots.map((b) => (b.target >= 0 ? itemCell(b.target) : -1));
+  const scoutCells = s.scouted.map((r) => w.order[r]);
+  reorder(w, s.ring, s.route);
+  s.plan.push([s.ring, s.route]);
+  const itemIndex = new Map(Array.from(w.itemRanks, (r, k) => [w.order[r], k]));
+  s.fetched = fetchedCells.map((i) => itemIndex.get(i)!);
+  s.bots.forEach((b, j) => { if (targetCells[j] >= 0) b.target = itemIndex.get(targetCells[j])!; });
+  const scouted: number[] = [];
+  for (let q = 0; q < scoutCells.length; q += 3) {
+    const from = w.rank[scoutCells[q]];
+    const to = w.rank[scoutCells[q + 1]];
+    let max = 0;
+    for (const i of pathCells(w, from, to)) max = Math.max(max, w.rank[i]);
+    scouted.push(from, to, max);
+  }
+  s.scouted = scouted;
+}
+
+function goHome(s: GameState, w: World, b: Bot, cell?: number): void {
   b.trip = 'home';
   b.travel = 0;
-  b.travelLen = homeDistance(s);
+  b.travelLen = homeDistance(s, w, cell);
 }
 
 /** Advances the simulation by `dt` seconds. */
@@ -206,7 +236,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
   const ev: TickEvents = { specials: [], items: [], deposited: 0 };
   if (dt <= 0) return ev;
   let left = dt;
-  const fetched = new Set(s.fetched);
+  let fetched = new Set(s.fetched);
   /** Per rover: cells ahead already checked (nothing happens on arriving there) for this ring and sky. */
   const clearTo: number[] = [];
   let clearKey = '';
@@ -218,13 +248,17 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
 
     // The sky changes.
     const nextSky = (s.weather.epoch + 1) * WEATHER_EPOCH;
-    if (s.playTime >= nextSky - 1e-7) { s.weather = makeWeather(s, w, Math.floor((s.playTime + 1e-7) / WEATHER_EPOCH)); continue; }
+    if (s.playTime >= nextSky - 1e-7) { s.weather = evolveWeather(s, w, Math.floor((s.playTime + 1e-7) / WEATHER_EPOCH)); continue; }
 
     const starts = live ? arcStarts(w, s.ring, s.ringRobots) : [totalCells(w)];
     const arcs = s.bots.map((_, j) => arcOfBot(s, w, j, starts, st.grip));
 
     // Ring done (every arc finished): on to the next.
-    if (live && arcs.every((a, j) => !a || s.bots[j].prog >= a.len - EPS)) { nextRing(s, w, st.explorers); continue; }
+    if (live && arcs.every((a, j) => !a || s.bots[j].prog >= a.len - EPS)) {
+      nextRing(s, w, st.explorers);
+      fetched = new Set(s.fetched); // a new route renumbers the items
+      continue;
+    }
 
     // Instant decisions: hold full, or arc done with cargo -> head to camp.
     let changed = false;
@@ -232,7 +266,10 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       if (b.trip !== 'explore') return;
       const a = arcs[j];
       const done = !a || b.prog >= a.len - EPS;
-      if (b.cargo >= st.cargo * (1 - EPS) || (done && b.cargo > 0)) { goHome(s, b); changed = true; }
+      if (b.cargo >= st.cargo * (1 - EPS) || (done && b.cargo > 0)) {
+        goHome(s, w, b, a ? cellOf(w, st.grip, a, b.prog) : undefined);
+        changed = true;
+      }
     });
     if (changed) continue;
 
@@ -337,7 +374,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         const r0 = a.lo + Math.floor(arcReach(w, st.grip, a, from));
         const r1 = a.lo + Math.floor(arcReach(w, st.grip, a, to));
         if (r1 > r0) {
-          ev.specials.push(...specialsBetween(w, r0, r1));
+          for (const r of specialsBetween(w, r0, r1)) ev.specials.push(w.order[r]);
           for (const k of itemsBetween(w, r0, r1)) if (!fetched.has(k)) collect(s, w, k, ev, b);
         }
       } else {
@@ -395,7 +432,7 @@ function collect(s: GameState, w: World, k: number, ev: TickEvents, b: Bot): voi
   const r = w.itemRanks[k];
   s.items[ITEMS[w.item[w.order[r]] - 1].id]++;
   b.found++;
-  ev.items.push(r);
+  ev.items.push(w.order[r]);
 }
 
 /** Items the next work of this kind costs. */
@@ -432,6 +469,30 @@ export function buy(s: GameState, w: World, id: StatId, qty = 1): boolean {
       if (b) b.prog = stepsForReach(w, grip, before.starts[k], before.starts[k + 1], before.reach[k]);
     });
   }
+  return true;
+}
+
+/** Whether route `id` can be unlocked now (bluetreri and items). */
+export function canUnlockRoute(s: GameState, id: RouteId): boolean {
+  const def = routeById(id);
+  if (!def || s.routes.includes(id) || s.gold.lt(def.gold)) return false;
+  return Object.entries(def.items).every(([k, n]) => s.items[k as keyof GameState['items']] >= (n ?? 0));
+}
+
+/** Pays for route `id` and unlocks it. */
+export function unlockRoute(s: GameState, id: RouteId): boolean {
+  if (!canUnlockRoute(s, id)) return false;
+  const def = routeById(id)!;
+  s.gold = s.gold.sub(def.gold);
+  for (const [k, n] of Object.entries(def.items)) s.items[k as keyof GameState['items']] -= n ?? 0;
+  s.routes.push(id);
+  return true;
+}
+
+/** Picks the route the rovers follow from the next ring on. */
+export function chooseRoute(s: GameState, id: RouteId): boolean {
+  if (!s.routes.includes(id)) return false;
+  s.route = id;
   return true;
 }
 

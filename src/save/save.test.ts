@@ -24,7 +24,7 @@ describe('save', () => {
     s.items.page = 7;
     s.works.cd = 2;
     s.fetched = [11, 3];
-    s.weather = { epoch: 4, storms: [{ kind: 'acid', x: 10, y: 12, r: 5 }] };
+    s.weather = { epoch: 4, storms: [{ id: 3, kind: 'acid', x: 10.5, y: 12.25, vx: 0.1, vy: -0.2, r: 4.5, size: 6, age: 7, life: 90, severe: true }], nextId: 4 };
     s.bots[0].found = 2;
     s.zoomUnlocked = 3;
     s.zoom = 2;
@@ -79,7 +79,7 @@ describe('save', () => {
     expect(state.bots[0].from).toBe(-1);
     // v5 -> v6: the item it is fetching is already claimed, and the sky starts clear.
     expect(state.fetched).toEqual([4]);
-    expect(state.weather).toEqual({ epoch: 0, storms: [] });
+    expect(state.weather).toEqual({ epoch: 0, storms: [], nextId: 0 });
     const back = deserialize({ ...serialize({ ...state, scouted: [1, 9, 12, 7] }, 0) }).state;
     expect(back.scouted).toEqual([1, 9, 12]);
   });
