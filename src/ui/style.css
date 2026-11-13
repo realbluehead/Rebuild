@@ -66,8 +66,7 @@ button { font: inherit; color: inherit; }
     width: auto;
     aspect-ratio: 9 / 19.5;
     margin: 0;
-    border: 4px solid var(--edge);
-    box-shadow: 0 0 0 4px var(--panel-2), 0 0 0 8px var(--edge), 0 12px 40px #000c;
+    box-shadow: 0 12px 40px #000c;
   }
 }
 
