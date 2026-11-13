@@ -5,7 +5,7 @@ import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { WORKS_MAX } from '../src/content/collection';
-import { canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -59,11 +59,17 @@ const mark = (t: number, what: string) => {
 
 for (let t = 0; t < hours * 3600; t += DT) {
   if (useRoutes) {
-    const next = ROUTES.find((r) => !s.routes.includes(r.id));
+    // The Scavenger is for items: the sim does not follow it, and only buys it with spare bluetreri (5× its price).
+    const next = ROUTES.find((r) => !s.routes.includes(r.id) && r.id !== 'scavenge');
     if (next && canUnlockRoute(s, w, next.id)) {
       unlockRoute(s, w, next.id);
-      if (next.id !== 'scavenge') chooseRoute(s, next.id); // (the Scavenger is for items: it keeps the route it has)
+      chooseRoute(s, next.id);
       mark(t, `route ${next.name}`);
+    }
+    const scav = ROUTES.find((r) => r.id === 'scavenge')!;
+    if (canUnlockRoute(s, w, 'scavenge') && s.gold.gte(5 * scav.gold)) {
+      unlockRoute(s, w, 'scavenge');
+      mark(t, `route ${scav.name}`);
     }
     if (canUpgradeRoute(s, w, s.route)) {
       upgradeRoute(s, w, s.route);
@@ -100,9 +106,9 @@ for (let t = 0; t < hours * 3600; t += DT) {
     const nextKind = ROVER_KINDS.find((k) => !s.bots.some((b) => b.kind === k.id));
     if (nextKind && levelOf(s, w) >= nextKind.level && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ]))).lt(nextKind.gold)) break;
     // Saving up: once the next route is open (explorer level and items) only spend what is above its price.
-    const saveFor = useRoutes ? ROUTES.find((r) => !s.routes.includes(r.id)) : undefined;
+    const saveFor = useRoutes ? ROUTES.find((r) => !s.routes.includes(r.id) && r.id !== 'scavenge') : undefined;
     if (saveFor && levelOf(s, w) >= routeLevelNeeded(w, saveFor.id)
-      && Object.entries(saveFor.items).every(([k, q]) => s.items[k as keyof typeof s.items] >= (q ?? 0))
+      && Object.entries(saveFor.items).every(([k, q]) => itemsCollected(s, w)[k as keyof typeof s.items] >= (q ?? 0))
       && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ]))).lt(saveFor.gold)) break;
     buy(s, w, best, 1, bestJ);
   }

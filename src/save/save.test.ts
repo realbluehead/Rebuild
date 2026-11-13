@@ -160,6 +160,11 @@ describe('save', () => {
     expect(odd).toMatchObject({ digOrder: 'follow', haulAt: 0.5, haulPick: 'fullest' });
   });
 
+  it('migrates a v18 save: items spent on routes are given back once the world loads (recount)', () => {
+    const { state } = deserialize({ ...serialize(newGame(3), 0), v: 18 });
+    expect(state.recount).toBe(true);
+  });
+
   it('rejects versions from the future', () => {
     expect(() => migrate({ v: 999 })).toThrow();
   });

@@ -835,10 +835,10 @@ describe('routes', () => {
     expect(g.plan).toEqual([[1, 'random', 0]]);
   });
 
-  it('routes are unlocked with bluetreri and items, and levelled up', () => {
+  it('routes are unlocked with bluetreri and items collected (not spent), and levelled up', () => {
     const s = freshGame(1);
     const rw = createWorld(1, SIZE);
-    s.ring = ringCount(rw); // the whole map explored: every explorer level reached
+    s.ring = ringCount(rw); // the whole map explored: every explorer level reached (and every item collected)
     expect(canUnlockRoute(s, rw, 'circular')).toBe(false);
     expect(chooseRoute(s, 'circular')).toBe(false);
     expect(unlockRoute(s, rw, 'north')).toBe(false); // withdrawn
@@ -856,12 +856,13 @@ describe('routes', () => {
     expect(upgradeRoute(s, rw, 'circular')).toBe(true);
     expect(routeLevel(s, 'circular')).toBe(1);
     expect(s.gold.toNumber()).toBe(500);
-    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 5250, items: { page: 6 } });
+    expect(routeUpgradeCost(s, 'circular')).toEqual({ gold: 5250, items: { page: 9 } }); // 3 + 6 collected in all
     expect(upgradeRoute(s, rw, 'circular')).toBe(false);
     s.gold = D(1e9);
     s.items.page = 1000;
     while (upgradeRoute(s, rw, 'circular'));
     expect(routeLevel(s, 'circular')).toBe(ROUTE_MAX_LEVEL);
+    expect(s.items.page).toBe(1000); // nothing spent
     expect(routeUpgradeCost(s, 'circular')).toBeNull();
     expect(upgradeRoute(s, rw, 'trail')).toBe(false); // locked
   });
@@ -885,6 +886,23 @@ describe('routes', () => {
     expect(canCraft(s, w, 'book')).toBe(true);
   });
 
+  it('route items are a requirement on what was collected, not on what is left', () => {
+    const s = freshGame(1);
+    const rw = createWorld(1, SIZE);
+    s.gold = D(1e12);
+    s.routes.push('circular');
+    while (levelOf(s, rw) < routeLevelNeeded(rw, 'trail')) tick(s, rw, 5);
+    const trail = ROUTES.find((r) => r.id === 'trail')!;
+    s.items = { page: 0, note: 0, photo: 0 }; // all spent on works
+    const got = itemsCollected(s, rw);
+    const enough = Object.entries(trail.items).every(([k, n]) => got[k as keyof typeof got] >= (n ?? 0));
+    expect(canUnlockRoute(s, rw, 'trail')).toBe(enough);
+    if (enough) {
+      expect(unlockRoute(s, rw, 'trail')).toBe(true);
+      expect(s.items).toEqual({ page: 0, note: 0, photo: 0 });
+    }
+  });
+
   it('better routes cost more to unlock and to level up', () => {
     for (let k = 1; k < ROUTES.length; k++) expect(ROUTES[k].gold).toBeGreaterThan(ROUTES[k - 1].gold);
     for (let k = 2; k < ROUTES.length; k++) expect(ROUTES[k].levelGold).toBeGreaterThan(ROUTES[k - 1].levelGold);
@@ -894,10 +912,9 @@ describe('routes', () => {
     const w = createWorld(42, SIZE);
     const rw = w;
     const s = newGame(42);
-    while (levelOf(s, w) < routeLevelNeeded(w, 'circular', 1)) tick(s, w, 1);
+    while (levelOf(s, w) < routeLevelNeeded(w, 'circular', 1) || itemsCollected(s, w).page < 3) tick(s, w, 1);
     Object.assign(s.upgrades, { speed: 20 });
     s.gold = D(1e6);
-    s.items.page = 100;
     expect(upgradeRoute(s, rw, 'circular')).toBe(true);
     const ring = s.ring;
     while (s.ring === ring) tick(s, w, 0.5);

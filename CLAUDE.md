@@ -63,7 +63,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   ground (a per-frame pixel mask: nothing shows over the dark).
 - **Routes** = discovery algorithms (`content/routes.ts`, Routes tab), from the least to the most efficient: Random
   (free, every new game starts on it and switches to it at ring 1; no levels, `maxLevel` 0), then the upgrades Circular,
-  Trail, Scavenger, Prospector, Survey, each dearer (bluetreri + items, `unlockRoute`). The world is still generated in circular order
+  Trail, Scavenger, Prospector, Survey, each dearer (bluetreri, plus items collected as a requirement, `unlockRoute`). The world is still generated in circular order
   (saves from before Random was the default own Circular and keep it). Upgrades have levels 0..`maxLevel` (`upgradeRoute`,
   `routeUpgradeCost`): a level lowers its **entropy**
   (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level).
@@ -100,10 +100,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   arrival into the rover's `bag` and added to `s.items` only when it unloads at camp (like the bluetreri; save v13); the Goals tab (work cards after the goals, a pip per work) turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, `WORKS_MAX`
   (15) per collection; the tab shows each collection's and the whole library's % complete. **Prices are per map**
   (`workCost(w, id, k)` in `core/game.ts`): each work ×`costGrowth`, a whole collection = `LIBRARY_SHARE` (0.8) of that kind
-  on the map (`itemsOnMap`) minus what every route and level costs (`routeItems`), so the library can always be finished.
+  on the map (`itemsOnMap`) minus what every route and level asks for (`routeItems`, now extra slack), so the library can always be finished.
   Needed because large seeds (all new games) hide far fewer pages than small ones (~3k vs ~5.2k: item kinds come from the
-  low end of `rand2`). Route unlocks and levels **spend** their items. Saves v8/v9 are recounted once on load
-  (`s.recount` → `recountItems`: items = collected − spent at today's prices, never fewer than before).
+  low end of `rand2`). Route unlocks and levels **do not spend** items (save v19): they ask for items **collected** in total
+  (`itemsCollected`; `routeNeeds(def, lv)` = the unlock's items + `levelItems × k` for each level k), and only the
+  bluetreri is paid. Route cards show collected/needed (red while short). Saves v8/v9 and v18 are recounted once on load
+  (`s.recount` → `recountItems`: items = collected − spent on works at today's prices, never fewer than before).
 - End of the game: the tick where the map is done and everything is unloaded sets `s.doneAt` (play time) and
   `TickEvents.completed`; `main.ts` shows the congratulations dialog (also after offline catch-up), once per device.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that
@@ -157,8 +159,10 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
   levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
   further apart each time**. Seed 12345 (with goals claimed): Circular ~7 min, zoom 2 ~11 min, Miner ~38 min, zoom 3 ~1 h 05,
-  Trail ~1 h 45, Hauler ~2 h 35, zoom 4 ~3 h 45, Scavenger ~3 h 25, Prospector ~4 h 30, Survey ~9 h 40, library ~13 h 30, full map
-  ~16 h 40, everything dug out ~19 h 45; goal tiers fall in between.
+  Trail ~1 h 40, Hauler ~2 h 50, Prospector ~4 h 35, zoom 4 ~4 h 40, Survey ~10 h 25, library ~16 h 50, full map ~19 h 45,
+  everything dug out ~21 h 30; goal tiers fall in between. (The sim skips the Scavenger on its path and buys it with spare
+  bluetreri.) Since routes stopped spending items (v19) they come earlier and the run got ~3 h slower: past Circular,
+  routes barely beat it on bluetreri (tools/routes.ts), so buying them early is mostly a bluetreri sink.
   `npm run sim` prints this timeline ("Big advances") with the gap before each one; run it whenever prices or speeds change.
   `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.

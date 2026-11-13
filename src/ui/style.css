@@ -319,3 +319,6 @@ button { font: inherit; color: inherit; }
 .vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #cfae8833; cursor: default; }
 .vol.empty.next { border-color: var(--ok); }
 .lib-caption { font-size: 15px; padding: 6px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A route requirement not met yet (items collected / needed). */
+.buy .part.short { color: var(--red); }
+.px-btn.can .part.short { color: inherit; }

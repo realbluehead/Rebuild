@@ -21,6 +21,7 @@
 // v16: rover kinds (`Bot.kind`: Scout, Miner, Hauler, one of each) and the Miner's progress (`dug`). Rover #1 becomes
 //      the Scout; the other rovers, their parts and the Rovers upgrade are refunded, and their load goes to camp.
 // v17: goals (`goals`: tiers claimed of each).
+// v19: routes only ask for items collected and no longer spend them: items spent on routes are given back (recount).
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
@@ -33,7 +34,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 18;
+export const SAVE_VERSION = 19;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -191,6 +192,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   16: (s) => ({ ...s, v: 17, goals: {} }),
   // v17 -> v18: nothing to do (deserialize fills in the defaults).
   17: (s) => ({ ...s, v: 18 }),
+  // v18 -> v19: give back the items routes took (`recountItems` no longer counts routes as spent; needs the world).
+  18: (s) => ({ ...s, v: 19, recount: true }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {

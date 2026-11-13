@@ -1,6 +1,6 @@
 // Exploration routes (discovery algorithms): the pattern the Scout follows when it pushes into the dark (the Miner digs
 // behind it, in its own dig order). Random is the
-// free starting one (no levels); the rest are upgrades, unlocked with bluetreri plus collected items, and each can be levelled up (less entropy).
+// free starting one (no levels); the rest are upgrades, unlocked with bluetreri once enough items have been collected (they are not spent), and each can be levelled up (less entropy).
 // The list goes from the least to the most efficient (measured with tools/routes.ts). A change takes over at the next ring.
 import type { ItemId } from './collection';
 
@@ -13,10 +13,10 @@ export interface RouteDef {
   /** Short line for the card. */
   short: string;
   desc: string;
-  /** Unlock price: bluetreri plus items. */
+  /** Unlock price in bluetreri, and the items it asks to have collected in total (not spent). */
   gold: number;
   items: Partial<Record<ItemId, number>>;
-  /** First level's price (bluetreri grows by ROUTE_LEVEL_GROWTH per level, items by the level number). */
+  /** First level's price (bluetreri grows by ROUTE_LEVEL_GROWTH per level); level k adds `levelItems × k` to the items needed. */
   levelGold: number;
   levelItems: Partial<Record<ItemId, number>>;
   /** Highest level (0 = no levels). */

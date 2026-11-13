@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId } from '../content/goals';
-import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -368,7 +368,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     list.append(card);
     return { def: u, card, lvl, eff, btn, cost, gain };
   });
-  // Exploration routes: unlock with bluetreri + items, then pick the one the Scout follows from the next ring.
+  // Exploration routes: unlock with bluetreri once enough items are collected (not spent), then pick the one the Scout follows from the next ring.
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
   const routeCards = ROUTES.map((rd) => {
@@ -476,8 +476,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   /** Button content for a price (bluetreri + item icons), rebuilt only when it changes. */
   type Keyed = { btnKey: string; upKey: string };
-  function price(c: Keyed, key: keyof Keyed, btn: HTMLElement, gold: number, items: Partial<Record<ItemId, number>>, prefix = '') {
-    const k = `${prefix}|${gold}|${JSON.stringify(items)}`;
+  /** With `have`, the items are a requirement (collected so far / needed), not a price. */
+  function price(c: Keyed, key: keyof Keyed, btn: HTMLElement, gold: number, items: Partial<Record<ItemId, number>>, prefix = '', have?: Record<ItemId, number>) {
+    const k = `${prefix}|${gold}|${JSON.stringify(items)}|${have ? Object.keys(items).map((id) => Math.min(have[id as ItemId], items[id as ItemId] ?? 0)).join(',') : ''}`;
     if (c[key] === k) return;
     c[key] = k;
     btn.replaceChildren();
@@ -485,7 +486,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const part = (...kids: Node[]) => { const p = h('span', 'part'); p.append(...kids); btn.append(p); };
     if (prefix) part(document.createTextNode(prefix));
     if (gold > 0) part(h('i', 'coin'), document.createTextNode(fmt(gold)));
-    for (const [id, n] of Object.entries(items)) part(itemIcon(ITEMS.findIndex((it) => it.id === id)), document.createTextNode(`${n}`));
+    for (const [id, n] of Object.entries(items)) {
+      const got = have ? Math.min(have[id as ItemId], n ?? 0) : -1;
+      part(itemIcon(ITEMS.findIndex((it) => it.id === id)), document.createTextNode(have ? `${got}/${n}` : `${n}`));
+      if (have) btn.lastElementChild!.classList.toggle('short', got < (n ?? 0));
+    }
   }
   function label(c: Keyed, key: keyof Keyed, btn: HTMLElement, text: string) {
     if (c[key] === text) return;
@@ -623,7 +628,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'If its hold fills before it gets there, bad luck: it leaves the item for later and heads to camp.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
         'The Routes tab sets how the rovers push into the dark. They start out wandering at random; each new route is more efficient than the last, and only the next one shows until you unlock it.',
-        'New routes cost bluetreri plus pages, notes or photos; the better ones cost more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
+        'New routes cost bluetreri and ask for pages, notes or photos collected in total (they are not used up); the better ones ask for more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
         'The route you pick (or a new level) shows as Queued and takes over when the rovers finish the ring they are on (the card shows how much of it is done); what is already explored stays as it is.'] },
       { on: levelOf(s, world) >= 2, title: 'Explorer level', lines: [
         'Under the top bar: your explorer level and how far you are to the next. It grows with the cells explored, and each level asks for about a third more ground than the one before, so the first come fast and the last take hours.',
@@ -851,6 +856,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       set(libInfo, `Library ${whole(libraryShare(s))} complete. New works are made on the Goals tab.`);
       if (!libView.hidden) drawShelves(s);
+      const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
       set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
@@ -865,7 +871,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           set(c.state, '');
           set(c.eff, myLevel < need ? `needs explorer Lv ${need}` : c.rd.short);
           if (myLevel < need) label(c, 'btnKey', c.btn, `Lv ${need}`);
-          else price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items);
+          else price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items, '', got);
           c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
           c.up.style.display = 'none'; // (the hidden attribute loses to the button's display rule)
         } else {
@@ -881,7 +887,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           c.up.style.display = c.rd.maxLevel ? '' : 'none'; // Random has no levels
           const upNeed = routeLevelNeeded(world, id, lv + 1);
           if (next && myLevel < upNeed) label(c, 'upKey', c.up, `lv${lv + 1} · needs Lv ${upNeed}`);
-          else if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`);
+          else if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`, got);
           else label(c, 'upKey', c.up, `lv${c.rd.maxLevel} max`);
           c.up.classList.toggle('can', canUpgradeRoute(s, world, id));
         }

@@ -15,7 +15,7 @@ import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MUL
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
 import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
-import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteId } from '../content/routes';
+import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 import { GOAL_TIERS, GOALS, goalById, type GoalId, type GoalReward } from '../content/goals';
@@ -963,21 +963,15 @@ export function itemsCollected(s: GameState, w: World): Record<ItemId, number> {
   return out;
 }
 
-/** Items spent at today's prices: works made, routes unlocked and their levels. */
+/** Items spent at today's prices: the works made (routes only ask for items collected, they do not spend them). */
 export function itemsSpent(s: GameState, w: World): Record<ItemId, number> {
   const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
   for (const wd of WORKS) for (let k = 0; k < s.works[wd.id]; k++) out[wd.item] += workCost(w, wd.id, k);
-  for (const id of s.routes) {
-    const def = routeById(id);
-    if (!def) continue;
-    for (const [k, n] of Object.entries(def.items)) out[k as ItemId] += n ?? 0;
-    for (let lv = 0; lv < routeLevel(s, id); lv++) for (const [k, n] of Object.entries(def.levelItems)) out[k as ItemId] += (n ?? 0) * (lv + 1);
-  }
   return out;
 }
 
-/** Saves that made works or bought routes at older (dearer) prices: give back the difference, so the library can still
- *  be finished. Never takes items away. */
+/** Saves that made works at older (dearer) prices, or spent items on routes (before v19): give back the difference, so
+ *  the library can still be finished. Never takes items away. */
 export function recountItems(s: GameState, w: World): void {
   if (!s.recount) return;
   delete s.recount;
@@ -1026,7 +1020,7 @@ export function itemsOnMap(w: World): Record<ItemId, number> {
   return t;
 }
 
-/** Items every route and level costs, by kind. */
+/** Items every route and level asks for (its top requirement), by kind. Work prices still leave this much aside (slack). */
 export function routeItems(): Record<ItemId, number> {
   const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
   for (const rd of ROUTES) {
@@ -1037,7 +1031,7 @@ export function routeItems(): Record<ItemId, number> {
 }
 
 /** Price of every work of each collection on this map: growing by `costGrowth`, all of them adding up to LIBRARY_SHARE
- *  of that kind's items after the routes' share. */
+ *  of that kind's items minus what the routes ask for (routes no longer spend items: that part is extra slack). */
 const workPrices = new WeakMap<World, Record<WorkId, number[]>>();
 function pricesFor(w: World): Record<WorkId, number[]> {
   let p = workPrices.get(w);
@@ -1142,42 +1136,51 @@ export function build(s: GameState, w: World, k: RoverKind): boolean {
   return true;
 }
 
-/** Whether route `id` can be unlocked now (bluetreri and items). */
+/** Items route `def` asks you to have collected (in total: they are not spent) for its level `lv` (0 = to unlock it):
+ *  the unlock's items plus `levelItems × k` for each level k up to `lv`. */
+export function routeNeeds(def: RouteDef, lv: number): Partial<Record<ItemId, number>> {
+  const out: Partial<Record<ItemId, number>> = { ...def.items };
+  for (let k = 1; k <= lv; k++) for (const [id, n] of Object.entries(def.levelItems)) out[id as ItemId] = (out[id as ItemId] ?? 0) + (n ?? 0) * k;
+  return out;
+}
+/** Whether the items collected so far (spent or not) reach `need`. */
+const collectedEnough = (s: GameState, w: World, need: Partial<Record<ItemId, number>>): boolean => {
+  const e = Object.entries(need).filter(([, n]) => (n ?? 0) > 0);
+  if (!e.length) return true;
+  const got = itemsCollected(s, w);
+  return e.every(([k, n]) => got[k as ItemId] >= (n ?? 0));
+};
+
+/** Whether route `id` can be unlocked now: bluetreri, explorer level, and enough items collected (not spent). */
 export function canUnlockRoute(s: GameState, w: World, id: RouteId): boolean {
   const def = routeById(id);
   if (!def || s.routes.includes(id) || s.gold.lt(def.gold) || levelOf(s, w) < routeLevelNeeded(w, id)) return false;
-  return Object.entries(def.items).every(([k, n]) => s.items[k as keyof GameState['items']] >= (n ?? 0));
+  return collectedEnough(s, w, routeNeeds(def, 0));
 }
 
-/** Pays for route `id` and unlocks it. */
+/** Pays the bluetreri for route `id` and unlocks it (the items are only a requirement). */
 export function unlockRoute(s: GameState, w: World, id: RouteId): boolean {
   if (!canUnlockRoute(s, w, id)) return false;
-  const def = routeById(id)!;
-  s.gold = s.gold.sub(def.gold);
-  for (const [k, n] of Object.entries(def.items)) s.items[k as keyof GameState['items']] -= n ?? 0;
+  s.gold = s.gold.sub(routeById(id)!.gold);
   s.routes.push(id);
   return true;
 }
 
-/** Price of the next level of route `id` (null when it is locked or maxed out). */
+/** Next level of route `id`: its bluetreri price and the items it asks to have collected (null when locked or maxed). */
 export function routeUpgradeCost(s: GameState, id: RouteId): { gold: number; items: Partial<Record<ItemId, number>> } | null {
   const def = routeById(id);
   const lv = routeLevel(s, id);
   if (!def || !s.routes.includes(id) || lv >= def.maxLevel) return null;
-  const items: Partial<Record<ItemId, number>> = {};
-  for (const [k, n] of Object.entries(def.levelItems)) items[k as ItemId] = (n ?? 0) * (lv + 1);
-  return { gold: Math.round(def.levelGold * ROUTE_LEVEL_GROWTH ** lv), items };
+  return { gold: Math.round(def.levelGold * ROUTE_LEVEL_GROWTH ** lv), items: routeNeeds(def, lv + 1) };
 }
 export function canUpgradeRoute(s: GameState, w: World, id: RouteId): boolean {
   const c = routeUpgradeCost(s, id);
-  return !!c && levelOf(s, w) >= routeLevelNeeded(w, id, routeLevel(s, id) + 1) && s.gold.gte(c.gold) && Object.entries(c.items).every(([k, n]) => s.items[k as ItemId] >= (n ?? 0));
+  return !!c && levelOf(s, w) >= routeLevelNeeded(w, id, routeLevel(s, id) + 1) && s.gold.gte(c.gold) && collectedEnough(s, w, c.items);
 }
-/** Pays for the next level of route `id`; it takes effect at the next ring if that route is in use. */
+/** Pays the bluetreri for the next level of route `id`; it takes effect at the next ring if that route is in use. */
 export function upgradeRoute(s: GameState, w: World, id: RouteId): boolean {
   if (!canUpgradeRoute(s, w, id)) return false;
-  const c = routeUpgradeCost(s, id)!;
-  s.gold = s.gold.sub(c.gold);
-  for (const [k, n] of Object.entries(c.items)) s.items[k as ItemId] -= n ?? 0;
+  s.gold = s.gold.sub(routeUpgradeCost(s, id)!.gold);
   s.routeLevels[id] = routeLevel(s, id) + 1;
   return true;
 }
