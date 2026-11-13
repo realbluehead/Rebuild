@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { canPrint, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -30,8 +30,8 @@ export interface ViewActions {
   /** Claims the next tier of goal `id`. */
   claimGoal(id: GoalId): void;
   craft(id: WorkId): void;
-  /** The Library's machine has printed scrap `k` (index into `world.loreCells`). */
-  printLore(k: number): void;
+  /** Switches the Library's Decoder on or off. */
+  decoder(on: boolean): void;
   zoom(delta: number): void;
   exportText(): string;
   importText(text: string): void;
@@ -543,18 +543,26 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // down to a flask, its DNA runs through the tubes to a monitor that reads it, and a printer gives out a sheet with its
   // piece of the planet's history (tap the tray to read the sheets).
   const machineEl = h('div', 'machine');
-  machineEl.dataset.stage = 'idle';
+  machineEl.dataset.stage = '';
   const mcLabel = h('div', 'shelf-label');
-  const mcFunnel = h('div', 'mc-funnel');
+  // The hopper: a dark iron funnel holding the scraps waiting (the heap rises with them), their number above it.
+  const mcCount = h('span', 'mc-count');
+  const mcHeap = h('i', 'mc-heap');
+  const mcCone = h('div', 'mc-cone');
+  mcCone.append(mcHeap);
+  const mcHopper = h('div', 'mc-hopper');
+  mcHopper.append(mcCone, h('i', 'mc-rim'), mcCount);
   const mcSwitch = h('button', 'mc-switch');
   mcSwitch.append(h('span', 'off', 'OFF'), h('i', 'lever'), h('span', 'on', 'ON'));
   const mcDrop = h('i', 'mc-drop');
   const mcFlask = h('div', 'mc-flask');
   mcFlask.append(h('i', 'mc-liquid'), h('i', 'mc-bubbles'));
   const mcIn = h('div', 'mc-in');
-  mcIn.append(mcFunnel, mcDrop, mcFlask);
+  mcIn.append(mcHopper, mcDrop, mcFlask);
+  // Copper pipes with brass flanges, a glass section in each where the green DNA can be seen flowing, and a coil.
+  const pipe = (cls: string) => { const p = h('i', `mc-pipe ${cls}`); p.append(h('i', 'mc-glass')); return p; };
   const mcTubes = h('div', 'mc-tubes');
-  mcTubes.append(mcSwitch, h('i', 'mc-pipe a'), h('i', 'mc-coil'), h('i', 'mc-pipe b'));
+  mcTubes.append(mcSwitch, pipe('a'), h('i', 'mc-coil'), pipe('b'));
   const mcHelix = h('div', 'mc-helix');
   for (let k = 0; k < 9; k++) {
     const r = h('i', 'mc-rung');
@@ -568,42 +576,49 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   mcCrt.append(mcScreen);
   const mcTray = h('button', 'mc-tray');
   mcTray.title = 'Read the printed sheets';
+  /** The time counter: what is left on the scrap in the Decoder (or, dim, what the next one will take). */
+  const mcClock = h('span', 'mc-clock');
   const mcPrinter = h('div', 'mc-printer');
-  mcPrinter.append(h('i', 'mc-slot'), h('i', 'mc-sheet'), mcTray);
+  mcPrinter.append(h('i', 'mc-slot'), h('i', 'mc-sheet'), mcClock, mcTray);
   const mcBody = h('div', 'mc-body');
   mcBody.append(mcIn, mcTubes, mcCrt, mcPrinter);
   machineEl.append(mcLabel, mcBody);
   libView.append(shelvesEl, machineEl);
-  /** The scrap going through the decoder (one at a time), if any. */
-  let decoding = -1;
-  /** The switch: while on, the decoder takes the next scrap as soon as it is free, until none is left. */
-  let running = false;
   const MC_TEXT: Record<string, string> = { idle: 'STANDBY_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
-  const stage = (st: string) => { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); };
-  stage('idle');
-  /** The next scrap found and not printed yet, if any. */
-  const nextScrap = (): number | undefined => {
-    const s = current;
-    return s ? loreFound(s, world).find((x) => !s.printed.includes(x) && x !== decoding) : undefined;
+  /** The scrap last seen in the Decoder (to show it dropping in and in the caption when a new one starts). */
+  let mcLast = -1;
+  const clock = (sec: number) => {
+    const t = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(t / 60);
+    return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}` : `${m}:${String(t % 60).padStart(2, '0')}`;
   };
-  /** The switch can be used while there are scraps to decode (or one under way, to switch it off). */
-  function showSwitch() {
-    if (running && decoding < 0 && nextScrap() === undefined) running = false;
-    mcSwitch.disabled = !running && nextScrap() === undefined;
-    mcSwitch.classList.toggle('is-on', running);
-    machineEl.classList.toggle('powered', running || decoding >= 0);
-  }
-  function pump() {
-    if (running && decoding < 0) {
-      const k = nextScrap();
-      if (k !== undefined) feed(k);
+  /** The Decoder as the game has it (it works in game time, `decode` in core): stage, hopper, clock and switch. */
+  function drawDecoder(s: GameState) {
+    const queue = scrapsToDecode(s, world).length;
+    set(mcCount, String(queue));
+    mcCount.hidden = queue === 0;
+    mcHeap.style.height = `${queue ? Math.round(16 + 84 * Math.min(1, queue / 40)) : 0}%`;
+    if (s.decoding !== mcLast) {
+      mcLast = s.decoding;
+      if (s.decoding >= 0) {
+        mcDrop.replaceChildren(loreIcon(world.lore[world.loreCells[s.decoding]] - 1));
+        picked = `lore:${s.decoding}`;
+      }
+      shelfKey = '';
     }
-    showSwitch();
+    let st = 'idle';
+    if (s.decoding >= 0) {
+      const done = decodeTime(s.printed.length) - s.decodeLeft;
+      st = done < 0.7 ? 'drop' : s.decodeLeft < 1.2 ? 'print' : 'flow';
+    }
+    if (machineEl.dataset.stage !== st) { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); }
+    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : queue ? clock(decodeTime(s.printed.length)) : '-:--');
+    mcClock.classList.toggle('next', s.decoding < 0);
+    mcSwitch.disabled = !s.decodeOn && queue === 0;
+    mcSwitch.classList.toggle('is-on', s.decodeOn);
+    machineEl.classList.toggle('powered', s.decodeOn || s.decoding >= 0);
   }
-  mcSwitch.addEventListener('click', () => {
-    running = !running;
-    pump();
-  });
+  mcSwitch.addEventListener('click', () => { if (current) actions.decoder(!current.decodeOn); });
   /** Tapping the tray shows the printed sheets one after another. */
   mcTray.addEventListener('click', () => {
     const s = current;
@@ -612,24 +627,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     picked = `lore:${s.printed[(at + 1) % s.printed.length]}`;
     shelfKey = '';
   });
-  /** Drops scrap `k` in the funnel; a few seconds later its sheet is printed. */
-  function feed(k: number) {
-    if (decoding >= 0 || !current || !canPrint(current, world, k)) return;
-    decoding = k;
-    picked = `lore:${k}`;
-    shelfKey = '';
-    mcDrop.replaceChildren(loreIcon(world.lore[world.loreCells[k]] - 1));
-    stage('drop');
-    window.setTimeout(() => stage('flow'), 700);
-    window.setTimeout(() => stage('print'), 3200);
-    window.setTimeout(() => {
-      actions.printLore(k);
-      decoding = -1;
-      stage('idle');
-      shelfKey = '';
-      window.setTimeout(pump, 500);
-    }, 4400);
-  }
   // The library is lit by a few soft candles: dim, warm, flickering a little (all CSS). The caption sits above it.
   const libDark = h('div', 'lib-dark');
   /** Scraps of lore already announced on the map (-1: not counted yet, so loading does not announce them all). */
@@ -674,7 +671,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   function drawShelves(s: GameState) {
     const lore = loreFound(s, world);
-    const key = `${s.printed.length}|${decoding}|` + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
+    const key = `${s.printed.length}|${s.decoding}|` + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
@@ -715,13 +712,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const printed = lore.filter((k) => s.printed.includes(k)).length;
     set(mcLabel, `Decoder · printed ${printed}/${lore.length} · found ${lore.length}/${world.loreCells.length}`);
     mcTray.style.setProperty('--n', String(Math.min(6, printed)));
-    showSwitch();
     const [pid, pk] = picked.split(':');
     const wd = WORKS.find((w) => w.id === pid);
     if (pid === 'lore') {
       const kind = world.lore[world.loreCells[Number(pk)]] - 1;
       const k = Number(pk);
-      set(libCaption, `${LORE[kind].name} #${k + 1} · ${decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'not decoded yet'}`);
+      set(libCaption, `${LORE[kind].name} #${k + 1} · ${s.decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'not decoded yet'}`);
     } else if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
     // Nothing picked: no caption.
     libCaption.hidden = !wd && pid !== 'lore';
@@ -995,7 +991,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'On the Library tab, switch the Decoder on: it takes the scraps found one by one, reads the DNA left on them and prints a sheet of the planet\'s history for each. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
+        'On the Library tab, switch the Decoder on: it takes the scraps found one by one (the funnel shows how many wait), reads the DNA left on them and prints a sheet of the planet\'s history for each. Each scrap takes longer than the last; the printer\'s counter shows the time left. It keeps working while you are away. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
@@ -1202,7 +1198,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         }
       }
       loreSeen = lore.length;
-      if (!libView.hidden) drawShelves(s);
+      if (!libView.hidden) { drawShelves(s); drawDecoder(s); }
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       fillRD(s);

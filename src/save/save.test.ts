@@ -104,6 +104,15 @@ describe('save', () => {
     expect(deserialize(v19).state.printed).toEqual([]);
   });
 
+  it('keeps the Decoder under way, and a v20 save starts with it off', () => {
+    const s = newGame(5);
+    Object.assign(s, { printed: [2], decodeOn: true, decoding: 7, decodeLeft: 3.5 });
+    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state).toMatchObject({ decodeOn: true, decoding: 7, decodeLeft: 3.5 });
+    const { decodeOn, decoding, decodeLeft, ...v20 } = { ...serialize(s, 0), v: 20 };
+    void decodeOn; void decoding; void decodeLeft;
+    expect(deserialize(v20).state).toMatchObject({ printed: [2], decodeOn: false, decoding: -1, decodeLeft: 0 });
+  });
+
   it('migrates a v7 save: the four directions are refunded and withdrawn, the plan still replays', () => {
     const v7 = {
       v: 7, savedAt: 9, seed: 3, ring: 30, ringRobots: 1, bots: [{ trip: 'explore', prog: 0, cargo: 0, travel: 0, travelLen: 0, target: -1 }],

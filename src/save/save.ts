@@ -23,6 +23,7 @@
 // v17: goals (`goals`: tiers claimed of each).
 // v19: routes only ask for items collected and no longer spend them: items spent on routes are given back (recount).
 // v20: the Library's machine (`printed`: scraps of lore already printed).
+// v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
@@ -35,7 +36,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -73,6 +74,9 @@ export interface SaveData {
   goals: Record<string, number>;
   fetched: number[];
   printed: number[];
+  decodeOn: boolean;
+  decoding: number;
+  decodeLeft: number;
   routes: RouteId[];
   route: RouteId;
   routeLevels: Partial<Record<RouteId, number>>;
@@ -198,6 +202,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   18: (s) => ({ ...s, v: 19, recount: true }),
   // v19 -> v20: nothing printed yet.
   19: (s) => ({ ...s, v: 20, printed: [] }),
+  // v20 -> v21: the Decoder starts switched off and empty.
+  20: (s) => ({ ...s, v: 21, decodeOn: false, decoding: -1, decodeLeft: 0 }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -222,6 +228,9 @@ export function serialize(s: GameState, now: number): SaveData {
     goals: { ...s.goals },
     fetched: [...s.fetched],
     printed: [...s.printed],
+    decodeOn: s.decodeOn,
+    decoding: s.decoding,
+    decodeLeft: s.decodeLeft,
     routes: [...s.routes],
     route: s.route,
     routeLevels: { ...s.routeLevels },
@@ -263,6 +272,9 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
   state.printed = Array.isArray(data.printed) ? [...new Set(data.printed.map((x) => Math.floor(num(x))))] : [];
+  state.decodeOn = data.decodeOn === true;
+  state.decoding = Number.isInteger(data.decoding) && data.decoding >= 0 && !state.printed.includes(data.decoding) ? data.decoding : -1;
+  state.decodeLeft = state.decoding >= 0 ? num(data.decodeLeft) : 0;
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   if (data.recount) state.recount = true;
   if (data.kinds) state.kinds = true;

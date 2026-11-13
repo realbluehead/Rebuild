@@ -155,6 +155,11 @@ export interface GameState {
   playTime: number;
   /** Scraps of lore (index into `world.loreCells`) run through the Library's machine and printed (readable). */
   printed: number[];
+  /** The Decoder's switch: while on, it takes the next scrap found as soon as it is free (it turns off when none is left). */
+  decodeOn: boolean;
+  /** The scrap in the Decoder (index into `world.loreCells`), or -1, and the seconds it still needs. */
+  decoding: number;
+  decodeLeft: number;
   /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
   doneAt?: number;
   /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
@@ -185,6 +190,9 @@ export function newGame(seed = randomSeed()): GameState {
     goals: Object.fromEntries(GOALS.map((g) => [g.id, 0])) as Record<GoalId, number>,
     fetched: [],
     printed: [],
+    decodeOn: false,
+    decoding: -1,
+    decodeLeft: 0,
     weather: { epoch: 0, storms: [], nextId: 0 },
     routes: ['random'],
     route: 'random', // the starting route: it takes over when the first ring after camp starts

@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { printLore, carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { decode, setDecoder, carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -115,7 +115,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       view.crafted(id, state.works[id], before, stats(state));
       void save();
     },
-    printLore: (k) => { if (printLore(state, world, k)) void save(); },
+    decoder: (on) => { if (setDecoder(state, world, on)) void save(); },
     zoom: (d) => { setZoom(state, state.zoom + d); },
     exportText: () => exportSave(serialize(state, Date.now())),
     importText: (text) => {
@@ -167,8 +167,10 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     const dt = (now - last) / 1000;
     last = now;
     if (state.doneAt !== undefined) {
-      // The game is over (the whole map explored and everything at camp): the simulation stops; only the view runs.
+      // The game is over (the whole map explored and everything at camp): the simulation stops; only the view runs,
+      // and the Library's Decoder, which may still have scraps to print.
       acc = 0;
+      if (state.decoding >= 0 || state.decodeOn) decode(state, world, Math.min(dt, 3600) * view.gameSpeed());
     } else if (dt > MAX_FRAME_SEC) {
       // The tab was frozen: simulate it in chunks, like offline time.
       const r = applyOffline(state, world, Date.now() - dt * 1000, Date.now());

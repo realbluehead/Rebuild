@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { canPrint, printLore, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -77,12 +77,27 @@ describe('world', () => {
       if (world.rank[c] >= p.b) expect(found).not.toContain(k);
     });
     expect(goalValue(s, world, 'archivist')).toBe(found.length);
-    // The Library's machine prints each scrap found once; none that is not found yet.
-    const unseen = world.loreCells.findIndex((_, k) => !found.includes(k));
-    expect(canPrint(s, world, unseen)).toBe(false);
-    expect(printLore(s, world, found[0])).toBe(true);
-    expect(printLore(s, world, found[0])).toBe(false);
-    expect(s.printed).toEqual([found[0]]);
+    // The Decoder: off by default; switched on, it prints the scraps found in map order, each taking longer.
+    for (let k = 0; loreFound(s, world).length < 3 && k < 50000; k++) tick(s, world, 1);
+    found.splice(0, found.length, ...loreFound(s, world));
+    expect(found.length).toBeGreaterThanOrEqual(3);
+    expect(decode(s, world, 1000)).toEqual([]);
+    expect(setDecoder(s, world, true)).toBe(true);
+    expect(decode(s, world, decodeTime(0) - 0.5)).toEqual([]);
+    expect(s.decoding).toBe(found[0]);
+    expect(decode(s, world, 0.5 + decodeTime(1))).toEqual([found[0], found[1]]);
+    expect(decodeTime(1)).toBeGreaterThan(decodeTime(0));
+    // Switched off, the scrap under way still finishes, and no other starts.
+    decode(s, world, 1);
+    setDecoder(s, world, false);
+    expect(decode(s, world, 1e6)).toEqual([found[2]]);
+    expect(s.decoding).toBe(-1);
+    // Left on, it prints everything found and turns itself off.
+    setDecoder(s, world, true);
+    decode(s, world, 1e9);
+    expect(s.printed).toEqual(found);
+    expect(s.decodeOn).toBe(false);
+    expect(setDecoder(s, world, true)).toBe(false);
   });
 
   it('the order is a permutation and starts at the centre', () => {

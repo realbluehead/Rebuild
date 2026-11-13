@@ -14,7 +14,7 @@ import { newBot, type Bot, type GameState } from './state';
 import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_LEVELS, kindById, RICH_HOP, type DigOrder, type HaulPick, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
-import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
+import { DECODE_GROWTH, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTE_PACE_LEVEL, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
@@ -585,6 +585,7 @@ function goHome(s: GameState, w: World, b: Bot, cell?: number): void {
 export function tick(s: GameState, w: World, dt: number): TickEvents {
   const ev: TickEvents = { specials: [], items: [], deposited: 0 };
   if (dt <= 0) return ev;
+  decode(s, w, dt);
   let left = dt;
   let fetched = new Set(s.fetched);
   const minedSet = new Set(s.mined);
@@ -1117,14 +1118,41 @@ export const libraryShare = (s: GameState, id?: WorkId): number =>
   id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
 /** Crafts the next work (book, record or album) from the collected items. */
-/** Whether scrap `k` (index into `world.loreCells`) is found and not printed yet: the Library's machine can take it. */
-export const canPrint = (s: GameState, w: World, k: number): boolean => !s.printed.includes(k) && loreFound(s, w).includes(k);
+/** Seconds the Decoder needs for the next scrap, after `n` printed: each one takes longer. */
+export const decodeTime = (n: number): number => DECODE_SEC * DECODE_GROWTH ** n;
 
-/** Runs scrap `k` through the Library's machine: its page of history is printed and can be read. */
-export function printLore(s: GameState, w: World, k: number): boolean {
-  if (!canPrint(s, w, k)) return false;
-  s.printed.push(k);
+/** Scraps found and not printed yet, the one in the Decoder aside (in map order). */
+export const scrapsToDecode = (s: GameState, w: World): number[] =>
+  loreFound(s, w).filter((k) => k !== s.decoding && !s.printed.includes(k));
+
+/** Turns the Decoder on (only with scraps waiting) or off (the scrap under way still finishes). */
+export function setDecoder(s: GameState, w: World, on: boolean): boolean {
+  if (on && !scrapsToDecode(s, w).length) return false;
+  s.decodeOn = on;
   return true;
+}
+
+/** The Decoder works for `dt` seconds: it finishes scraps (their sheets are printed) and, while on, takes the next one.
+ *  Returns the scraps printed. */
+export function decode(s: GameState, w: World, dt: number): number[] {
+  const out: number[] = [];
+  let left = dt;
+  for (let guard = 0; guard < 10000; guard++) {
+    if (s.decoding < 0) {
+      if (!s.decodeOn) break;
+      const k = scrapsToDecode(s, w)[0];
+      if (k === undefined) { s.decodeOn = false; break; }
+      s.decoding = k;
+      s.decodeLeft = decodeTime(s.printed.length);
+    }
+    if (s.decodeLeft > left) { s.decodeLeft -= left; break; }
+    left -= s.decodeLeft;
+    s.printed.push(s.decoding);
+    out.push(s.decoding);
+    s.decoding = -1;
+    s.decodeLeft = 0;
+  }
+  return out;
 }
 
 export function craft(s: GameState, w: World, id: WorkId): boolean {
