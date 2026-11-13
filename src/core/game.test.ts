@@ -98,6 +98,7 @@ describe('world', () => {
     setDecoder(s, world, true);
     decode(s, world, 1e9);
     expect(s.printed).toEqual(found);
+    expect(goalValue(s, world, 'historian')).toBe(found.length);
     expect(s.decodeOn).toBe(false);
     expect(setDecoder(s, world, true)).toBe(false);
   });

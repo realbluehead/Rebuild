@@ -85,6 +85,7 @@ export function goalValue(s: GameState, w: World, id: GoalId): number {
     case 'excavator': return s.dug;
     case 'engineer': return s.bots.reduce((a, b) => a + ROVER_STATS.reduce((x, k) => x + levelOn(s, k, b), 0), 0);
     case 'archivist': return loreFound(s, w).length;
+    case 'historian': return s.printed.length;
   }
 }
 

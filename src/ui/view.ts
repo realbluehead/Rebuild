@@ -271,8 +271,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       return;
     }
     lists.forEach((l, q) => { if (l) l.hidden = q !== k; });
-    // Unfolding from the library: the panel slides up to its height.
-    if (wasOpen && k !== 2) fold(from, panel.offsetHeight, () => {});
+    // The panel slides to the new tab's height (up from the library, up to the taller Goals, back down from them).
+    fold(from, panel.offsetHeight, () => {});
   };
   /** Slides the panel's height from `from` to `to` (the map above follows), then calls `done`. */
   function fold(from: number, to: number, done: () => void) {
@@ -752,13 +752,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
    *  whenever the rovers built, the routes on show or the width change. */
   function sizePanel(s: GameState) {
     const PANEL_MAX = 0.42;
+    const GOALS_MAX = 0.75;
     const key = `${s.bots.map((b) => b.kind).join()}|${s.routes.length}|${panel.clientWidth}`;
     if (key === sizedKey) return;
     sizedKey = key;
     const lists = [list, routesList, goalsList];
     const was = lists.map((l) => l.hidden);
-    for (const l of lists) l.style.minHeight = '';
+    for (const l of lists) l.style.minHeight = l.style.maxHeight = '';
     let tallest = 0;
+    /** Goals get the height they need (all rows in view), up to GOALS_MAX of the screen. */
+    let goalsTall = 0;
     for (const l of lists) {
       lists.forEach((x) => { x.hidden = x !== l; });
       if (l === routesList) {
@@ -770,7 +773,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       if (l === goalsList) {
         const keepGoal = goalTab;
-        for (const id of ['goals', 'works'] as const) { goalTab = id; fillGoalTab(s); tallest = Math.max(tallest, l.offsetHeight); }
+        for (const id of ['goals', 'works'] as const) { goalTab = id; fillGoalTab(s); goalsTall = Math.max(goalsTall, l.offsetHeight); }
         goalTab = keepGoal;
         fillGoalTab(s);
         continue;
@@ -785,9 +788,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       kind = keep;
       fillRover(s);
     }
-    // Never more than PANEL_MAX of the screen: the map stays big, and a longer tab scrolls.
-    tallest = Math.min(tallest, Math.round(PANEL_MAX * (panel.parentElement?.clientHeight ?? Infinity)));
-    lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = l.style.maxHeight = `${tallest}px`; });
+    // Never more than PANEL_MAX of the screen: the map stays big, and a longer tab scrolls. Goals rise higher (the panel
+    // slides up when it opens, see `showTab`), so that every row fits.
+    const screen = panel.parentElement?.clientHeight ?? Infinity;
+    tallest = Math.min(tallest, Math.round(PANEL_MAX * screen));
+    goalsTall = Math.max(tallest, Math.min(goalsTall, Math.round(GOALS_MAX * screen)));
+    lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = l.style.maxHeight = `${l === goalsList ? goalsTall : tallest}px`; });
   }
 
   /** Shows the picked sub-tab of Goals; the other one blinks when it has something to claim or make. */

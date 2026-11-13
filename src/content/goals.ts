@@ -1,6 +1,6 @@
 // Goals (records): each has 5 tiers. Reaching a tier lets the player claim it (Goals tab); every claimed tier multiplies one
 // stat for good. Claiming is the player's action (like buying), so the simulation stays exact between taps.
-export type GoalId = 'cartographer' | 'tycoon' | 'collector' | 'excavator' | 'engineer' | 'archivist';
+export type GoalId = 'cartographer' | 'tycoon' | 'collector' | 'excavator' | 'engineer' | 'archivist' | 'historian';
 /** What a goal's reward multiplies: rover speed, bluetreri, holds, the Miner's drill, or the drive to and from camp. */
 export type GoalReward = 'speed' | 'loot' | 'cargo' | 'drill' | 'travel';
 
@@ -28,6 +28,7 @@ export const GOALS: readonly GoalDef[] = [
   { id: 'excavator', name: 'Excavator', what: 'cells dug out', tiers: [0.001, 0.01, 0.1, 0.4, 1], per: 'cells', reward: 'drill', mult: 1.1, rewardText: 'Miner drill' },
   { id: 'engineer', name: 'Engineer', what: 'part levels fitted', tiers: [10, 30, 60, 90, 120], reward: 'travel', mult: 1.1, rewardText: 'drive to and from camp' },
   { id: 'archivist', name: 'Archivist', what: 'scraps of lore found', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'loot', mult: 1.03, rewardText: 'bluetreri' },
+  { id: 'historian', name: 'Historian', what: 'sheets of history printed', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'speed', mult: 1.03, rewardText: 'rover speed' },
 ];
 
 export const goalById = (id: GoalId): GoalDef => GOALS.find((g) => g.id === id)!;
