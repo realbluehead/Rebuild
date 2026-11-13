@@ -33,7 +33,7 @@ export function loadWorld(save: SaveData | null, now: number, progress: (p: numb
   progress(0.05);
   const key = (plan: readonly unknown[]) => plan.map((e) => JSON.stringify(e));
   const planKeys = key(state.plan);
-  const hit = !!cached && cached.seed === state.seed && cached.size === MAP_SIZE && cached.plan.length <= planKeys.length
+  const hit = !!cached && !!cached.world.loreCells && cached.seed === state.seed && cached.size === MAP_SIZE && cached.plan.length <= planKeys.length
     && cached.plan.every((k, i) => k === planKeys[i]);
   const world = hit ? cached.world : createWorld(state.seed);
   const from = hit ? cached.plan.length : 0;

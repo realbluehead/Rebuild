@@ -1,18 +1,18 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { HAUL_LEVELS, ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type HaulPick, type RoverKind, type StatId } from '../content/upgrades';
-import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
+import { ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
 import { totalCells, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
-import { COIN, FLAT, ITEM_SPRITES, spriteCanvas } from './sprites';
+import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
@@ -444,6 +444,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Library tab: the shelves replace the map; the panel sums up each collection. Works are made on the Goals tab.
   const worksList = h('div', 'list goals library-sum');
   worksList.hidden = true;
+  /** Icons floating up from the map when something is found (no words). */
+  const itemPopIcons = ITEM_SPRITES.map(spriteCanvas);
+  const lorePopIcons = LORE_SPRITES.map(spriteCanvas);
+  const loreIcon = (k: number) => { const c = spriteCanvas(LORE_SPRITES[k]); c.className = 'item-icon'; return c; };
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
   const sums = WORKS.map((wd) => {
     const card = h('div', 'upg px-box');
@@ -455,6 +459,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     worksList.append(card);
     return { wd, count, bonus };
   });
+  // The archive: scraps of lore found (receipts, tickets, leaflets), read on the shelf view.
+  const archiveCard = h('div', 'upg px-box');
+  const archiveHead = h('div', 'head');
+  archiveHead.append(h('span', 'name', 'Archive'));
+  const archiveCount = h('div', 'eff');
+  archiveCard.append(archiveHead, archiveCount);
+  worksList.append(archiveCard);
   const libInfo = h('p', 'info lib-info');
   worksList.append(libInfo);
   // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
@@ -512,13 +523,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   libView.hidden = true;
   const libCaption = h('div', 'lib-caption px-box');
   const shelvesEl = h('div', 'shelves');
-  libView.append(shelvesEl, libCaption);
+  const archiveEl = h('div', 'archive');
+  libView.append(shelvesEl, archiveEl, libCaption);
+  /** Scraps of lore already announced on the map (-1: not counted yet, so loading does not announce them all). */
+  let loreSeen = -1;
   let shelfKey = '';
   let picked = '';
   /** A colour for each title, from its letters (same title, same colour). */
   const hue = (t: string) => { let x = 7; for (const ch of t) x = (x * 31 + ch.charCodeAt(0)) % 360; return x; };
   function drawShelves(s: GameState) {
-    const key = WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}`;
+    const lore = loreFound(s, world);
+    const key = WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
@@ -546,9 +561,26 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       row.append(label, plank);
       shelvesEl.append(row);
     }
+    // The archive: a small icon per scrap found, in the order they lie on the map.
+    archiveEl.replaceChildren(h('div', 'shelf-label', `Archive ${lore.length}/${world.loreCells.length}`));
+    const drawer = h('div', 'drawer');
+    for (const k of lore) {
+      const kind = world.lore[world.loreCells[k]] - 1;
+      const b = h('button', 'scrap');
+      b.append(loreIcon(kind));
+      b.title = LORE[kind].name;
+      b.classList.toggle('on', picked === `lore:${k}`);
+      b.addEventListener('click', () => { picked = picked === `lore:${k}` ? '' : `lore:${k}`; shelfKey = ''; });
+      drawer.append(b);
+    }
+    if (!lore.length) drawer.append(h('span', 'info', 'Scraps of the old world turn up as the Scout explores.'));
+    archiveEl.append(drawer);
     const [pid, pk] = picked.split(':');
     const wd = WORKS.find((w) => w.id === pid);
-    if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
+    if (pid === 'lore') {
+      const kind = world.lore[world.loreCells[Number(pk)]] - 1;
+      set(libCaption, `${LORE[kind].name} #${Number(pk) + 1} · ${loreText(LORE[kind].id, Number(pk))}`);
+    } else if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
     else set(libCaption, `Library ${whole(libraryShare(s))} complete · tap a volume`);
   }
   /** Button content for a price (bluetreri + item icons), rebuilt only when it changes. */
@@ -818,6 +850,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
         'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them, but like the bluetreri they only count once the rover unloads at camp.',
         'On the Goals tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
+      { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
+        'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
+        'They are kept in the Archive, under the shelves on the Library tab: tap one to read it. The Archivist goal counts them.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
@@ -1019,6 +1054,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         set(x.bonus, `${x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
       }
       set(libInfo, `Library ${whole(libraryShare(s))} complete. New works are made on the Goals tab.`);
+      const lore = loreFound(s, world);
+      set(archiveCount, `${lore.length}/${world.loreCells.length} found`);
+      // New scraps float up from their cells as icons.
+      if (loreSeen >= 0 && lore.length > loreSeen) {
+        for (const k of lore.slice(-Math.min(6, lore.length - loreSeen))) {
+          const c = world.loreCells[k];
+          map.popup(c, LORE[world.lore[c] - 1].name, now, lorePopIcons[world.lore[c] - 1]);
+        }
+      }
+      loreSeen = lore.length;
       if (!libView.hidden) drawShelves(s);
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
@@ -1100,8 +1145,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     },
     /** Collected item (page, note or photo), floating over its cell. */
     itemFound(cell: number, now: number) {
-      const it = ITEMS[world.item[cell] - 1];
-      map.popup(cell, `+1 ${it.name}`, now);
+      const k = world.item[cell] - 1;
+      map.popup(cell, ITEMS[k].name, now, itemPopIcons[k]);
     },
     /** Bluetreri unloaded at camp. */
     deposited(amount: string, now: number) {

@@ -38,7 +38,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `goldPerSec` estimates Scout + Miner (capped by what the Scout reveals once caught up; no trips home with a Hauler).
   The sim buys the best (upgrade, rover) pair, builds each rover as soon as it can and saves up for it and the next route.
 - **Goals** (`content/goals.ts`, Goals tab, save v17 `s.goals`): Cartographer (cells explored), Tycoon (bluetreri earned),
-  Collector (items found), Excavator (cells dug out), Engineer (part levels fitted), 5 tiers each (`per` cells/items: shares of
+  Collector (items found), Excavator (cells dug out), Engineer (part levels fitted), Archivist (lore found), 5 tiers each (`per` cells/items: shares of
   the map, so small test maps scale). A reached tier is **claimed** by the player (`claimGoal`; never automatic, so stats only
   change on a tap and `tick` stays exact) and multiplies one stat for good (`goalBonus` in `stats()`: speed, loot, cargo,
   drill, travel). The sim claims each tier at once.
@@ -112,6 +112,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (`itemsCollected`; `routeNeeds(def, lv)` = the unlock's items + `levelItems × k` for each level k), and only the
   bluetreri is paid. Route cards show collected/needed (red while short). Saves v8/v9 and v18 are recounted once on load
   (`s.recount` → `recountItems`: items = collected − spent on works at today's prices, never fewer than before).
+- **Lore** (`LORE` in `content/collection.ts`: receipts, concert tickets, propaganda leaflets): scraps of the old world in
+  ~1/1500 empty solid cells (`w.lore`, `w.loreCells` ascending = each scrap's number; their own draw, seed + 4001, so the map and
+  items do not change). A scrap is found when its cell is revealed (`loreFound`, derived, nothing saved, no detour), floats
+  up as an icon, and is kept in the Library's Archive (under the shelves; tap to read). Texts are still to be written:
+  `loreText` reads "Lore" until `LORE_TEXTS` has one. Goal **Archivist** (per: 'lore', bluetreri ×1.03 per tier; a goal
+  missing from an older save loads as 0, so no migration). Found items and scraps float up as their icon, not a word.
 - End of the game: the tick where the map is done and everything is unloaded sets `s.doneAt` (play time) and
   `TickEvents.completed`; `main.ts` shows the congratulations dialog (also after offline catch-up), once per device. From then on `boot.ts` stops ticking (only the view runs) and the rate at the top shows 0; `fmt` shows anything under 0.005 as 0.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that

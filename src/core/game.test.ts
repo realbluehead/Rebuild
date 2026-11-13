@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -49,6 +49,34 @@ describe('world', () => {
     const other = createWorld(42, SIZE);
     expect(other.terrain).toEqual(world.terrain);
     expect(other.order).toEqual(world.order);
+  });
+
+  it('scraps of lore sit in empty cells of their own draw and are found as the Scout reveals them', () => {
+    const big = fullWorld();
+    expect(big.loreCells.length).toBeGreaterThan(300); // ~1/1500 of the solid ground of a 1024² map
+    for (const c of big.loreCells) {
+      expect(big.lore[c]).toBeGreaterThan(0);
+      expect(big.item[c] + big.special[c]).toBe(0);
+    }
+    const s = newGame(42);
+    expect(loreFound(s, world).length).toBe(0);
+    Object.assign(s.upgrades, { speed: 14, cargo: 3 });
+    let before = 0;
+    for (let k = 0; k < 400; k++) {
+      tick(s, world, 1);
+      const found = loreFound(s, world);
+      expect(found.length).toBeGreaterThanOrEqual(before);
+      before = found.length;
+    }
+    const found = loreFound(s, world);
+    expect(found.length).toBeGreaterThan(0);
+    const p = progress(s, world);
+    // Every scrap behind the ring under way is found; none beyond it.
+    world.loreCells.forEach((c, k) => {
+      if (world.rank[c] < p.a) expect(found).toContain(k);
+      if (world.rank[c] >= p.b) expect(found).not.toContain(k);
+    });
+    expect(goalValue(s, world, 'archivist')).toBe(found.length);
   });
 
   it('the order is a permutation and starts at the centre', () => {

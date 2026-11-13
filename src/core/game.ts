@@ -84,6 +84,7 @@ export function goalValue(s: GameState, w: World, id: GoalId): number {
     case 'collector': return Object.values(itemsCollected(s, w)).reduce((a, b) => a + b, 0);
     case 'excavator': return s.dug;
     case 'engineer': return s.bots.reduce((a, b) => a + ROVER_STATS.reduce((x, k) => x + levelOn(s, k, b), 0), 0);
+    case 'archivist': return loreFound(s, w).length;
   }
 }
 
@@ -93,6 +94,7 @@ export function goalTarget(w: World, id: GoalId, k: number): number {
   const t = g.tiers[Math.min(k, GOAL_TIERS - 1)];
   if (g.per === 'cells') return Math.max(1, Math.ceil(t * totalCells(w)));
   if (g.per === 'items') return Math.max(1, Math.ceil(t * w.itemRanks.length));
+  if (g.per === 'lore') return Math.max(1, Math.ceil(t * w.loreCells.length));
   return t;
 }
 
@@ -190,6 +192,21 @@ export function explorerLevel(cells: number, total: number): ExplorerLevel {
   const to = level >= max ? total : at(level + 1);
   return { level, max, from, to, frac: level >= max ? 1 : Math.min(1, Math.max(0, (cells - from) / (to - from))) };
 }
+
+/** Scraps of lore found: indices into `w.loreCells` (ascending) whose cell has been revealed. Follows from the
+ *  exploration, so nothing is saved; cached per world version and explored count. */
+export function loreFound(s: GameState, w: World): number[] {
+  const cells = explored(s, w);
+  const key = `${w.version}/${w.slices}/${s.ring}/${cells}`;
+  const hit = loreCache.get(w);
+  if (hit && hit.key === key) return hit.found;
+  const p = progress(s, w);
+  const found: number[] = [];
+  w.loreCells.forEach((c, k) => { if (revealed(s, w, w.rank[c], p)) found.push(k); });
+  loreCache.set(w, { key, found });
+  return found;
+}
+const loreCache = new WeakMap<World, { key: string; found: number[] }>();
 
 /** Whether some rover has already stepped on the cell of rank r. */
 export function revealed(s: GameState, w: World, r: number, p = progress(s, w)): boolean {

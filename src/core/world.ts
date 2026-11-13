@@ -13,7 +13,7 @@
 // walks there over known ground (steps that reveal nothing). Time is counted in steps, and a cell counts as
 // revealed once the rover has reached it (not when it sets off).
 import { DIST_VALUE_SCALE, MAP_SIZE, SPECIAL_CHANCE, SPECIAL_MULT, T, TERRAINS, ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
-import { ITEM_CHANCE, ITEMS } from '../content/collection';
+import { ITEM_CHANCE, ITEMS, LORE, LORE_CHANCE } from '../content/collection';
 import { fbm, rand2 } from './rng';
 import type { RouteId } from '../content/routes';
 
@@ -31,6 +31,10 @@ export interface World {
   item: Uint8Array;
   /** Ranks (sorted) of the cells that hold an item. */
   itemRanks: Uint32Array;
+  /** Scrap of lore in each cell: 0 = none, k + 1 = LORE[k]. Its own random draw, so the map and items do not change. */
+  lore: Uint8Array;
+  /** Cells (ascending: a scrap's number, stable across routes) that hold a scrap of lore. */
+  loreCells: Uint32Array;
   /** Bluetreri of each cell (before multipliers) and its crossing cost (for the exploration order). */
   value: Float32Array;
   cost: Float32Array;
@@ -85,6 +89,9 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
   const special = new Uint8Array(n);
   const item = new Uint8Array(n);
   const itemWeight = ITEMS.reduce((a, it) => a + it.weight, 0);
+  const lore = new Uint8Array(n);
+  const loreWeight = LORE.reduce((a, it) => a + it.weight, 0);
+  const loreList: number[] = [];
   const value = new Float32Array(n);
   const cost = new Float32Array(n);
   const angle = new Float32Array(n);
@@ -127,6 +134,15 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
         while (k < ITEMS.length - 1 && u >= ITEMS[k].weight) u -= ITEMS[k++].weight;
         item[i] = k + 1;
       }
+      // Lore: a draw of its own (a seed far from the others: neighbouring seeds are not independent), kind rescaled from it.
+      const lr = rand2(x, y, seed + 4001);
+      if (!sp && !item[i] && d > 4 && t >= T.Rubble && lr < LORE_CHANCE) {
+        let u = (lr / LORE_CHANCE) * loreWeight;
+        let k = 0;
+        while (k < LORE.length - 1 && u >= LORE[k].weight) u -= LORE[k++].weight;
+        lore[i] = k + 1;
+        loreList.push(i);
+      }
       value[i] = TERRAINS[t].value * (1 + d / DIST_VALUE_SCALE) * (sp ? SPECIAL_MULT : 1);
 
       cost[i] = TERRAINS[t].cost * (1 + COST_NOISE * fbm(x, y, seed + 31, 24, 2));
@@ -163,7 +179,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
   if (order[0] !== cy * size + cx) throw new Error('The camp must be the first cell');
 
   const w: World = {
-    seed, size, cx, cy, terrain, special, item, order,
+    seed, size, cx, cy, terrain, special, item, order, lore, loreCells: Uint32Array.from(loreList),
     rank: new Uint32Array(n), goldPrefix: new Float64Array(n + 1), rings: count,
     stepBase: new Float64Array(n + 1), stepRough: new Float64Array(n + 1), ringSteps: new Float64Array(0),
     itemRanks: new Uint32Array(0), itemStart: new Uint32Array(0), itemCells: new Uint32Array(0), zoomRanks: [],

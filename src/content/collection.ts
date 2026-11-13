@@ -22,6 +22,23 @@ export const ITEMS: readonly ItemDef[] = [
 /** Chance that a cell (other than the camp or a deposit) hides an item. */
 export const ITEM_CHANCE = 1 / 90;
 
+// Lore: scraps of the old world (shop receipts, concert tickets, propaganda leaflets). They tell the story of the city;
+// their texts come later (for now each one reads "Lore"). A scrap is found as soon as the Scout reveals its cell (no
+// detour, nothing to carry), so what has been found follows from the exploration and is not saved.
+export type LoreId = 'receipt' | 'ticket' | 'leaflet';
+export interface LoreDef { id: LoreId; name: string; plural: string; weight: number }
+export const LORE: readonly LoreDef[] = [
+  { id: 'receipt', name: 'Receipt', plural: 'receipts', weight: 0.4 },
+  { id: 'ticket', name: 'Concert ticket', plural: 'concert tickets', weight: 0.25 },
+  { id: 'leaflet', name: 'Leaflet', plural: 'leaflets', weight: 0.35 },
+];
+/** Chance that a cell with nothing else hides a scrap of lore (its own random draw: items and the map do not change). */
+export const LORE_CHANCE = 1 / 1500;
+/** Texts of the scraps, by kind and scrap number (`k`: its index in the world's `loreCells`). To be written: a scrap
+ *  without its own text reads "Lore". */
+const LORE_TEXTS: Partial<Record<LoreId, Record<number, string>>> = {};
+export const loreText = (kind: LoreId, k: number): string => LORE_TEXTS[kind]?.[k] ?? 'Lore';
+
 /** Explorer level needed for the k-th work (0-based) of any collection: from WORK_LEVEL_FIRST to WORK_LEVEL_LAST, evenly.
  * The last one stays below the top level so the library can be finished before the map. */
 export const WORK_LEVEL_FIRST = 18;

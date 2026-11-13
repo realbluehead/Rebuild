@@ -316,7 +316,7 @@ button { font: inherit; color: inherit; }
 .vol.on { outline: 2px solid var(--gold); outline-offset: 1px; transform: translateY(-6px); }
 .vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #9fb8ab33; cursor: default; }
 .vol.empty.next { border-color: var(--ok); }
-.lib-caption { font-size: 15px; padding: 7px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-caption { position: sticky; bottom: 0; font-size: 15px; padding: 7px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A route requirement not met yet (items collected / needed). */
 .buy .part.short { color: var(--red); }
 .px-btn.can .part.short { color: inherit; }
@@ -364,3 +364,10 @@ button { font: inherit; color: inherit; }
 .part-row .goal-pips { display: flex; gap: 2px; }
 .part-row .goal-pips.works { gap: 1px; }
 .part-row .goal-pips i { height: 6px; }
+/* Archive: the scraps of lore found, under the shelves. */
+.archive { flex: none; }
+.archive .drawer { display: flex; flex-wrap: wrap; gap: 3px; max-height: 64px; overflow-y: auto; padding: 4px; background: #0d1613; border: 2px solid var(--edge); }
+.archive .scrap { padding: 1px; background: none; border: 1px solid transparent; cursor: pointer; line-height: 0; }
+.archive .scrap.on { border-color: var(--gold); }
+.archive .scrap .item-icon { width: 12px; height: 12px; }
+.archive .info { font-size: 14px; }

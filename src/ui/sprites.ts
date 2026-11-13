@@ -439,3 +439,37 @@ export const ITEM_SPRITES = [
     'kkkkkkkk',
   ], { k: PAL.ink, w: px('#f4ecd6'), b: px('#7fc4ff'), s: px('#ffe27a'), g: px('#5aa53c') }),
 ];
+
+/** Scraps of lore (same order as LORE): a shop receipt, a concert ticket and a propaganda leaflet. */
+export const LORE_SPRITES = [
+  sprite([
+    '..kkkk..',
+    '..kwwk..',
+    '..kggk..',
+    '..kwwk..',
+    '..kggk..',
+    '..kwwk..',
+    '..kggk..',
+    '..kwkwk.',
+  ], { k: PAL.ink, w: px('#f4ecd6'), g: px('#a99c80') }),
+  sprite([
+    '........',
+    'kkkkkkkk',
+    'kyyykyyk',
+    '.yrykyy.',
+    '.yyykyy.',
+    'kyyykyyk',
+    'kkkkkkkk',
+    '........',
+  ], { k: PAL.ink, y: px('#ffd257'), r: px('#e0473a') }),
+  sprite([
+    'kkkkkkk.',
+    'krrrrrk.',
+    'krwwwrk.',
+    'krrwrrk.',
+    'krrwrrk.',
+    'krrrrrk.',
+    'krwwwrk.',
+    'kkkkkkk.',
+  ], { k: PAL.ink, r: px('#c63d2f'), w: px('#f4ecd6') }),
+];

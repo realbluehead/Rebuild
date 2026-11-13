@@ -20,7 +20,7 @@ const MIP = 4;
 const SWEEP_MS = 2600;
 const SWEEP_TRAIL = 1.1;
 
-interface Popup { wx: number; wy: number; text: string; t0: number; }
+interface Popup { wx: number; wy: number; text: string; t0: number; icon?: HTMLCanvasElement }
 
 /** What a rover does: working, going to or from camp, fetching an item (`target`, a rank, walking from the cell of
  *  rank `from`) or parked at camp. `rover` is its kind; `at` is where it works when that is not an arc of the ring (the
@@ -215,8 +215,9 @@ export class MapView {
   }
 
   /** Floating text over map cell `i`. */
-  popup(i: number, text: string, now: number): void {
-    this.popups.push({ wx: (i % this.w.size) + 0.5, wy: Math.floor(i / this.w.size), text, t0: now });
+  /** Something floating up from cell i: a text (bluetreri) or, with `icon`, the sprite of what was found. */
+  popup(i: number, text: string, now: number, icon?: HTMLCanvasElement): void {
+    this.popups.push({ wx: (i % this.w.size) + 0.5, wy: Math.floor(i / this.w.size), text, t0: now, icon });
     if (this.popups.length > 12) this.popups.shift();
   }
 
@@ -744,6 +745,7 @@ export class MapView {
       const sx = Math.round((p.wx - left) * cp);
       const sy = Math.round((p.wy - top) * cp - age * 18);
       ctx.globalAlpha = Math.min(1, 2 - age * 2);
+      if (p.icon) { ctx.drawImage(p.icon, sx - (p.icon.width >> 1), sy - p.icon.height); continue; }
       ctx.fillStyle = '#1b1420';
       ctx.fillText(p.text, sx + 1, sy + 1);
       ctx.fillStyle = '#5fd0ff';
