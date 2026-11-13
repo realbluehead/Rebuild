@@ -347,6 +347,11 @@ function ringOfRank(w: World, r: number): number {
  *  the Miner digs until its hold is full and does the same (but never faster than the Scout reveals new ground once it
  *  has caught up). With a Hauler nobody drives back: they keep working. */
 export function goldPerSec(s: GameState, w: World): number {
+  const p = rateParts(s, w);
+  return p.scout + p.miner;
+}
+/** `goldPerSec` split by rover (Scout, Miner). */
+export function rateParts(s: GameState, w: World): { scout: number; miner: number } {
   const hauled = roverIndex(s, 'hauler') >= 0;
   const trip = (st: Stats, perSec: number, d: number) => (hauled ? perSec : st.cargo / (st.cargo / perSec + d / homeSpeed(st, st.cargo) + d / st.travelSpeed));
   /** Raw bluetreri per step of ring `k`, with that rover's grip. */
@@ -359,10 +364,10 @@ export function goldPerSec(s: GameState, w: World): number {
   if (s.ring < ringCount(w)) {
     const st = stats(s);
     const g = perStep(s.ring, st.grip);
-    if (!(g > 0)) return 0;
+    if (!(g > 0)) return { scout: 0, miner: 0 };
     scout = trip(st, st.share * g * st.loot * st.speed, homeDistance(s, w));
   }
-  let sum = scout;
+  let miner = 0;
   const j = roverIndex(s, 'miner');
   const n = totalCells(w);
   if (j >= 0 && s.dug < n - EPS) {
@@ -373,10 +378,10 @@ export function goldPerSec(s: GameState, w: World): number {
       const dig = (st.share * g * st.loot * st.speed) / (1 + (st.share * g) / st.drill);
       // Once it has caught up, it digs only what the Scout leaves behind.
       const caughtUp = s.ring < ringCount(w) && frontier(s, w) - s.dug < 4 * MINER_GAP;
-      sum += Math.min(trip(st, dig, homeDistance(s, w, r)), caughtUp ? ((1 - SCOUT_SHARE) / SCOUT_SHARE) * scout : Infinity);
+      miner = Math.min(trip(st, dig, homeDistance(s, w, r)), caughtUp ? ((1 - SCOUT_SHARE) / SCOUT_SHARE) * scout : Infinity);
     }
   }
-  return sum;
+  return { scout, miner };
 }
 
 /** Rough share of exploring done inside a storm, and how much a storm slows it before Body (for estimates only). */
