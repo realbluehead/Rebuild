@@ -315,9 +315,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   orderCard.append(orderHead, orderDesc);
   const choiceRow = (label: string, opts: { text: string; title: string; pick: () => void }[]) => {
     const row = h('div', 'choices');
+    row.setAttribute('role', 'radiogroup');
     row.append(h('span', 'what', label));
     const btns = opts.map((o) => {
-      const b = h('button', 'px-btn', o.text);
+      const b = h('button', 'radio', o.text);
+      b.setAttribute('role', 'radio');
       b.title = o.title;
       b.addEventListener('click', o.pick);
       row.append(b);
@@ -752,9 +754,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         digRow.row.hidden = !miner;
         atRow.row.hidden = miner;
         pickRow.row.hidden = miner;
-        digRow.btns.forEach((b, q) => b.classList.toggle('can', (q === 1 ? 'rich' : 'follow') === s.digPick));
-        atRow.btns.forEach((b, q) => b.classList.toggle('can', HAUL_LEVELS[q] === s.haulAt));
-        pickRow.btns.forEach((b, q) => b.classList.toggle('can', (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
+        // Radio squares, not orange buttons: orange means something can be bought.
+        const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
+        digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
+        atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
+        pickRow.btns.forEach((b, q) => mark(b, (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
       }
       if (!bot) {
         const need = roverLevelNeeded(world, kind);
