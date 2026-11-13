@@ -1,5 +1,6 @@
 import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
+import '@fontsource/monoton/400.css';
 import './ui/style.css';
 import { buy, levelOn, chooseRoute, craft, fromLegacy, recountItems, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import { newGame, type GameState } from './core/state';
@@ -13,6 +14,7 @@ import { deserialize, exportSave, importSave, serialize } from './save/save';
 import { cancelReminders, onBackground, scheduleReminder } from './platform';
 import { checkForUpdate } from './platform/update';
 import { createView } from './ui/view';
+import { createTitle } from './ui/title';
 
 const AUTOSAVE_MS = 30_000;
 /** If the tab was frozen for longer than this, it is treated as offline time. */
@@ -32,15 +34,24 @@ function finishedUnseen(s: GameState): boolean {
 }
 
 async function boot() {
-  app.innerHTML = '<div class="splash">Building the world…</div>';
-  await new Promise((r) => setTimeout(r, 30)); // let the message paint before the work
+  // The title screen covers the loading: each heavy step blocks, so let a frame paint between them.
+  const title = createTitle();
+  app.replaceChildren(title.el);
+  const paint = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  await paint();
 
   const loaded = await loadGame();
+  title.progress(0.15);
+  await paint();
   const state: GameState = loaded?.state ?? newGame();
   const world: World = createWorld(state.seed);
+  title.progress(0.55);
+  await paint();
   applyPlan(world, state.plan); // the routes the rovers have followed so far
   fromLegacy(state, world); // saves from before independent rovers
   recountItems(state, world); // saves that made works at older prices
+  title.progress(0.8);
+  await paint();
   /** On restart or import the current game must not be saved any more (pagehide would write it back). */
   let locked = false;
   const save = () => (locked ? Promise.resolve() : saveGame(state));
@@ -89,15 +100,18 @@ async function boot() {
     },
     reset: () => { locked = true; void wipeGame().then(() => location.reload()); },
   });
+  app.append(title.el); // the view replaced the page: keep the title on top until the player taps
 
-  if (!loaded) setTimeout(() => view.openHelp(), 300); // once it has been drawn once (the notes read the state)
-  if (loaded) {
-    const report = applyOffline(state, world, loaded.savedAt, Date.now());
+  const report = loaded ? applyOffline(state, world, loaded.savedAt, Date.now()) : null;
+  title.progress(1);
+  // Messages wait for the tap (the game already runs behind the title, see below).
+  void title.ready().then(() => {
+    if (!loaded) setTimeout(() => view.openHelp(), 300);
     if (report) view.showOffline(report);
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
-    if (finishedUnseen(state)) view.showComplete(state);
-  }
+    if (loaded && finishedUnseen(state)) view.showComplete(state);
+  });
   await cancelReminders();
 
   const handle = (ev: ReturnType<typeof tick>, now: number) => {

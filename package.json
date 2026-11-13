@@ -23,6 +23,7 @@
     "@capacitor/core": "^8.6.0",
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/preferences": "^8.0.1",
+    "@fontsource/monoton": "^5.3.0",
     "@fontsource/press-start-2p": "^5.3.0",
     "@fontsource/vt323": "^5.3.0",
     "break_eternity.js": "^2.2.1"
