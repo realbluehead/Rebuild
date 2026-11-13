@@ -4,7 +4,7 @@ import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '..
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { GOAL_TIERS, GOALS, type GoalId } from '../content/goals';
+import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
 import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
@@ -70,6 +70,9 @@ function workEffect(effect: string, a: Stats, b: Stats): string {
     default: return `Bluetreri ×${fmt(a.loot)}→×${fmt(b.loot)}`;
   }
 }
+
+/** A goal's reward in one word, for the narrow Bonus column (the row's tooltip says it in full). */
+const REWARD_SHORT: Record<GoalReward, string> = { speed: 'speed', loot: 'loot', cargo: 'hold', drill: 'drill', travel: 'trips' };
 
 export function createView(root: HTMLElement, world: World, initial: GameState, actions: ViewActions) {
   document.documentElement.style.setProperty('--coin', `url(${spriteCanvas(COIN).toDataURL()})`);
@@ -261,20 +264,28 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Goals: 5 tiers each; a reached tier is claimed here and multiplies its stat for good.
   const goalsList = h('div', 'list goals');
   goalsList.hidden = true;
+  /** A thin table (like the rover parts): a plate with a header row; rows are appended to it. */
+  const table = (cls: string, heads: string[]) => {
+    const t = h('div', `part-table px-box ${cls}`);
+    const head = h('div', 'part-row head');
+    for (const x of heads) head.append(h('span', '', x));
+    t.append(head);
+    return t;
+  };
+  const goalsTable = table('goals-table', ['Goal', 'Tier', '%', 'Bonus', '']);
+  goalsList.append(goalsTable);
   const goalCards = GOALS.map((g) => {
-    const card = h('div', 'upg px-box');
-    const head = h('div', 'head');
+    const card = h('div', 'part-row');
     const tier = h('span', 'lvl');
-    head.append(h('span', 'name', g.name), tier);
-    const pips = h('div', 'goal-pips');
+    const pips = h('span', 'goal-pips');
     const pipEls = Array.from({ length: GOAL_TIERS }, () => pips.appendChild(h('i')));
-    const eff = h('div', 'eff');
-    const gain = h('div', 'gain-line');
+    const eff = h('span', 'eff');
+    const gain = h('span', 'gain');
     const btn = h('button', 'px-btn buy');
     btn.addEventListener('click', () => actions.claimGoal(g.id));
-    card.title = `${g.what}. Each tier: ${g.rewardText} ×${g.mult}`;
-    card.append(head, pips, eff, gain, btn);
-    goalsList.append(card);
+    card.title = `${g.name}: ${g.what}. Each tier: ${g.rewardText} ×${g.mult}`;
+    card.append(h('span', 'name', g.name), pips, eff, gain, btn);
+    goalsTable.append(card);
     return { g, tier, pipEls, eff, gain, btn };
   });
   const list = h('div', 'list rover');
@@ -378,12 +389,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Exploration routes: unlock with bluetreri once enough items are collected (not spent), then pick the one the Scout follows from the next ring.
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
+  const routesTable = table('routes-table', ['Route', 'Lv', 'Pace', '', 'Next level']);
+  routesList.append(routesTable);
   const routeCards = ROUTES.map((rd) => {
-    const card = h('div', 'upg px-box');
-    const head = h('div', 'head');
+    const card = h('div', 'part-row');
     const state = h('span', 'lvl');
-    head.append(h('span', 'name', rd.name), state);
-    const eff = h('div', 'eff');
+    const eff = h('span', 'eff');
     const btn = h('button', 'px-btn buy');
     btn.addEventListener('click', () => {
       const s = current;
@@ -394,9 +405,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     // Next level: less entropy (shown once the route is unlocked).
     const up = h('button', 'px-btn buy up');
     up.addEventListener('click', () => actions.upgradeRoute(rd.id));
-    card.title = rd.desc;
-    card.append(head, eff, btn, up);
-    routesList.append(card);
+    card.title = `${rd.name}: ${rd.desc}`;
+    card.append(h('span', 'name', rd.name), state, eff, btn, up);
+    routesTable.append(card);
     return { rd, card, state, eff, btn, up, btnKey: '', upKey: '' };
   });
   // Only the next locked route is shown; the rest stay a mystery.
@@ -419,21 +430,21 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const libInfo = h('p', 'info lib-info');
   worksList.append(libInfo);
   // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
+  const worksTable = table('works-table', ['Work', 'Made', 'Next', 'Bonus', 'Cost']);
+  goalsList.append(worksTable);
   const works = WORKS.map((wd) => {
-    const card = h('div', 'upg px-box work-card');
-    const head = h('div', 'head');
-    head.append(h('span', 'name', wd.name));
-    const pips = h('div', 'goal-pips works');
+    const card = h('div', 'part-row');
+    const pips = h('span', 'goal-pips works');
     const pipEls = Array.from({ length: WORKS_MAX }, () => pips.appendChild(h('i')));
-    const next = h('div', 'eff');
-    const gain = h('div', 'gain-line');
+    const next = h('span', 'eff');
+    const gain = h('span', 'gain');
     const btn = h('button', 'px-btn buy');
     const cost = h('span');
     btn.append(itemIcon(ITEMS.findIndex((it) => it.id === wd.item)), cost);
     btn.addEventListener('click', () => actions.craft(wd.id));
-    card.title = `Each one: ${wd.effect} ×${wd.bonus}`;
-    card.append(head, pips, next, gain, btn);
-    goalsList.append(card);
+    card.title = `${wd.name}: each one ${wd.effect} ×${wd.bonus}`;
+    card.append(h('span', 'name', wd.name), pips, next, gain, btn);
+    worksTable.append(card);
     return { wd, pipEls, next, gain, btn, cost };
   });
 
@@ -505,6 +516,32 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.replaceChildren(h('span', '', text));
   }
   panel.append(tabs, list, routesList, worksList, goalsList);
+
+  /** Every tab of the bottom panel (and every rover on the Rovers tab) gets the height of the tallest, so the map above
+   *  does not jump when switching. Measured in one go (each tab shown in turn, each rover drawn, then back as it was)
+   *  whenever the rovers built, the routes on show or the width change. */
+  function sizePanel(s: GameState) {
+    const key = `${s.bots.map((b) => b.kind).join()}|${s.routes.length}|${panel.clientWidth}`;
+    if (key === sizedKey) return;
+    sizedKey = key;
+    const lists = [list, routesList, worksList, goalsList];
+    const was = lists.map((l) => l.hidden);
+    for (const l of lists) l.style.minHeight = '';
+    let tallest = 0;
+    for (const l of lists) {
+      lists.forEach((x) => { x.hidden = x !== l; });
+      if (l !== list) { tallest = Math.max(tallest, l.offsetHeight); continue; }
+      const keep = kind;
+      for (const k of ROVER_KINDS) {
+        kind = k.id;
+        fillRover(s);
+        tallest = Math.max(tallest, l.offsetHeight);
+      }
+      kind = keep;
+      fillRover(s);
+    }
+    lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = `${tallest}px`; });
+  }
 
   /** Fills the Rovers tab for the picked kind. */
   function fillRover(s: GameState) {
@@ -847,22 +884,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       // How much of the current ring is done: new rovers, and a queued route or level, start with the next ring.
       const ringNow = progress(s, world);
       const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
-      // The Rovers tab keeps the height of its tallest rover, so the map above does not jump when another is picked.
-      // Measured in one go (every kind drawn, then the picked one) whenever the rovers built or the width change.
-      const sizeKey = `${s.bots.map((b) => b.kind).join()}|${list.clientWidth}`;
-      if (!list.hidden && sizeKey !== sizedKey) {
-        sizedKey = sizeKey;
-        const keep = kind;
-        list.style.minHeight = '';
-        let tallest = 0;
-        for (const k of ROVER_KINDS) {
-          kind = k.id;
-          fillRover(s);
-          tallest = Math.max(tallest, list.offsetHeight);
-        }
-        kind = keep;
-        list.style.minHeight = `${tallest}px`;
-      }
       fillPicker(s);
       fillRover(s);
       tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => canBuild(s, world, k.id)));
@@ -878,7 +899,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           if (k === n) p.style.setProperty('--p', `${Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
         });
         set(x.next, n >= WORKS_MAX ? 'Complete!' : early ? `??? · Lv ${need}` : workTitle(x.wd, n));
-        set(x.gain, `${x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
+        set(x.gain, `${x.wd.effect === 'bluetreri' ? 'loot' : x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
+        x.next.title = x.next.textContent ?? '';
         set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${have}/${price}`);
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
@@ -903,7 +925,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         if (!owned) {
           const need = routeLevelNeeded(world, id);
           set(c.state, '');
-          set(c.eff, myLevel < need ? `needs explorer Lv ${need}` : `×${routePace(id, 0).toFixed(2)} · ${c.rd.short}`);
+          set(c.eff, myLevel < need ? `Lv ${need}` : `×${routePace(id, 0).toFixed(2)}`);
           if (myLevel < need) label(c, 'btnKey', c.btn, `Lv ${need}`);
           else price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items, '', got);
           c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
@@ -913,8 +935,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           const running = ar === id && al === lv;
           const picked = s.bots[0].route === id;
           const pending = picked && !running;
-          set(c.state, c.rd.maxLevel ? `lv${lv}` : '');
-          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : `×${routePace(id, lv).toFixed(2)} · ${c.rd.short}`);
+          set(c.state, c.rd.maxLevel ? `${lv}` : '–');
+          set(c.eff, pending ? `${whole(Math.min(0.99, ringDone))}` : `×${routePace(id, lv).toFixed(2)}`);
+          c.eff.title = pending ? `Takes over at the next ring (this one ${whole(Math.min(0.99, ringDone))} done)` : c.rd.short;
           label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
           c.btn.classList.toggle('can', !picked);
           const next = routeUpgradeCost(s, id);
@@ -940,12 +963,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           p.className = k < got ? 'on' : k < reached ? 'ready' : k === reached ? 'next' : '';
           if (k === reached) p.style.setProperty('--p', `${Math.min(100, (100 * (v - prev)) / Math.max(1e-9, target - prev)).toFixed(0)}%`);
         });
-        set(c.eff, reached >= GOAL_TIERS ? `${fmt(v)} ${c.g.what}` : `${fmt(Math.floor(v))}/${fmt(target)} ${c.g.what}`);
-        set(c.gain, `${c.g.rewardText} ×${fmt(goalBonus(s, c.g.reward))}`);
-        set(c.btn, canClaim(s, world, id) ? `Claim ×${c.g.mult}` : got >= GOAL_TIERS ? 'Complete' : `next ×${c.g.mult}`);
+        // Progress to the next tier in %; the exact count is in the tooltip.
+        const pct = reached >= GOAL_TIERS ? 100 : Math.min(99, Math.floor((100 * (v - prev)) / Math.max(1e-9, target - prev)));
+        set(c.eff, reached > got ? 'ready' : `${pct}%`);
+        c.eff.title = reached >= GOAL_TIERS ? `${fmt(v)} ${c.g.what}` : `${fmt(Math.floor(v))}/${fmt(target)} ${c.g.what}`;
+        set(c.gain, `${REWARD_SHORT[c.g.reward]} ×${fmt(goalBonus(s, c.g.reward))}`);
+        set(c.btn, canClaim(s, world, id) ? 'Claim' : got >= GOAL_TIERS ? 'Done' : `×${c.g.mult}`);
+        c.btn.title = `Each tier: ${c.g.rewardText} ×${c.g.mult}`;
         c.btn.classList.toggle('can', canClaim(s, world, id));
       }
       tabGoals.classList.toggle('alert', ready || GOALS.some((g) => canClaim(s, world, g.id)));
+      sizePanel(s);
     },
     /** Bluetreri from a revealed deposit, floating over the map. */
     specialFound(cell: number, amount: string, now: number) {
