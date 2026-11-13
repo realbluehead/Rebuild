@@ -461,14 +461,21 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const pipEls = Array.from({ length: WORKS_MAX }, () => pips.appendChild(h('i')));
     const next = h('span', 'eff');
     const gain = h('span', 'gain');
-    const btn = h('button', 'px-btn buy');
-    const cost = h('span');
-    btn.append(itemIcon(ITEMS.findIndex((it) => it.id === wd.item)), cost);
-    btn.addEventListener('click', () => actions.craft(wd.id));
+    // Cost: a bar of the items gathered for the next work; hovering it (or a tap while it cannot be made) shows X/Y.
+    const btn = h('button', 'px-btn buy work-cost');
+    const cost = h('span', 'num');
+    const bar = h('span', 'wbar');
+    btn.append(itemIcon(ITEMS.findIndex((it) => it.id === wd.item)), bar, cost);
+    const row = { wd, pipEls, next, gain, btn, cost, bar, peek: 0 };
+    btn.addEventListener('click', () => {
+      const s = current;
+      if (s && canCraft(s, world, wd.id)) actions.craft(wd.id);
+      else { row.peek = performance.now() + 2000; btn.classList.add('peek'); }
+    });
     card.title = `${wd.name}: each one ${wd.effect} ×${wd.bonus}`;
     card.append(h('span', 'name', wd.name), pips, next, gain, btn);
     worksTable.append(card);
-    return { wd, pipEls, next, gain, btn, cost };
+    return row;
   });
 
   // The library view: three shelves (books, records, albums), WORKS_MAX slots each. Tap a volume to read its title.
@@ -968,7 +975,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         set(x.next, n >= WORKS_MAX ? 'Complete!' : early ? `??? · Lv ${need}` : workTitle(x.wd, n));
         set(x.gain, `${x.wd.effect === 'bluetreri' ? 'loot' : x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
         x.next.title = x.next.textContent ?? '';
+        const plain = n >= WORKS_MAX || early;
         set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${have}/${price}`);
+        x.btn.title = plain ? '' : `${have}/${price}`;
+        x.btn.classList.toggle('plain', plain);
+        if (x.peek && performance.now() > x.peek) { x.peek = 0; x.btn.classList.remove('peek'); }
+        x.bar.style.setProperty('--p', `${plain ? 0 : Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));

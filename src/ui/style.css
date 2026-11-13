@@ -344,6 +344,12 @@ button { font: inherit; color: inherit; }
 .goals-table .part-row { --cols: minmax(0, 1fr) 30px 34px 66px 46px; }
 .works-table .part-row { --cols: 52px 40px minmax(0, 1fr) 60px 58px; }
 .goals-table, .works-table { margin-bottom: 0; }
+/* Work cost: an items bar; the X/Y numbers show on hover, or for a moment after a tap that cannot make the work. */
+.work-cost .wbar { flex: 1; height: 6px; min-width: 0; border: 1px solid var(--edge); background: linear-gradient(90deg, var(--ok) var(--p, 0%), var(--lo) var(--p, 0%)); }
+.work-cost .num { display: none; }
+.work-cost.plain .wbar, .work-cost.peek .wbar { display: none; }
+.work-cost.plain .num, .work-cost.peek .num { display: inline; }
+@media (hover: hover) { .work-cost:not(.plain):hover .wbar { display: none; } .work-cost:hover .num { display: inline; } }
 /* Routes: the route in use is a radio square (brass buttons mean something to buy); items still short go on a thin line. */
 .routes-table .radio { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .routes-table .radio::before { content: ''; width: 9px; height: 9px; flex: none; border: var(--u) solid var(--muted); }
