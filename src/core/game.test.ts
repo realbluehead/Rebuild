@@ -83,10 +83,12 @@ describe('world', () => {
     expect(found.length).toBeGreaterThanOrEqual(3);
     expect(decode(s, world, 1000)).toEqual([]);
     expect(setDecoder(s, world, true)).toBe(true);
-    expect(decode(s, world, decodeTime(0) - 0.5)).toEqual([]);
+    expect(decode(s, world, decodeTime(world, 0) - 0.5)).toEqual([]);
     expect(s.decoding).toBe(found[0]);
-    expect(decode(s, world, 0.5 + decodeTime(1))).toEqual([found[0], found[1]]);
-    expect(decodeTime(1)).toBeGreaterThan(decodeTime(0));
+    expect(decode(s, world, 0.5 + decodeTime(world, 1))).toEqual([found[0], found[1]]);
+    expect(decodeTime(world, 1)).toBeGreaterThan(decodeTime(world, 0));
+    expect(decodeTime(world, 0)).toBe(10);
+    expect(decodeTime(world, world.loreCells.length - 1)).toBeCloseTo(600, 6);
     // Switched off, the scrap under way still finishes, and no other starts.
     decode(s, world, 1);
     setDecoder(s, world, false);

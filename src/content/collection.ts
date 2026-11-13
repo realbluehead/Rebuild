@@ -34,10 +34,10 @@ export const LORE: readonly LoreDef[] = [
 ];
 /** Chance that a cell with nothing else hides a scrap of lore (its own random draw: items and the map do not change). */
 export const LORE_CHANCE = 1 / 1500;
-/** Seconds the Library's Decoder takes on the first scrap; each scrap after it takes DECODE_GROWTH times longer
- *  (6 s, ~20 s by the 100th, ~4 min by the 316th; about 6 h for a whole map). */
-export const DECODE_SEC = 6;
-export const DECODE_GROWTH = 1.012;
+/** Seconds the Library's Decoder takes on the first scrap of the map and on the last one; in between each scrap takes a
+ *  little longer than the one before (the same ratio all along: about 1 min by the 140th of 316; ~12.7 h for a whole map). */
+export const DECODE_SEC = 10;
+export const DECODE_MAX_SEC = 600;
 /** Texts of the scraps, by kind and scrap number (`k`: its index in the world's `loreCells`). To be written: a scrap
  *  without its own text reads "Lore". */
 const LORE_TEXTS: Partial<Record<LoreId, Record<number, string>>> = {};

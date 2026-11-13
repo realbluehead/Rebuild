@@ -608,11 +608,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
     let st = 'idle';
     if (s.decoding >= 0) {
-      const done = decodeTime(s.printed.length) - s.decodeLeft;
+      const done = decodeTime(world, s.printed.length) - s.decodeLeft;
       st = done < 0.7 ? 'drop' : s.decodeLeft < 1.2 ? 'print' : 'flow';
     }
     if (machineEl.dataset.stage !== st) { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); }
-    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : queue ? clock(decodeTime(s.printed.length)) : '-:--');
+    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : queue ? clock(decodeTime(world, s.printed.length)) : '-:--');
     mcClock.classList.toggle('next', s.decoding < 0);
     mcSwitch.disabled = !s.decodeOn && queue === 0;
     mcSwitch.classList.toggle('is-on', s.decodeOn);

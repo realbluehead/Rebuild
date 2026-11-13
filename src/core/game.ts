@@ -14,7 +14,7 @@ import { newBot, type Bot, type GameState } from './state';
 import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_LEVELS, kindById, RICH_HOP, type DigOrder, type HaulPick, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
-import { DECODE_GROWTH, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
+import { DECODE_MAX_SEC, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTE_PACE_LEVEL, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
@@ -1118,8 +1118,10 @@ export const libraryShare = (s: GameState, id?: WorkId): number =>
   id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
 /** Crafts the next work (book, record or album) from the collected items. */
-/** Seconds the Decoder needs for the next scrap, after `n` printed: each one takes longer. */
-export const decodeTime = (n: number): number => DECODE_SEC * DECODE_GROWTH ** n;
+/** Seconds the Decoder needs for the next scrap, after `n` printed: from DECODE_SEC for the first scrap of the map up to
+ *  DECODE_MAX_SEC for the last, each one a little longer. */
+export const decodeTime = (w: World, n: number): number =>
+  DECODE_SEC * (DECODE_MAX_SEC / DECODE_SEC) ** Math.min(1, n / Math.max(1, w.loreCells.length - 1));
 
 /** Scraps found and not printed yet, the one in the Decoder aside (in map order). */
 export const scrapsToDecode = (s: GameState, w: World): number[] =>
@@ -1143,7 +1145,7 @@ export function decode(s: GameState, w: World, dt: number): number[] {
       const k = scrapsToDecode(s, w)[0];
       if (k === undefined) { s.decodeOn = false; break; }
       s.decoding = k;
-      s.decodeLeft = decodeTime(s.printed.length);
+      s.decodeLeft = decodeTime(w, s.printed.length);
     }
     if (s.decodeLeft > left) { s.decodeLeft -= left; break; }
     left -= s.decodeLeft;
