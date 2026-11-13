@@ -315,12 +315,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return b;
   });
   list.append(picker);
+  /** Upgrades (rover kind, part, level) the player has already seen affordable on the Rovers tab: only new ones blink. */
+  const seenBuys = new Set<string>();
+  /** Keys of the parts of a kind that can be bought now. */
+  const affordable = (s: GameState, k: RoverKind): string[] => {
+    const j = roverIndex(s, k);
+    if (j < 0) return [];
+    return UPGRADES.filter((u) => canBuy(s, u.id, 1, j)).map((u) => `${k}:${u.id}:${levelOn(s, u.id, s.bots[j])}`);
+  };
+  /** Whether a kind has something new: it can be built, or one of its parts became affordable since it was last shown. */
+  const newFor = (s: GameState, k: RoverKind) => canBuild(s, world, k) || affordable(s, k).some((key) => !seenBuys.has(key));
   function fillPicker(s: GameState) {
+    // What is on screen counts as seen.
+    if (!list.hidden) for (const key of affordable(s, kind)) seenBuys.add(key);
     ROVER_KINDS.forEach((k, q) => {
       const b = pickBtns[q];
       b.classList.toggle('on', k.id === kind);
       b.classList.toggle('locked', roverIndex(s, k.id) < 0);
-      b.classList.toggle('alert', canBuild(s, world, k.id));
+      b.classList.toggle('alert', newFor(s, k.id));
     });
   }
   // Card for a rover not built yet: what it does, and Build.
@@ -960,7 +972,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
       fillPicker(s);
       fillRover(s);
-      tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => canBuild(s, world, k.id)));
+      tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => newFor(s, k.id)));
       const myLevel = levelOf(s, world);
       for (const x of works) {
         const n = s.works[x.wd.id];
