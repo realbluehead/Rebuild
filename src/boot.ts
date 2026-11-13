@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -75,6 +75,16 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       if (!claimGoal(state, world, id)) return;
       const g = goalById(id);
       view.toast(`${g.name} tier ${state.goals[id]}\n${g.rewardText} ×${fmt(goalBonus(state, g.reward))}`);
+      void save();
+    },
+    digOrder: (order) => {
+      if (state.digPick === order) return;
+      chooseDig(state, world, order);
+      view.toast(`Miner · ${order === 'rich' ? 'richest first' : 'behind the Scout'}${state.digOrder === order ? '' : '\nfrom the next ring'}`);
+      void save();
+    },
+    haul: (at, pick) => {
+      setHaul(state, at, pick);
       void save();
     },
     build: (kind) => {

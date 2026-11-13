@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
-import { SCOUT_SHARE, UPGRADES, type RoverKind } from '../content/upgrades';
+import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
@@ -202,6 +202,93 @@ describe('game', () => {
     });
   });
 
+  it('with dig order and Hauler policies, one long tick still gives the same as many short ones', () => {
+    const a = newGame(42);
+    const b = newGame(42);
+    for (const s of [a, b]) {
+      Object.assign(s.upgrades, { speed: 12, radar: 2, tyres: 2, cargo: 3 });
+      Object.assign(s, { digOrder: 'rich', digPick: 'rich', haulAt: 0.3, haulPick: 'miner' });
+      crew(s, 'miner', 'hauler');
+    }
+    tick(a, world, 900);
+    for (let k = 0; k < 9000; k++) tick(b, world, 0.1);
+    expect(a.dug).toBeGreaterThan(0);
+    expect(a.dug).toBeCloseTo(b.dug, 3);
+    expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 3);
+    expect(a.items).toEqual(b.items);
+    a.bots.forEach((bot, j) => {
+      expect(bot.trip).toBe(b.bots[j].trip);
+      expect(bot.cargo).toBeCloseTo(b.bots[j].cargo, 3);
+    });
+  });
+
+  it('richest first, the Miner digs finished rings from the best cells down; a new order waits for the next ring', () => {
+    const s = newGame(42);
+    s.upgrades.speed = 12;
+    s.upgrades.cargo = 10;
+    crew(s, 'miner');
+    Object.assign(s.bots[1].up, { drill: 30, speed: 10 });
+    chooseDig(s, world, 'rich');
+    expect(s.digOrder).toBe('rich'); // it has not started digging: right away
+    let last = Infinity;
+    let k0 = -1;
+    for (let k = 0; k < 20000 && explored(s, world) < 3000; k++) {
+      tick(s, world, 0.2);
+      expect(s.dug).toBeLessThanOrEqual(world.rings[s.ring] + 1e-9); // only finished rings
+      const d = digPath(s, world);
+      if (d.k !== k0) { k0 = d.k; last = Infinity; }
+      const done = Math.floor(s.dug - d.lo + 1e-9);
+      if (done > 0 && done < d.hi - d.lo) {
+        const v = world.value[world.order[d.seq![done - 1]]];
+        expect(v).toBeLessThanOrEqual(last);
+        last = v;
+        expect(isDug(s, world, d.seq![done - 1])).toBe(true);
+        expect(isDug(s, world, d.seq![done])).toBe(false);
+      }
+    }
+    expect(s.dug).toBeGreaterThan(500);
+    // Mid-ring, a new order is only picked; it takes over when the next ring starts.
+    let k = 0;
+    while (s.dug <= world.rings[digPath(s, world).k] + 1e-9 && k++ < 1000) tick(s, world, 0.05);
+    chooseDig(s, world, 'follow');
+    expect(s.digOrder).toBe('rich');
+    expect(s.digPick).toBe('follow');
+    const ring = digPath(s, world).k;
+    while (digPath(s, world).k === ring && k++ < 100000) tick(s, world, 0.2);
+    expect(s.digOrder).toBe('follow');
+  });
+
+  it('the Hauler goes to the rover the player put first, once it is over the threshold', () => {
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 12, cargo: 2 });
+    crew(s, 'miner', 'hauler');
+    setHaul(s, 0.3, 'scout');
+    expect(s.haulAt).toBe(0.3);
+    setHaul(s, 0.42, 'scout');
+    expect(s.haulAt).toBe(0.3); // not one of the levels
+    const runs = (pick: HaulPick) => {
+      const t = newGame(42);
+      Object.assign(t.upgrades, { speed: 12, cargo: 2 });
+      crew(t, 'miner', 'hauler');
+      setHaul(t, 0.3, pick);
+      const to = [0, 0];
+      for (let k = 0; k < 4000; k++) {
+        const was = t.bots[2].trip;
+        tick(t, world, 0.2);
+        const h = t.bots[2];
+        if (was === 'idle' && h.trip === 'out') {
+          expect(t.bots[h.target].cargo / stats(t, t.bots[h.target]).cargo).toBeGreaterThanOrEqual(0.3 - 1e-6);
+          to[h.target]++;
+        }
+      }
+      return to;
+    };
+    const scout = runs('scout');
+    const miner = runs('miner');
+    expect(scout[0] + scout[1]).toBeGreaterThan(2);
+    expect(scout[0] / (scout[0] + scout[1])).toBeGreaterThan(miner[0] / (miner[0] + miner[1]));
+  });
+
   it('rovers are built one of each, in order, to the Scout\'s standard; parts are per rover and stay exact', () => {
     const a = newGame(42);
     const b = newGame(42);
@@ -242,10 +329,13 @@ describe('game', () => {
     });
   });
 
-  for (const [kinds, radar] of [[[], 0], [['miner'], 0], [[], 2], [['miner', 'hauler'], 0], [['miner', 'hauler'], 4]] as [RoverKind[], number][]) {
-    it(`Scout${kinds.map((k) => ` + ${k}`).join('')}, radar ${radar}: deposits and items arrive exactly once, and all the bluetreri once dug out`, () => {
+  type Policy = Partial<Pick<GameState, 'digPick' | 'haulAt' | 'haulPick'>>;
+  for (const [kinds, radar, pol] of [[[], 0, {}], [['miner'], 0, {}], [[], 2, {}], [['miner', 'hauler'], 0, {}], [['miner', 'hauler'], 4, {}],
+    [['miner'], 0, { digPick: 'rich' }], [['miner', 'hauler'], 2, { digPick: 'rich', haulAt: 0.3, haulPick: 'miner' }], [['miner', 'hauler'], 0, { haulAt: 0.8, haulPick: 'scout' }]] as [RoverKind[], number, Policy][]) {
+    it(`Scout${kinds.map((k) => ` + ${k}`).join('')}, radar ${radar}${Object.values(pol).map((v) => `, ${v}`).join('')}: deposits and items arrive exactly once, and all the bluetreri once dug out`, () => {
       const s = newGame(42);
       Object.assign(s.upgrades, { speed: 40, cargo: 20, drill: 10, radar });
+      Object.assign(s, pol, pol.digPick ? { digOrder: pol.digPick } : {});
       crew(s, ...kinds);
       const ev = run(s, 40000);
       expect(isComplete(s, world)).toBe(true);

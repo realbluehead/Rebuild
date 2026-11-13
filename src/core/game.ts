@@ -11,12 +11,12 @@
 // so one long step (offline) gives the same result as many short ones.
 import { D, Decimal } from './decimal';
 import { newBot, type Bot, type GameState } from './state';
-import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_AT, kindById, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
+import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_LEVELS, kindById, RICH_HOP, type DigOrder, type HaulPick, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
 import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteId } from '../content/routes';
-import { arcOf, arcStarts, goldBetween, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
+import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 import { GOAL_TIERS, GOALS, goalById, type GoalId, type GoalReward } from '../content/goals';
 
@@ -223,11 +223,100 @@ function stepsX(w: World, grip: number, x: number): number {
   const a = stepsAt(w, grip, i);
   return a + (x - i) * (stepsAt(w, grip, i + 1) - a);
 }
-/** Seconds the Miner takes to dig from rank x to rank y: it crosses the cells and digs out what the Scout left. */
-export const digTime = (w: World, st: Stats, x: number, y: number): number =>
-  (stepsX(w, st.grip, y) - stepsX(w, st.grip, x) + (st.share * goldBetween(w, x, y)) / st.drill) / st.speed;
-/** Bluetreri the Miner digs out between ranks x and y. */
-const digGold = (w: World, st: Stats, x: number, y: number): number => st.share * goldBetween(w, x, y) * st.loot;
+/** The ring the Miner is digging, in its dig order. Positions run from `lo` to `hi` (the ring's ranks), in the same units as
+ *  `GameState.dug`: behind the Scout they are ranks; richest first, `seq[p - lo]` is the rank dug at position p. */
+export interface DigPath {
+  k: number;
+  lo: number;
+  hi: number;
+  order: DigOrder;
+  /** Rich first: ranks in dig order, and running sums along it of each cell's value and of its base/rough steps. */
+  seq?: Int32Array;
+  gold?: Float64Array;
+  base?: Float64Array;
+  rough?: Float64Array;
+}
+const richPaths = new WeakMap<World, Map<string, Required<Pick<DigPath, 'seq' | 'gold' | 'base' | 'rough'>>>>();
+/** Ring k's cells, richest first (ties by rank), with running sums. Only for rings the Scout has finished (fixed ranks). */
+function richPath(w: World, k: number) {
+  let m = richPaths.get(w);
+  if (!m) { m = new Map(); richPaths.set(w, m); }
+  const key = `${w.version}:${k}`;
+  let p = m.get(key);
+  if (!p) {
+    const lo = w.rings[k];
+    const hi = w.rings[k + 1];
+    const seq = Int32Array.from({ length: hi - lo }, (_, q) => lo + q);
+    seq.sort((a, b) => w.value[w.order[b]] - w.value[w.order[a]] || a - b);
+    const len = seq.length;
+    const gold = new Float64Array(len + 1);
+    const base = new Float64Array(len + 1);
+    const rough = new Float64Array(len + 1);
+    for (let q = 0; q < len; q++) {
+      const r = seq[q];
+      gold[q + 1] = gold[q] + w.value[w.order[r]];
+      base[q + 1] = base[q] + RICH_HOP * (w.stepBase[r + 1] - w.stepBase[r]);
+      rough[q + 1] = rough[q] + RICH_HOP * (w.stepRough[r + 1] - w.stepRough[r]);
+    }
+    p = { seq, gold, base, rough };
+    m.set(key, p);
+  }
+  return p;
+}
+/** Ring the Miner is on: the one holding its next cell (at a ring boundary, the next ring). */
+function digRing(s: GameState, w: World): number {
+  return ringOfRank(w, Math.min(totalCells(w) - 1, Math.floor(s.dug)));
+}
+export function digPath(s: GameState, w: World): DigPath {
+  const k = digRing(s, w);
+  const lo = w.rings[k];
+  const hi = w.rings[k + 1];
+  return s.digOrder === 'rich' ? { k, lo, hi, order: 'rich', ...richPath(w, k) } : { k, lo, hi, order: 'follow' };
+}
+/** Interpolates a running sum at fractional position p of a path. */
+const along = (a: Float64Array, lo: number, p: number): number => {
+  const x = Math.max(0, Math.min(a.length - 1, p - lo));
+  const i = Math.min(a.length - 2, Math.floor(x));
+  return i < 0 ? 0 : a[i] + (x - i) * (a[i + 1] - a[i]);
+};
+const pathGold = (w: World, d: DigPath, p: number): number => (d.gold ? along(d.gold, d.lo, p) : prefixAt(w, p));
+const pathSteps = (w: World, d: DigPath, grip: number, p: number): number =>
+  (d.base ? along(d.base, d.lo, p) + grip * along(d.rough!, d.lo, p) : stepsX(w, grip, p));
+/** Rank of the cell the Miner digs at position p. */
+export const digCell = (w: World, d: DigPath, p: number): number =>
+  (d.seq ? d.seq[Math.max(0, Math.min(d.seq.length - 1, Math.floor(p - d.lo)))] : Math.min(totalCells(w) - 1, Math.floor(p)));
+/** Seconds the Miner takes to dig from position x to y: it crosses the cells and digs out what the Scout left. */
+export const digTime = (w: World, d: DigPath, st: Stats, x: number, y: number): number =>
+  (pathSteps(w, d, st.grip, y) - pathSteps(w, d, st.grip, x) + (st.share * (pathGold(w, d, y) - pathGold(w, d, x))) / st.drill) / st.speed;
+/** Bluetreri the Miner digs out between positions x and y. */
+const digGold = (w: World, d: DigPath, st: Stats, x: number, y: number): number => st.share * (pathGold(w, d, y) - pathGold(w, d, x)) * st.loot;
+
+/** Whether the cell of rank r is dug out. */
+export function isDug(s: GameState, w: World, r: number): boolean {
+  const d = digPath(s, w);
+  if (r < d.lo) return true;
+  if (r >= d.hi) return false;
+  if (!d.seq) return r + 1 <= s.dug;
+  const upto = Math.floor(s.dug - d.lo + 1e-9);
+  for (let q = 0; q < upto; q++) if (d.seq[q] === r) return true;
+  return false;
+}
+/** Dug-out cells for the map: every rank below `below`, plus `extra` (the richest cells of the ring being dug). */
+export function dugCells(s: GameState, w: World): { below: number; extra: Set<number> | null } {
+  const d = digPath(s, w);
+  if (!d.seq) return { below: Math.floor(s.dug + 1e-9), extra: null };
+  return { below: d.lo, extra: new Set(d.seq.subarray(0, Math.max(0, Math.floor(s.dug - d.lo + 1e-9)))) };
+}
+/** Picks the Miner's dig order: it takes over at the next ring the Miner starts (now, if it is between rings). */
+export function chooseDig(s: GameState, w: World, order: DigOrder): void {
+  s.digPick = order;
+  if (s.dug <= w.rings[digRing(s, w)] + 1e-9) s.digOrder = order;
+}
+/** Sets the Hauler policy. */
+export function setHaul(s: GameState, at: number, pick: HaulPick): void {
+  if (HAUL_LEVELS.includes(at)) s.haulAt = at;
+  s.haulPick = pick;
+}
 /** Rank (≤ hi) reached from x when `f(x, y)` reaches `v` (f grows with y). */
 function rankWhere(x: number, hi: number, v: number, f: (x: number, y: number) => number): number {
   if (f(x, hi) <= v) return hi;
@@ -510,7 +599,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     /** Rank of the cell rover j is on (where the Hauler meets it). */
     const rankOf = (j: number): number => {
       const b = s.bots[j];
-      if (b.kind === 'miner') return Math.min(n - 1, Math.floor(s.dug));
+      if (b.kind === 'miner') return digCell(w, digPath(s, w), s.dug);
       if (b.trip === 'detour') return b.from;
       const a = arcs[j];
       return a ? cellOf(w, sts[j].grip, a, b.prog) : n - 1;
@@ -519,13 +608,17 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     // Instant decisions. The Hauler at camp drives out to the fullest rover once one is half full.
     let changed = false;
     if (hj >= 0 && s.bots[hj].trip === 'idle') {
+      // The fullest rover over the threshold, or the one the player put first when it is over it.
       let best = -1;
-      let most = HAUL_AT - 1e-6;
+      let most = s.haulAt - 1e-6;
+      const ready = (j: number) => j !== hj && (s.bots[j].trip === 'explore' || s.bots[j].trip === 'detour') && s.bots[j].cargo / sts[j].cargo >= s.haulAt - 1e-6;
       s.bots.forEach((b, j) => {
-        if (j === hj || (b.trip !== 'explore' && b.trip !== 'detour')) return;
+        if (!ready(j)) return;
         const f = b.cargo / sts[j].cargo;
         if (f > most) { best = j; most = f; }
       });
+      const first = s.haulPick === 'fullest' ? -1 : roverIndex(s, s.haulPick);
+      if (first >= 0 && ready(first)) best = first;
       if (best >= 0) {
         const h = s.bots[hj];
         h.trip = 'out';
@@ -556,15 +649,30 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
 
     // The Miner digs up to the Scout's frontier. Once it catches up it waits (`walked` = 1) until the Scout is
     // MINER_GAP cells ahead, so it does not stop at every cell.
+    // It digs one ring at a time (`dp`, up to `front`), in its dig order; a new order takes over as it starts a ring.
+    // Richest first only digs rings the Scout has finished: it waits for the ring under way to end.
     let front = n;
-    if (mj >= 0 && s.bots[mj].trip === 'explore') {
+    let dp: DigPath | null = null;
+    if (mj >= 0) {
+      if (s.digOrder !== s.digPick && s.dug <= w.rings[digRing(s, w)] + 1e-9) s.digOrder = s.digPick;
       const b = s.bots[mj];
-      if (live) {
-        const p = prog();
-        front = frontier(s, w, p);
-        if (b.walked === 0 && s.dug >= front - EPS) b.walked = 1;
-        else if (b.walked === 1 && p.a + (p.reach[0] ?? 0) >= Math.ceil(s.dug - 1e-9) + MINER_GAP - 1e-6) b.walked = 0;
-      } else b.walked = 0;
+      if (b.trip === 'explore') {
+        dp = digPath(s, w);
+        if (dp.order === 'rich') {
+          const ready = !live || dp.k < s.ring;
+          b.walked = ready ? 0 : 1;
+          front = ready ? dp.hi : s.dug;
+        } else if (live) {
+          const p = prog();
+          const f = frontier(s, w, p);
+          if (b.walked === 0 && s.dug >= f - EPS) b.walked = 1;
+          else if (b.walked === 1 && p.a + (p.reach[0] ?? 0) >= Math.ceil(s.dug - 1e-9) + MINER_GAP - 1e-6) b.walked = 0;
+          front = Math.min(f, dp.hi);
+        } else {
+          b.walked = 0;
+          front = dp.hi;
+        }
+      }
     }
 
     // Detours: each cell reached on the way out is mined (its bluetreri, deposit and item, unless exploring got there
@@ -668,7 +776,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     const roomOf = (j: number) => {
       const cap = sts[j].cargo;
       const b = s.bots[j];
-      return watch && b.cargo < HAUL_AT * cap * (1 - 1e-9) ? HAUL_AT * cap - b.cargo : cap - b.cargo;
+      return watch && b.cargo < s.haulAt * cap * (1 - 1e-9) ? s.haulAt * cap - b.cargo : cap - b.cargo;
     };
     let minerHalf = false;
     s.bots.forEach((b, j) => {
@@ -680,8 +788,9 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         const st = sts[j];
         const room = roomOf(j);
         minerHalf = room < st.cargo - b.cargo;
-        stopAt[j] = rankWhere(s.dug, front, room, (x, y) => digGold(w, st, x, y));
-        step = Math.min(step, digTime(w, st, s.dug, stopAt[j]!));
+        const d = dp!;
+        stopAt[j] = rankWhere(s.dug, front, room, (x, y) => digGold(w, d, st, x, y));
+        step = Math.min(step, digTime(w, d, st, s.dug, stopAt[j]!));
       } else if (b.trip === 'explore' && a) {
         let target = a.len;
         // Where the hold fills up: find the exact point (bluetreri grows continuously with the steps).
@@ -723,7 +832,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       }
     });
     // A Miner waiting for the Scout wakes when the Scout is far enough ahead.
-    if (mj >= 0 && live && s.bots[mj].trip === 'explore' && s.bots[mj].walked === 1 && speedOf[0] > 0 && arcs[0] && s.bots[0].trip === 'explore') {
+    if (mj >= 0 && live && dp?.order === 'follow' && s.bots[mj].trip === 'explore' && s.bots[mj].walked === 1 && speedOf[0] > 0 && arcs[0] && s.bots[0].trip === 'explore') {
       const a = arcs[0];
       const r = Math.ceil(s.dug - 1e-9) + MINER_GAP;
       if (r > a.lo && r < a.hi) step = Math.min(step, Math.max(0, (stepsAt(w, sts[0].grip, r) - stepsAt(w, sts[0].grip, a.lo) - s.bots[0].prog) / speedOf[0]));
@@ -740,12 +849,13 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         const st = sts[j];
         const from = s.dug;
         const stop = stopAt[j]!;
-        const to = step >= digTime(w, st, from, stop) * (1 - 1e-12) ? stop : rankWhere(from, stop, step, (x, y) => digTime(w, st, x, y));
-        b.cargo = Math.min(st.cargo, b.cargo + digGold(w, st, from, to));
-        if (to === stop && stop < front) b.cargo = minerHalf ? Math.max(b.cargo, HAUL_AT * st.cargo) : st.cargo; // (stopped where it fills)
+        const d = dp!;
+        const to = step >= digTime(w, d, st, from, stop) * (1 - 1e-12) ? stop : rankWhere(from, stop, step, (x, y) => digTime(w, d, st, x, y));
+        b.cargo = Math.min(st.cargo, b.cargo + digGold(w, d, st, from, to));
+        if (to === stop && stop < front) b.cargo = minerHalf ? Math.max(b.cargo, s.haulAt * st.cargo) : st.cargo; // (stopped where it fills)
         if (st.cargo - b.cargo < st.cargo * EPS * 10) b.cargo = st.cargo;
         b.log.cells += Math.floor(to) - Math.floor(from);
-        b.log.steps += stepsX(w, st.grip, to) - stepsX(w, st.grip, from);
+        b.log.steps += pathSteps(w, d, st.grip, to) - pathSteps(w, d, st.grip, from);
         s.dug = to;
       } else if (b.trip === 'explore') {
         if (!a) return;

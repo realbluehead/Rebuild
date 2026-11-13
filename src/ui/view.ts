@@ -1,11 +1,11 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
-import { ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type RoverKind, type StatId } from '../content/upgrades';
+import { HAUL_LEVELS, ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type HaulPick, type RoverKind, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId } from '../content/goals';
-import { canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -21,6 +21,10 @@ export interface ViewActions {
   upgradeRoute(id: RouteId): void;
   /** Buys a level of `id` for rover `rover` (index into `bots`). */
   buy(id: StatId, rover: number): void;
+  /** Picks the Miner's dig order (from the next ring it starts). */
+  digOrder(order: DigOrder): void;
+  /** Sets the Hauler policy: how full a hold must be, and which rover it drives to first. */
+  haul(at: number, pick: HaulPick): void;
   /** Builds the rover of kind `kind`. */
   build(kind: RoverKind): void;
   /** Claims the next tier of goal `id`. */
@@ -206,12 +210,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     selected = i === selected ? -1 : i;
   }
 
-  /** Fills the bottom-left box: the tapped cell's resources, or the rovers' haul. */
-  function showCell(s: GameState, st: Stats) {
+  /** Fills the bottom-left box: the tapped cell's resources, or the haul of the rover picked in the Rovers tab. */
+  function showCell(s: GameState, st: Stats, bot: Bot) {
     if (selected < 0) {
-      const found = s.bots.reduce((a, b) => a + b.found, 0);
-      set(cellTitle, 'Rovers\' haul');
-      set(cellLine, `${fmt(carried(s))} bluetreri · ${found} ${found === 1 ? 'item' : 'items'}`);
+      const found = bot.found;
+      set(cellTitle, `${kindById(bot.kind).name}'s haul`);
+      set(cellLine, `${fmt(bot.cargo)} bluetreri · ${found} ${found === 1 ? 'item' : 'items'}`);
       const n = s.weather.storms.length;
       set(cellSky, n ? `Sky: ${n} ${n === 1 ? 'storm' : 'storms'}` : 'Sky: clear');
       return;
@@ -219,7 +223,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const i = selected;
     const r = world.rank[i];
     const seen = revealed(s, world, r) || s.mined.includes(i);
-    const dug = r + 1 <= s.dug;
+    const dug = isDug(s, world, r);
     const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * st.loot;
     const it = world.item[i] ? ITEMS[world.item[i] - 1] : null;
     const gone = it && (seen || s.fetched.includes(world.itemRanks.indexOf(r)));
@@ -302,6 +306,42 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   buildCard.append(buildHead, buildDesc, buildBtn);
   list.append(buildCard);
   const buildKey = { btnKey: '', upKey: '' };
+  // Orders for the Miner (dig order) and the Hauler (when it leaves camp, and for whom).
+  const orderCard = h('div', 'upg px-box build-card order-card');
+  const orderHead = h('div', 'head');
+  const orderName = h('span', 'name');
+  orderHead.append(orderName);
+  const orderDesc = h('div', 'eff');
+  orderCard.append(orderHead, orderDesc);
+  const choiceRow = (label: string, opts: { text: string; title: string; pick: () => void }[]) => {
+    const row = h('div', 'choices');
+    row.append(h('span', 'what', label));
+    const btns = opts.map((o) => {
+      const b = h('button', 'px-btn', o.text);
+      b.title = o.title;
+      b.addEventListener('click', o.pick);
+      row.append(b);
+      return b;
+    });
+    orderCard.append(row);
+    return { row, btns };
+  };
+  const haulPolicy = () => current ?? null;
+  const digRow = choiceRow('Dig', [
+    { text: 'Behind Scout', title: 'Digs every cell in the order the Scout revealed it, right behind it.', pick: () => actions.digOrder('follow') },
+    { text: 'Richest first', title: 'Digs each finished ring from its richest cells down (deposits first), hopping between them.', pick: () => actions.digOrder('rich') },
+  ]);
+  const atRow = choiceRow('Leave at', HAUL_LEVELS.map((at) => ({
+    text: `${Math.round(at * 100)}%`,
+    title: `Drives out once a hold is ${Math.round(at * 100)}% full.`,
+    pick: () => { const s = haulPolicy(); if (s) actions.haul(at, s.haulPick); },
+  })));
+  const pickRow = choiceRow('First', (['fullest', 'scout', 'miner'] as HaulPick[]).map((p) => ({
+    text: p === 'fullest' ? 'Fullest' : kindById(p).name,
+    title: p === 'fullest' ? 'Drives to the fullest rover.' : `Drives to the ${kindById(p).name} first whenever it is full enough.`,
+    pick: () => { const s = haulPolicy(); if (s) actions.haul(s.haulAt, p); },
+  })));
+  list.append(orderCard);
   // Rover parts in a grid: everything within thumb reach, no scrolling. Each kind shows only its own parts.
   const rows = UPGRADES.map((u) => {
     const card = h('div', 'upg px-box');
@@ -663,26 +703,26 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         f: b.trip === 'detour' ? detourShare(b) : b.travelLen > 0 ? b.travel / b.travelLen : 1,
         target: b.kind === 'scout' && b.target >= 0 ? world.itemRanks[b.target] : undefined,
         from: b.kind === 'scout' && b.from >= 0 ? b.from : undefined,
-        at: b.kind === 'miner' ? Math.min(n - 1, s.dug) : b.kind === 'hauler' && b.from >= 0 ? b.from : undefined,
+        at: b.kind === 'miner' ? digCell(world, digPath(s, world), s.dug) + (s.digOrder === 'follow' ? s.dug % 1 : 0.5) : b.kind === 'hauler' && b.from >= 0 ? b.from : undefined,
       }));
       if (selected >= 0 && selected >= totalCells(world)) selected = -1;
       const sel = roverIndex(s, kind);
       map.focus = sel >= 0 ? sel : 0;
-      map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected, Math.floor(s.dug));
-      showCell(s, st);
+      map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected, dugCells(s, world));
+      const shown = s.bots[sel >= 0 ? sel : 0];
+      showCell(s, st, shown);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
       set(gold, fmt(s.gold));
       set(rate, `+${fmt(goldPerSec(s, world))}/s`);
-      const cap = capacity(s);
-      const load = carried(s);
+      // The hold bar shows the rover picked in the Rovers tab (the Scout when that kind is not built yet).
+      const cap = stats(s, shown).cargo;
+      const load = shown.cargo;
       cargoFill.style.width = `${Math.min(100, (100 * load) / cap)}%`;
       cargoBar.classList.toggle('full', load >= cap - 1e-6);
-      const home = s.bots.filter((b) => b.trip === 'home').length;
-      const out = s.bots.filter((b) => b.trip === 'out').length;
-      const fetching = s.bots.filter((b) => b.trip === 'detour').length;
-      const doing = home ? `· ${home} returning` : out ? `· ${out} heading out` : fetching ? `· ${fetching} fetching` : load >= cap - 1e-6 ? '· full!' : '';
-      set(cargoText, `${fmt(load)}/${fmt(cap)} ${doing}`);
+      const t = shown.trip;
+      const doing = t === 'home' ? '· returning' : t === 'out' ? '· heading out' : t === 'detour' ? '· fetching' : t === 'idle' ? '· at camp' : load >= cap - 1e-6 ? '· full!' : '';
+      set(cargoText, `${kindById(shown.kind).name} ${fmt(load)}/${fmt(cap)} ${doing}`);
       const lv = explorerLevel(cells, n);
       const lvText = lv.level >= lv.max ? `Lv ${lv.level} MAX` : `Lv ${lv.level}/${lv.max} · ${Math.floor(lv.frac * 100)}%`;
       set(explored, `${lvText} · ${fmt(fleetSpeed(s))} steps/s · ${s.bots.length}R`);
@@ -702,6 +742,20 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const bot = sel >= 0 ? s.bots[sel] : undefined;
       const kd = kindById(kind);
       buildCard.hidden = !!bot;
+      orderCard.hidden = !bot || bot.kind === 'scout';
+      if (bot && bot.kind !== 'scout') {
+        const miner = bot.kind === 'miner';
+        set(orderName, miner ? 'Dig order' : 'Pick-ups');
+        set(orderDesc, miner
+          ? (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : '')
+          : `Leaves camp at ${Math.round(s.haulAt * 100)}% full, for ${s.haulPick === 'fullest' ? 'the fullest rover' : `the ${kindById(s.haulPick).name} first`}.`);
+        digRow.row.hidden = !miner;
+        atRow.row.hidden = miner;
+        pickRow.row.hidden = miner;
+        digRow.btns.forEach((b, q) => b.classList.toggle('can', (q === 1 ? 'rich' : 'follow') === s.digPick));
+        atRow.btns.forEach((b, q) => b.classList.toggle('can', HAUL_LEVELS[q] === s.haulAt));
+        pickRow.btns.forEach((b, q) => b.classList.toggle('can', (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
+      }
       if (!bot) {
         const need = roverLevelNeeded(world, kind);
         const prevMissing = ROVER_KINDS.slice(0, ROVER_KINDS.indexOf(kd)).find((k) => roverIndex(s, k.id) < 0);

@@ -17,10 +17,16 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   out the other 60% (`s.dug` = rank up to which everything is dug, fractional; `digTime`/`digGold`: crossing the cells plus
   `share × value / drill` steps, `Drill` upgrade, `BASE_DRILL`/`DRILL_MULT`). It never passes `frontier()`; once it catches
   up it waits (`Bot.walked` = 1 for the Miner) until the Scout is `MINER_GAP` cells ahead (hysteresis, so it does not stop at
-  every cell; the wake-up is an event). **Hauler** (20000, Lv 26, after the Miner): ×1.5 speed, ×8 hold, no drill; parked at
-  camp (`trip` 'idle') until a working rover is `HAUL_AT` (half) full, then drives out (`target` = rover index, `from` = the
+  every cell; the wake-up is an event). **Dig order** (save v18, Miner card in the Rovers tab, `chooseDig`): `s.digOrder`
+  'follow' (above) or 'rich': each ring the Scout has finished (`k < s.ring`) dug richest cell first (ties by rank),
+  hopping between cells (`RICH_HOP` × their steps); it waits for the ring under way to end (ring done is already an event).
+  The Miner digs one ring at a time (`DigPath`: `digPath`/`richPath`, cached per world version and ring, with running sums
+  of value and steps); in 'rich', `s.dug` is the position along the ring's sequence, so use `isDug`/`dugCells`/`digCell`,
+  never `r < s.dug`. A new pick (`s.digPick`) takes over when the Miner starts a ring. **Hauler** (20000, Lv 26, after the Miner): ×1.5 speed, ×8 hold, no drill; parked at
+  camp (`trip` 'idle') until a working rover is `s.haulAt` full (0.3/0.5/0.8, `HAUL_LEVELS`; Hauler card, `setHaul`) —
+  the fullest one, or `s.haulPick` (Scout/Miner) first when it is over the threshold — then drives out (`target` = rover index, `from` = the
   rank where they meet), takes its load and items, and drives them home. A full rover the Hauler is driving to waits instead
-  of going home. Half full while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
+  of going home. Reaching the threshold while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
   `roverLevelNeeded`, price, order) give the new rover the Scout's levels of the parts they share; the Rovers tab picker
   (Scout/Miner/Hauler) shows a Build card for a kind not built yet. Map: Miner orange, Hauler green (`robotFrames(kind)`);
   revealed cells keep their colour (and deposits) until dug out, then drain (`dugTo` in `MapView.render`).
@@ -57,7 +63,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   ground (a per-frame pixel mask: nothing shows over the dark).
 - **Routes** = discovery algorithms (`content/routes.ts`, Routes tab), from the least to the most efficient: Random
   (free, every new game starts on it and switches to it at ring 1; no levels, `maxLevel` 0), then the upgrades Circular,
-  Trail, Prospector, Survey, each dearer (bluetreri + items, `unlockRoute`). The world is still generated in circular order
+  Trail, Scavenger, Prospector, Survey, each dearer (bluetreri + items, `unlockRoute`). The world is still generated in circular order
   (saves from before Random was the default own Circular and keep it). Upgrades have levels 0..`maxLevel` (`upgradeRoute`,
   `routeUpgradeCost`): a level lowers its **entropy**
   (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level).
@@ -75,10 +81,13 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `TickEvents` report map cells. Home distance comes from `w.road` (the circular field). Measure efficiency with
   `npx vite-node tools/routes.ts -- <warmHours> <runHours>` (bluetreri and cells per algorithm at levels 0/1/max from the
   same mid-game state) whenever `ALGOS` or prices change; keep prices rising with efficiency (there is a test for prices).
+  Routes steer only the Scout. The Scavenger (`scavenge`) is the item route: cost pulled by `itemPull` (items within
+  `ITEM_REACH` cells, a summed-area table): about +40% items for -8% bluetreri vs Circular; the sim unlocks it but keeps
+  its route.
 - **Explorer level** (`explorerLevel(cells, total)` in `core/game.ts`, `levelOf(s, w)`): XP = cells explored, level 1 at
   `LEVEL_FIRST` (10) cells and each level ×`LEVEL_GROWTH` (1.3) more; the whole map is the top level (45 on 1024²). Shown
   under the top bar (`Lv N/max · %` + thin bar, toast on level up) instead of "% explored". **Gates**: a route needs
-  `RouteDef.minLevel` (Circular 6, Trail 24, Prospector 32, Survey 38) and its level k `minLevel + ROUTE_LEVEL_STEP (2) × k`
+  `RouteDef.minLevel` (Circular 6, Trail 24, Scavenger 28, Prospector 32, Survey 38) and its level k `minLevel + ROUTE_LEVEL_STEP (2) × k`
   (`routeLevelNeeded`); the k-th work of a collection needs `WORK_LEVEL_FIRST` (18) … `WORK_LEVEL_LAST` (42) evenly
   (`workLevelNeeded`); both are capped at the map's top level (small test maps). `canUnlockRoute`/`unlockRoute`/
   `canUpgradeRoute`/`upgradeRoute` take the world for this. The Routes tab shows only the owned routes and the **next**
@@ -148,8 +157,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
   levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
   further apart each time**. Seed 12345 (with goals claimed): Circular ~7 min, zoom 2 ~11 min, Miner ~38 min, zoom 3 ~1 h 05,
-  Trail ~1 h 45, Hauler ~2 h 35, zoom 4 ~3 h 45, Prospector ~4 h 20, Survey ~10 h, library ~13 h 40, full map ~16 h 45,
-  everything dug out ~20 h; goal tiers fall in between.
+  Trail ~1 h 45, Hauler ~2 h 35, zoom 4 ~3 h 45, Scavenger ~3 h 25, Prospector ~4 h 30, Survey ~9 h 40, library ~13 h 30, full map
+  ~16 h 40, everything dug out ~19 h 45; goal tiers fall in between.
   `npm run sim` prints this timeline ("Big advances") with the gap before each one; run it whenever prices or speeds change.
   `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.

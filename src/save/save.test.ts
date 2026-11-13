@@ -36,10 +36,11 @@ describe('save', () => {
     s.plan = [[1, 'random', 0], [9, [['circular', 1], ['random', 0]]]];
     s.zoomUnlocked = 3;
     s.zoom = 2;
+    Object.assign(s, { digOrder: 'rich', digPick: 'follow', haulAt: 0.8, haulPick: 'miner' });
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));
     expect(savedAt).toBe(1234);
     expect(state.gold.eq(s.gold)).toBe(true);
-    expect(state).toMatchObject({ seed: 7, ring: 12, ringRobots: 1, dug: 1234.5, zoomUnlocked: 3, zoom: 2, fetched: [11, 3] });
+    expect(state).toMatchObject({ seed: 7, ring: 12, ringRobots: 1, dug: 1234.5, digOrder: 'rich', digPick: 'follow', haulAt: 0.8, haulPick: 'miner', zoomUnlocked: 3, zoom: 2, fetched: [11, 3] });
     expect(state.weather).toEqual(s.weather);
     expect(state.bots).toEqual(s.bots);
     expect(state.upgrades.speed).toBe(7);
@@ -148,6 +149,14 @@ describe('save', () => {
     toKinds(state, world);
     expect(state.kinds).toBeUndefined();
     expect(state.dug).toBe(world.rings[20]); // everything explored before counts as dug out
+  });
+
+  it('migrates a v17 save to the old dig order and Hauler policy, and rejects odd values', () => {
+    const { v: _, digOrder: _a, digPick: _b, haulAt: _c, haulPick: _d, ...old } = serialize(newGame(3), 0);
+    const { state } = deserialize({ ...old, v: 17 });
+    expect(state).toMatchObject({ digOrder: 'follow', digPick: 'follow', haulAt: 0.5, haulPick: 'fullest' });
+    const odd = deserialize({ ...serialize(newGame(3), 0), digOrder: 'deep', haulAt: 0.42, haulPick: 'hauler' }).state;
+    expect(odd).toMatchObject({ digOrder: 'follow', haulAt: 0.5, haulPick: 'fullest' });
   });
 
   it('rejects versions from the future', () => {

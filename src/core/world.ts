@@ -301,6 +301,35 @@ function meanValue(w: World): number {
   return v;
 }
 
+/** Items within ITEM_REACH cells of each cell, over the mean of that (a summed-area table over the item map). */
+const ITEM_REACH = 3;
+const itemPulls = new WeakMap<World, Float32Array>();
+function itemPull(w: World): Float32Array {
+  let p = itemPulls.get(w);
+  if (!p) {
+    const { size, item } = w;
+    const m = size + 1;
+    const sat = new Uint32Array(m * m);
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++)
+        sat[(y + 1) * m + x + 1] = (item[y * size + x] ? 1 : 0) + sat[y * m + x + 1] + sat[(y + 1) * m + x] - sat[y * m + x];
+    p = new Float32Array(size * size);
+    let sum = 0;
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) {
+        const x0 = Math.max(0, x - ITEM_REACH), x1 = Math.min(size, x + ITEM_REACH + 1);
+        const y0 = Math.max(0, y - ITEM_REACH), y1 = Math.min(size, y + ITEM_REACH + 1);
+        const v = (sat[y1 * m + x1] - sat[y0 * m + x1] - sat[y1 * m + x0] + sat[y0 * m + x0]) / ((x1 - x0) * (y1 - y0));
+        p[y * size + x] = v;
+        sum += v;
+      }
+    const mean = sum / p.length || 1;
+    for (let i = 0; i < p.length; i++) p[i] /= mean;
+    itemPulls.set(w, p);
+  }
+  return p;
+}
+
 const ALGOS: Partial<Record<RouteId, Algo>> = {
   // Random: every direction equally likely; lots of noise, so the frontier frays, rovers zig-zag and leave patches half done.
   random: { cost: () => 1, noise: 1.4, jitter: 0.8, stray: 0.3, decay: 0.6 },
@@ -308,6 +337,8 @@ const ALGOS: Partial<Record<RouteId, Algo>> = {
   circular: { cost: (w, i) => TERRAINS[w.terrain[i]].cost, noise: 2.2, jitter: 0, stray: 0, decay: 0.85 },
   // Trail: easy ground that still pays (a mild bluetreri-per-step pull on top of the crossing cost).
   trail: { cost: (w, i, c) => TERRAINS[w.terrain[i]].cost * (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.4, noise: 0.45, jitter: 0.2, stray: 0, decay: 0.6 },
+  // Scavenger: where items lie thickest (pages, notes and photos within a few cells pull), by terrain crossing cost.
+  scavenge: { cost: (w, i) => TERRAINS[w.terrain[i]].cost / (0.1 + itemPull(w)[i]) ** 2, noise: 0.5, jitter: 0.2, stray: 0, decay: 0.6 },
   // Prospector: the most bluetreri per step first (deposits pull hard).
   prospect: { cost: (w, i, c) => (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.9, noise: 0.7, jitter: 0.3, stray: 0, decay: 0.6 },
   // Survey: like the prospector, but keeps the explored area compact so trips home stay short.

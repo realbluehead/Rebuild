@@ -21,6 +21,7 @@
 // v16: rover kinds (`Bot.kind`: Scout, Miner, Hauler, one of each) and the Miner's progress (`dug`). Rover #1 becomes
 //      the Scout; the other rovers, their parts and the Rovers upgrade are refunded, and their load goes to camp.
 // v17: goals (`goals`: tiers claimed of each).
+// v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -28,11 +29,11 @@ import { WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 import type { PlanEntry } from '../core/world';
-import { ROVER_KINDS, ROVER_STATS, UPGRADES, type RoverKind } from '../content/upgrades';
+import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder, type RoverKind } from '../content/upgrades';
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 17;
+export const SAVE_VERSION = 18;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -56,6 +57,10 @@ export interface SaveData {
   ringRobots: number;
   bots: Bot[];
   dug: number;
+  digOrder?: string;
+  digPick?: string;
+  haulAt?: number;
+  haulPick?: string;
   /** Only in saves migrated from v3 or earlier: the old total steps. */
   legacyWalked?: number;
   gold: string;
@@ -184,6 +189,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   },
   // v16 -> v17: no goal claimed yet (they can be claimed at once for what was already done).
   16: (s) => ({ ...s, v: 17, goals: {} }),
+  // v17 -> v18: nothing to do (deserialize fills in the defaults).
+  17: (s) => ({ ...s, v: 18 }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -194,6 +201,10 @@ export function serialize(s: GameState, now: number): SaveData {
     ring: s.ring,
     ringRobots: s.ringRobots,
     dug: s.dug,
+    digOrder: s.digOrder,
+    digPick: s.digPick,
+    haulAt: s.haulAt,
+    haulPick: s.haulPick,
     bots: s.bots.map((b) => ({ ...b, bag: [...b.bag], log: { ...b.log }, up: { ...b.up } })),
     ...(s.legacyWalked !== undefined ? { legacyWalked: s.legacyWalked } : {}),
     gold: s.gold.toString(),
@@ -247,6 +258,11 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   if (data.recount) state.recount = true;
   if (data.kinds) state.kinds = true;
   state.dug = num(data.dug);
+  const dig = (x: unknown): DigOrder => (x === 'rich' ? 'rich' : 'follow');
+  state.digOrder = dig(data.digOrder);
+  state.digPick = dig(data.digPick);
+  state.haulAt = HAUL_LEVELS.includes(Number(data.haulAt)) ? Number(data.haulAt) : HAUL_AT;
+  state.haulPick = data.haulPick === 'scout' || data.haulPick === 'miner' ? data.haulPick : 'fullest';
   const routeIds = ROUTES.map((d) => d.id) as string[];
   const isRoute = (x: unknown): x is RouteId => typeof x === 'string' && routeIds.includes(x);
   // Plans may still name withdrawn routes (they rebuild the map as it was).

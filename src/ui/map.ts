@@ -274,7 +274,9 @@ export class MapView {
   /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState); `storms`: the weather;
    *  `selected`: the cell (map index) the player tapped, or -1. */
   render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { ranges: [], fetched: [] },
-    scouted: number[] = [], minedCells: readonly number[] = [], storms: readonly Storm[] = [], selected = -1, dugTo = Infinity): void {
+    scouted: number[] = [], minedCells: readonly number[] = [], storms: readonly Storm[] = [], selected = -1, dugCells: { below: number; extra: Set<number> | null } = { below: Infinity, extra: null }): void {
+    const dugTo = dugCells.below;
+    const dugExtra = dugCells.extra;
     const { w, W, H, buf } = this;
     if (this.version !== w.version) this.refreshRanks();
     const size = w.size;
@@ -398,7 +400,7 @@ export class MapView {
           // Revealed: in full colour while the Miner has still to dig it out; dug out, its deposit is gone and it looks
           // drained.
           const known = seen(r) || dug.has(i);
-          const mined = known && r < dugTo;
+          const mined = known && (r < dugTo || (dugExtra !== null && dugExtra.has(r)));
           if (known || scouted) mask[row + pxl] = OPAQUE;
           let c: number;
           if (useTiles) {

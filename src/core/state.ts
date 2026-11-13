@@ -4,7 +4,7 @@ import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
 import type { RouteId } from '../content/routes';
-import type { RoverKind } from '../content/upgrades';
+import type { DigOrder, HaulPick, RoverKind } from '../content/upgrades';
 import { GOALS, type GoalId } from '../content/goals';
 import type { PlanEntry } from './world';
 
@@ -110,6 +110,12 @@ export interface GameState {
   /** Rank up to which the Miner has dug out every cell (with fraction): cells revealed beyond it still hold what the
    *  Scout left. */
   dug: number;
+  /** Dig order of the ring the Miner is on, and the one picked (it takes over at the next ring the Miner starts). */
+  digOrder: DigOrder;
+  digPick: DigOrder;
+  /** Hauler policy: how full a hold must be before it drives out, and which rover it goes to first. */
+  haulAt: number;
+  haulPick: HaulPick;
   gold: Decimal;
   /** Total bluetreri earned since the start. */
   totalGold: Decimal;
@@ -165,6 +171,10 @@ export function newGame(seed = randomSeed()): GameState {
     ringRobots: 1,
     bots: [newBot()],
     dug: 0,
+    digOrder: 'follow',
+    digPick: 'follow',
+    haulAt: 0.5,
+    haulPick: 'fullest',
     gold: D(0),
     totalGold: D(0),
     upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])) as Record<StatId, number>,

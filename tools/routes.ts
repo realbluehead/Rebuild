@@ -35,7 +35,8 @@ for (let t = 0; t < warm * 3600; t++) {
 const snap = serialize(s0, 0);
 console.log(`Start: ring ${s0.ring}, ${explored(s0, w0)} cells, rovers ${s0.bots.length}, ${s0.gold.toNumber().toFixed(0)} bluetreri\n`);
 
-function trial(route: RouteId, level: number): [number, number] {
+const itemsOf = (s: typeof s0) => s.items.page + s.items.note + s.items.photo;
+function trial(route: RouteId, level: number): [number, number, number] {
   const { state: s } = deserialize(JSON.parse(JSON.stringify(snap)));
   const w = createWorld(seed);
   applyPlan(w, s.plan);
@@ -44,15 +45,16 @@ function trial(route: RouteId, level: number): [number, number] {
   s.routeLevels = { [route]: level };
   const g0 = s.totalGold.toNumber();
   const c0 = explored(s, w);
+  const i0 = itemsOf(s);
   for (let t = 0; t < run * 3600; t += 1) tick(s, w, 1);
-  return [s.totalGold.toNumber() - g0, explored(s, w) - c0];
+  return [s.totalGold.toNumber() - g0, explored(s, w) - c0, itemsOf(s) - i0];
 }
 
 const base = trial('circular', 0); // circular level 0 with an empty plan keeps the starting order
-console.log(`legacy circular   gold ${base[0].toFixed(0).padStart(10)}  cells ${base[1]}`);
+console.log(`legacy circular   gold ${base[0].toFixed(0).padStart(10)}  cells ${base[1]}  items ${base[2]}`);
 for (const r of ROUTES) {
   for (const lv of [0, 1, ROUTE_MAX_LEVEL]) {
-    const [g, c] = trial(r.id, lv);
-    console.log(`${r.id.padEnd(9)} lv${lv}  gold ${g.toFixed(0).padStart(10)} (${((g / base[0]) * 100).toFixed(0).padStart(3)}%)  cells ${c} (${((c / base[1]) * 100).toFixed(0)}%)`);
+    const [g, c, i] = trial(r.id, lv);
+    console.log(`${r.id.padEnd(9)} lv${lv}  gold ${g.toFixed(0).padStart(10)} (${((g / base[0]) * 100).toFixed(0).padStart(3)}%)  cells ${c} (${((c / base[1]) * 100).toFixed(0)}%)  items ${i} (${((i / base[2]) * 100).toFixed(0)}%)`);
   }
 }

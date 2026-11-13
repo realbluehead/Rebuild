@@ -67,8 +67,15 @@ export const ROVER_KINDS: readonly RoverKindDef[] = [
 export const kindById = (id: RoverKind): RoverKindDef => ROVER_KINDS.find((k) => k.id === id)!;
 /** Share of each cell's bluetreri the Scout's drill takes as it explores (the Miner digs out the rest). */
 export const SCOUT_SHARE = 0.4;
-/** The Hauler leaves camp for a rover whose hold is at least this full. */
+/** The Hauler leaves camp for a rover whose hold is at least this full (the player picks one; 0.5 by default). */
 export const HAUL_AT = 0.5;
+export const HAUL_LEVELS: readonly number[] = [0.3, 0.5, 0.8];
+/** Which rover the Hauler drives to when several are full enough: the fullest, or one of them first. */
+export type HaulPick = 'fullest' | 'scout' | 'miner';
+/** How the Miner digs each ring: behind the Scout in its order, or the richest cells (deposits) first. Rich first only
+ *  digs rings the Scout has finished, and hops between cells (`RICH_HOP`× the steps). */
+export type DigOrder = 'follow' | 'rich';
+export const RICH_HOP = 1.4;
 /** A Miner that has caught up with the Scout waits until this many revealed cells are ahead of it. */
 export const MINER_GAP = 8;
 

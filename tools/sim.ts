@@ -62,7 +62,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
     const next = ROUTES.find((r) => !s.routes.includes(r.id));
     if (next && canUnlockRoute(s, w, next.id)) {
       unlockRoute(s, w, next.id);
-      chooseRoute(s, next.id);
+      if (next.id !== 'scavenge') chooseRoute(s, next.id); // (the Scavenger is for items: it keeps the route it has)
       mark(t, `route ${next.name}`);
     }
     if (canUpgradeRoute(s, w, s.route)) {
