@@ -131,8 +131,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Bottom-left box (`showCell` in `ui/view.ts`): a tapped cell's terrain, bluetreri (or "mined out"), item taken, storm; with nothing
   tapped, the rovers' haul (cargo + `Bot.found` items since leaving camp) and the sky. Tapping the box clears the selection.
 - Mined-out cells are drawn drained (desaturated) and lose their deposit crystals; unexplored deposits glint through the fog.
-- UI style: rusted metal (riveted plates, copper buttons) with yellow-and-black hazard details (`--stripes`):
-  under the top bar, hold full, notices, restart and the ? button when there are new notes.
+- UI style: rusted metal (riveted plates, copper buttons). No hazard stripes (removed): the top bar ends in a dark edge,
+  a full hold blinks orange, notices have an orange frame, restart is red and the ? button blinks orange on new notes.
 - Help = "Field notes" (`helpEntries` in `ui/view.ts`): each entry appears once the player has found what it explains
   (first deposit, first upgrade of each kind, items, works, terrain seen…); the rest shows as "??? to discover".
 - The cell a rover explores gains colour (second half of the step; in the first it walks there). Notes: ? button and menu; shown by itself on the first game.

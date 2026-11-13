@@ -607,7 +607,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: deposited, title: 'Bluetreri and the hold', lines: [
         'Bluetreri is a blue mineral that has grown among the ruins. It is what you spend on upgrades.',
         'Rovers carry the bluetreri they find, but each hold is limited. When a hold is full, that rover returns to camp to unload and then goes back to where it left off. Each rover goes on its own schedule. Nothing can be spent until it reaches camp.',
-        'At the top: the blue number is what you have at camp, and next to it what arrives per second on average. The bar below is the rovers\' total load; when every hold is full it shows hazard stripes.'] },
+        'At the top: the blue number is what you have at camp, and next to it what arrives per second on average. The bar below is the rovers\' total load; when every hold is full it turns orange and blinks.'] },
       { on: seenTerrain.size > 0 && deposited, title: 'Terrain', legend: true, lines: [
         'Each cell yields bluetreri by terrain (and the farther from camp, the more). Rough terrain is slower to explore: streets are fast, jungle and rubble are slow. Found so far:'] },
       { on: seenSpecial, title: 'Deposits', lines: ['Cells with blue crystals are bluetreri deposits: they yield far more than the rest.'] },
