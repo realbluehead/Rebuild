@@ -43,7 +43,7 @@ function loadInWorker(save: SaveData | null, now: number, progress: (p: number) 
     }
     worker.onmessage = (e: MessageEvent<{ progress?: number; done?: Loaded }>) => {
       if (e.data.progress !== undefined) progress(e.data.progress);
-      if (e.data.done) { resolve(e.data.done); worker.terminate(); }
+      if (e.data.done) resolve(e.data.done); // the worker closes itself once the map is stored
     };
     worker.onerror = (e) => { e.preventDefault(); worker.terminate(); inline(); };
     worker.postMessage({ save, now });

@@ -118,7 +118,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Start-up: `main.ts` only puts the title screen up and then imports `boot.ts` (its own chunk). `boot` reads the save and
   runs `loadWorld` (`load.ts`: `createWorld`, `applyPlan` per entry, `fromLegacy`, `recountItems`, `applyOffline`) in
   `load.worker.ts`, which posts progress and hands back the serialised state, the world (buffers transferred) and the
-  offline report; if the worker fails it runs inline. Testing a production build locally: a service worker caches the
+  offline report; if the worker fails it runs inline. **Map cache** (`save/worldCache.ts`): the worker keeps the built
+  `World` in IndexedDB (one entry, tens of MB, tagged with `__APP_BUILD__`; none on the dev server). If its seed matches
+  and its plan is the start of the game's plan, `loadWorld` takes it and applies only the newer entries (a load with 4
+  routes: 2.4 s → ~0.1 s); it stores the map again when its plan grew. This relies on a replayed plan matching live play
+  exactly: `reorder` breaks angle ties by cell index (before that, multi-route saves reloaded with a slightly different
+  unexplored order). Testing a production build locally: a service worker caches the
   old chunks, so unregister it first.
 - Title screen (`ui/title.ts`): full screen over `#app` while that runs (`title.progress`). Pixel-art canvas ~112 px wide: a scan
   line rises from the street turning the wasteland into a neon city (it chases the progress at most `SCAN_SPEED`, so it

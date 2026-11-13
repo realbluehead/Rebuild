@@ -489,7 +489,9 @@ export function reorder(w: World, ring: number, route: RouteId | readonly Sector
     if (++idx > ring) rings.push(a + s0);
     if (lo + b >= cut) break; // the unsorted rest (see `algoField`): left as it is
     const dirn = idx % 2 ? -1 : 1;
-    const part = Array.from(sorted.subarray(s0, s1), (i) => [i, angle(i)] as const).sort((p, q) => dirn * (p[1] - q[1]));
+    // Ties (cells on the same ray) go by cell index: the order must not depend on how the cells came in, or a replayed
+    // plan (`applyPlan`, which sorts each entry only as far as the next one) would differ from the one played live.
+    const part = Array.from(sorted.subarray(s0, s1), (i) => [i, angle(i)] as const).sort((p, q) => dirn * (p[1] - q[1]) || p[0] - q[0]);
     if (legacy) part.forEach(([i], q) => { sorted[s0 + q] = i; });
     else chain(part.map(([i]) => i), sorted, s0, b + 1);
   }
