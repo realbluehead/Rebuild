@@ -163,7 +163,7 @@ export function createTitle(): TitleScreen {
     });
   }
 
-  /** The rebuilt city at night: tall towers, flickering neon signs, flying cars, rain and wet streets. */
+  /** The rebuilt city at night: tall towers with windows switching on and off, flying cars, rain and wet streets. */
   function drawCity(t: number): void {
     const r = rng(9);
     bands(NIGHT_SKY, 0, HZ);
@@ -176,20 +176,26 @@ export function createTitle(): TitleScreen {
       for (let wy = HZ - h + 2; wy < HZ; wy += 3) for (let wx = X + 1; wx < X + w - 1; wx += 2) if (r() < 0.25) R('#3d2f80', wx, wy);
       X += w + r() * 2;
     }
-    const signs: [number, string, boolean][] = [];
+    /** Lit windows of the lowest floor, mirrored in the wet street. */
+    const low: [number, string][] = [];
     for (let X = -2; X < W;) {
       const w = 7 + r() * 11;
       const h = tall * (0.25 + r() * 0.65);
       R('#0c0918', X, HZ - h, w, h);
       R('#0c0918', X + w / 2, HZ - h - 6 - r() * 8, 1, 10);
       R((t * 2 + X) % 3 < 2 ? '#ff3f6a' : '#40101c', X + w / 2, HZ - h - 8); // aircraft warning light
-      for (let wy = HZ - h + 3; wy < HZ - 1; wy += 3) for (let wx = X + 1; wx < X + w - 1; wx += 2) if (r() < 0.35) R(NEON[(r() * 5) | 0] + (r() < 0.5 ? '' : 'aa'), wx, wy);
-      if (r() < 0.6) {
-        const col = NEON[(r() * 5) | 0];
-        const sx = X + r() * w * 0.6;
-        const on = Math.sin(t * 6 + sx) > -0.75;
-        R(on ? col : '#2a1530', sx, HZ - h + 4 + r() * h * 0.4, 2, 6 + r() * 10);
-        signs.push([sx, col, on]);
+      for (let wy = HZ - h + 3; wy < HZ - 1; wy += 3) {
+        for (let wx = X + 1; wx < X + w - 1; wx += 2) {
+          // Every window rolls its dice each frame in the same order, so the city does not reshuffle; some switch on and off.
+          const lit = r() < 0.35;
+          const col = NEON[(r() * 5) | 0] + (r() < 0.5 ? '' : 'aa');
+          const blink = r() < 0.15;
+          const phase = r() * 20;
+          const speed = 0.6 + r() * 1.6;
+          if (!lit || (blink && Math.sin(t * speed + phase) < 0)) continue;
+          R(col, wx, wy);
+          if (wy >= HZ - 5) low.push([wx, col]);
+        }
       }
       X += w + 1 + r() * 3;
     }
@@ -200,7 +206,7 @@ export function createTitle(): TitleScreen {
       R('#ff3f6a', fx + (i % 2 ? -1 : 2), fy);
     }
     R('#0a0614', 0, HZ, W, H - HZ);
-    for (const [sx, col, on] of signs) if (on) for (let y = HZ + 1; y < H; y += 2) if (r() < 0.7) R(`${col}88`, sx, y, 2, 1); // reflections
+    for (const [wx, col] of low) for (let y = HZ + 2; y < HZ + 14; y += 2) if (r() < 0.6) R(`${col.slice(0, 7)}55`, wx, y); // reflections
     R('#3ff0ff44', 0, HZ, W, 1);
     for (let i = 0; i < W / 2; i++) R('#8a9ad055', (r() * W + t * 22) % W, (r() * H + t * 80) % H, 1, 2); // rain
   }
