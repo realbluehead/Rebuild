@@ -9,7 +9,7 @@ Exploration idle with a **retro pixel** look, set in a **post-apocalyptic city**
 toxic dumps, toxic water and urban jungle). Top-down view of a 2D map (1024×1024 cells) that starts completely dark;
 rovers reveal it on their own, little by little, over time. 4 zoom levels (Street 16 → District 64 → City 256 → Metropolis 1024
 cells per side); you start at the closest and the next unlocks when 80% of the current zoom's square is revealed.
-- Bottom panel tabs: Rovers, Routes, Library.
+- Bottom panel tabs: Rovers, I+D, Library, Goals.
 - **Three kinds of rover, at most one of each** (save v16; `Bot.kind`, `ROVER_KINDS` in `content/upgrades.ts`; `s.bots` is
   always Scout first, then Miner, then Hauler). **Scout**: fast (×3 base speed), tiny hold (×0.6); the only one that explores
   (reveals cells, drives rings, explorer level, radar detours) and takes only `SCOUT_SHARE` (0.4) of each cell's bluetreri.
@@ -17,13 +17,13 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   out the other 60% (`s.dug` = rank up to which everything is dug, fractional; `digTime`/`digGold`: crossing the cells plus
   `share × value / drill` steps, `Drill` upgrade, `BASE_DRILL`/`DRILL_MULT`). It never passes `frontier()`; once it catches
   up it waits (`Bot.walked` = 1 for the Miner) until the Scout is `MINER_GAP` cells ahead (hysteresis, so it does not stop at
-  every cell; the wake-up is an event). **Dig order** (save v18, Miner card in the Rovers tab, `chooseDig`): `s.digOrder`
+  every cell; the wake-up is an event). **Dig order** (save v18, I+D tab › Dig, `chooseDig`): `s.digOrder`
   'follow' (above) or 'rich': each ring the Scout has finished (`k < s.ring`) dug richest cell first (ties by rank),
   hopping between cells (`RICH_HOP` × their steps); it waits for the ring under way to end (ring done is already an event).
   The Miner digs one ring at a time (`DigPath`: `digPath`/`richPath`, cached per world version and ring, with running sums
   of value and steps); in 'rich', `s.dug` is the position along the ring's sequence, so use `isDug`/`dugCells`/`digCell`,
   never `r < s.dug`. A new pick (`s.digPick`) takes over when the Miner starts a ring. **Hauler** (20000, Lv 26, after the Miner): ×1.5 speed, ×8 hold, no drill; parked at
-  camp (`trip` 'idle') until a working rover is `s.haulAt` full (0.3/0.5/0.8, `HAUL_LEVELS`; Hauler card, `setHaul`) —
+  camp (`trip` 'idle') until a working rover is `s.haulAt` full (0.3/0.5/0.8, `HAUL_LEVELS`; I+D tab › Pick-ups, `setHaul`) —
   the fullest one, or `s.haulPick` (Scout/Miner) first when it is over the threshold — then drives out (`target` = rover index, `from` = the
   rank where they meet), takes its load and items, and drives them home. A full rover the Hauler is driving to waits instead
   of going home. Reaching the threshold while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
@@ -61,7 +61,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (`weatherFactor`, softened by Body); home/out trips are not affected. `s.weather` is saved (storms + `nextId`). The map
   glides each storm towards its simulated position and draws it as a translucent textured layer, cut to the discovered
   ground (a per-frame pixel mask: nothing shows over the dark).
-- **Routes** = discovery algorithms (`content/routes.ts`, Routes tab), from the least to the most efficient: Random
+- **Routes** = discovery algorithms (`content/routes.ts`, I+D tab › Routes), from the least to the most efficient: Random
   (free, every new game starts on it and switches to it at ring 1; no levels, `maxLevel` 0), then the upgrades Circular,
   Trail, Scavenger, Prospector, Survey, each dearer (bluetreri, plus items collected as a requirement, `unlockRoute`). The world is still generated in circular order
   (saves from before Random was the default own Circular and keep it). Upgrades have levels 0..`maxLevel` (`upgradeRoute`,
@@ -95,7 +95,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `RouteDef.minLevel` (Circular 6, Trail 24, Scavenger 28, Prospector 32, Survey 38) and its level k `minLevel + ROUTE_LEVEL_STEP (2) × k`
   (`routeLevelNeeded`); the k-th work of a collection needs `WORK_LEVEL_FIRST` (18) … `WORK_LEVEL_LAST` (42) evenly
   (`workLevelNeeded`); both are capped at the map's top level (small test maps). `canUnlockRoute`/`unlockRoute`/
-  `canUpgradeRoute`/`upgradeRoute` take the world for this. The Routes tab shows only the owned routes and the **next**
+  `canUpgradeRoute`/`upgradeRoute` take the world for this. The I+D Routes sub-tab shows only the owned routes and the **next**
   locked one (the rest as "??? N more routes"); a work or level still out of reach shows as ??? with the level needed.
   The gates sit just below where the sim's greedy player gets there (`npm run sim` prints the level at each advance).
 - **Fleet** screen (≡ menu, or tapping the haul box with nothing selected): each rover's trip, hold and `Bot.log`
@@ -144,7 +144,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (cost per terrain + noise) walked by rings and angle: the explored area is always one connected patch (there is a test).
   Offline progress is exact. If generation changes, saves will see a different map.
 - Format: **always a portrait phone**. On mobile it fills the screen; on desktop it is a centred 9:19.5 phone frame (`#app` in `style.css`).
-  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rovers/Routes/Library/Goals tabs at the bottom. Rover parts, routes, goals and works are thin tables (`table()` in view.ts, `.part-table`/`.part-row`, columns in `--cols` per table; details in tooltips). The panel keeps one height for every tab and rover (`sizePanel`: the tallest, measured in one frame when rovers, routes or width change), so the map never jumps. The Library tab swaps the map for a shelf view (`library-view` over `map-wrap`, `drawShelves`: a shelf per collection, a spine per work, tap for its title; the map is not drawn meanwhile) and the panel sums up each collection. Dialogs open inside the phone.
+  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rovers/I+D/Library/Goals tabs at the bottom. I+D has sub-tabs (Routes, Dig, Pick-ups: `fillRD`, one per rover, greyed until that rover is built). Rover parts, routes, goals and works are thin tables (`table()` in view.ts, `.part-table`/`.part-row`, columns in `--cols` per table; details in tooltips). The panel keeps one height for every tab and rover (`sizePanel`: the tallest, measured in one frame when rovers, routes or width change), so the map never jumps. The Library tab swaps the map for a shelf view (`library-view` over `map-wrap`, `drawShelves`: a shelf per collection, a spine per work, tap for its title; the map is not drawn meanwhile) and the panel sums up each collection. Dialogs open inside the phone.
 - Start-up: `main.ts` only puts the title screen up and then imports `boot.ts` (its own chunk). `boot` reads the save and
   runs `loadWorld` (`load.ts`: `createWorld`, `applyPlan` per entry, `fromLegacy`, `recountItems`, `applyOffline`) in
   `load.worker.ts`, which posts progress and hands back the serialised state, the world (buffers transferred) and the

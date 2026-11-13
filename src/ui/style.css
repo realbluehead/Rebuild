@@ -255,14 +255,15 @@ button { font: inherit; color: inherit; }
 .rover-pick .pick.alert:not(.on) { color: var(--gold); animation: blink 1s steps(2) infinite; }
 .list.rover .build-card { grid-column: 1 / -1; }
 .list.rover .build-card .eff { white-space: normal; }
-.list.rover .order-card .choices[hidden] { display: none; }
-.list.rover .order-card .choices { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.list.rover .order-card .choices .what { color: var(--muted); font-size: 15px; min-width: 64px; }
-.list.rover .order-card .choices { gap: 2px 10px; }
-.list.rover .order-card .radio { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px; cursor: pointer; }
-.list.rover .order-card .radio::before { content: ''; width: 9px; height: 9px; flex: none; border: var(--u) solid var(--muted); }
-.list.rover .order-card .radio.on { color: var(--text); }
-.list.rover .order-card .radio.on::before { border-color: var(--gold); background: var(--gold); }
+.list .order-card .choices[hidden] { display: none; }
+.list .order-card .choices { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.list .order-card .choices .what { color: var(--muted); font-size: 15px; min-width: 64px; }
+.list .order-card .choices { gap: 2px 10px; }
+.list .order-card .radio { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px; cursor: pointer; }
+.list .order-card .radio::before { content: ''; width: 9px; height: 9px; flex: none; border: var(--u) solid var(--muted); }
+.list .order-card .radio.on { color: var(--text); }
+.list .order-card .radio.on::before { border-color: var(--gold); background: var(--gold); }
+.list .order-card .radio:disabled { opacity: 0.45; cursor: default; }
 .list.rover .build-card .buy { flex-wrap: wrap; gap: 2px 6px; }
 .list.rover .build-card .buy .part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 /* Goals: five pips per goal (claimed lit, reached but unclaimed blinking). */

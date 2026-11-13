@@ -245,7 +245,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Tabs: upgrades (bought with bluetreri), routes, and the library (works made from pages, notes and photos).
   const tabs = h('div', 'tabs');
   const tabUpg = h('button', 'px-btn tab on', 'Rovers');
-  const tabRoutes = h('button', 'px-btn tab', 'Routes');
+  const tabRoutes = h('button', 'px-btn tab', 'I+D');
   const tabLibrary = h('button', 'px-btn tab', 'Library');
   const tabGoals = h('button', 'px-btn tab', 'Goals');
   tabs.append(tabUpg, tabRoutes, tabLibrary, tabGoals);
@@ -362,7 +362,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     title: p === 'fullest' ? 'Drives to the fullest rover.' : `Drives to the ${kindById(p).name} first whenever it is full enough.`,
     pick: () => { const s = haulPolicy(); if (s) actions.haul(s.haulAt, p); },
   })));
-  list.append(orderCard);
   // Rover parts in a grid: everything within thumb reach, no scrolling. Each kind shows only its own parts.
   // The selected rover's parts as a table: part, level, now → next, gain in bluetreri/s, price.
   const partTable = h('div', 'part-table px-box');
@@ -389,6 +388,18 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Exploration routes: unlock with bluetreri once enough items are collected (not spent), then pick the one the Scout follows from the next ring.
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
+  // I+D: research for every rover, in sub-tabs: the Scout's routes, the Miner's dig order, the Hauler's pick-ups.
+  type RdTab = 'routes' | 'dig' | 'pickups';
+  let rdTab: RdTab = 'routes';
+  const rdPicker = h('div', 'rover-pick');
+  const rdTabs: { id: RdTab; kind: RoverKind; btn: HTMLButtonElement }[] = ([['routes', 'scout', 'Routes'], ['dig', 'miner', 'Dig'], ['pickups', 'hauler', 'Pick-ups']] as const)
+    .map(([id, k, text]) => {
+      const btn = h('button', 'px-btn pick', text);
+      btn.addEventListener('click', () => { rdTab = id; const s = current; if (s) fillRD(s); });
+      rdPicker.append(btn);
+      return { id, kind: k, btn };
+    });
+  routesList.append(rdPicker);
   const routesTable = table('routes-table', ['Route', 'Lv', 'Pace', '', 'Next level']);
   routesList.append(routesTable);
   const routeCards = ROUTES.map((rd) => {
@@ -412,7 +423,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   });
   // Only the next locked route is shown; the rest stay a mystery.
   const routesMore = h('p', 'info routes-more');
-  routesList.append(routesMore);
+  routesList.append(routesMore, orderCard);
   // Library tab: the shelves replace the map; the panel sums up each collection. Works are made on the Goals tab.
   const worksList = h('div', 'list goals library-sum');
   worksList.hidden = true;
@@ -530,6 +541,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     let tallest = 0;
     for (const l of lists) {
       lists.forEach((x) => { x.hidden = x !== l; });
+      if (l === routesList) {
+        const keepRd = rdTab;
+        for (const t of rdTabs) { rdTab = t.id; fillRD(s); tallest = Math.max(tallest, l.offsetHeight); }
+        rdTab = keepRd;
+        fillRD(s);
+        continue;
+      }
       if (l !== list) { tallest = Math.max(tallest, l.offsetHeight); continue; }
       const keep = kind;
       for (const k of ROVER_KINDS) {
@@ -543,6 +561,38 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = `${tallest}px`; });
   }
 
+  /** Fills the I+D tab for the picked sub-tab. A rover not built yet has its orders greyed out with a note. */
+  function fillRD(s: GameState) {
+    for (const t of rdTabs) {
+      t.btn.classList.toggle('on', t.id === rdTab);
+      t.btn.classList.toggle('locked', roverIndex(s, t.kind) < 0);
+    }
+    const routes = rdTab === 'routes';
+    routesTable.hidden = !routes;
+    const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
+    set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
+    routesMore.hidden = !routes || hiddenRoutes <= 0;
+    orderCard.hidden = routes;
+    if (routes) return;
+    const miner = rdTab === 'dig';
+    const built = roverIndex(s, miner ? 'miner' : 'hauler') >= 0;
+    set(orderName, miner ? 'Dig order' : 'Pick-ups');
+    set(orderDesc, !built
+      ? `Build the ${miner ? 'Miner' : 'Hauler'} first (Rovers tab).`
+      : miner
+        ? (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : '')
+        : `Leaves camp at ${Math.round(s.haulAt * 100)}% full, for ${s.haulPick === 'fullest' ? 'the fullest rover' : `the ${kindById(s.haulPick).name} first`}.`);
+    digRow.row.hidden = !miner;
+    atRow.row.hidden = miner;
+    pickRow.row.hidden = miner;
+    for (const r of [digRow, atRow, pickRow]) r.btns.forEach((b) => { b.disabled = !built; });
+    // Radio squares, not orange buttons: orange means something can be bought.
+    const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
+    digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
+    atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
+    pickRow.btns.forEach((b, q) => mark(b, (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
+  }
+
   /** Fills the Rovers tab for the picked kind. */
   function fillRover(s: GameState) {
     const sel = roverIndex(s, kind);
@@ -550,22 +600,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const kd = kindById(kind);
     buildCard.hidden = !!bot;
     partTable.hidden = !bot;
-    orderCard.hidden = !bot || bot.kind === 'scout';
-    if (bot && bot.kind !== 'scout') {
-      const miner = bot.kind === 'miner';
-      set(orderName, miner ? 'Dig order' : 'Pick-ups');
-      set(orderDesc, miner
-        ? (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : '')
-        : `Leaves camp at ${Math.round(s.haulAt * 100)}% full, for ${s.haulPick === 'fullest' ? 'the fullest rover' : `the ${kindById(s.haulPick).name} first`}.`);
-      digRow.row.hidden = !miner;
-      atRow.row.hidden = miner;
-      pickRow.row.hidden = miner;
-      // Radio squares, not orange buttons: orange means something can be bought.
-      const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
-      digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
-      atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
-      pickRow.btns.forEach((b, q) => mark(b, (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
-    }
     if (!bot) {
       const need = roverLevelNeeded(world, kind);
       const prevMissing = ROVER_KINDS.slice(0, ROVER_KINDS.indexOf(kd)).find((k) => roverIndex(s, k.id) < 0);
@@ -723,7 +757,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'When it spots an item the Scout leaves its exploring and goes for it (the one it is after is framed), as slowly as if it were exploring, and mines the bluetreri of every cell on its way. Then it comes back the same way.',
         'If its hold fills before it gets there, bad luck: it leaves the item for later and heads to camp.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
-        'The Routes tab sets how the rovers push into the dark. They start out wandering at random; each new route is more efficient than the last, and only the next one shows until you unlock it.',
+        'The I+D tab sets how the rovers push into the dark. They start out wandering at random; each new route is more efficient than the last, and only the next one shows until you unlock it.',
         'Each route is a planned path: the Scout and the Miner drive it faster (the ×N on its card), more the better the route and with every level.',
         'New routes cost bluetreri and ask for pages, notes or photos collected in total (they are not used up); the better ones ask for more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
         'The route you pick (or a new level) shows as Queued and takes over when the rovers finish the ring they are on (the card shows how much of it is done); what is already explored stays as it is.'] },
@@ -914,9 +948,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       if (!libView.hidden) drawShelves(s);
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
-      const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
-      set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
-      routesMore.hidden = hiddenRoutes <= 0;
+      fillRD(s);
       for (const c of routeCards) {
         const id = c.rd.id;
         const owned = s.routes.includes(id);
