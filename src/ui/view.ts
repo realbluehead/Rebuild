@@ -315,19 +315,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return b;
   });
   list.append(picker);
-  /** Upgrades (rover kind, part, level) the player has already seen affordable on the Rovers tab: only new ones blink. */
-  const seenBuys = new Set<string>();
-  /** Keys of the parts of a kind that can be bought now. */
-  const affordable = (s: GameState, k: RoverKind): string[] => {
+  /** Whether a kind has something to do: it can be built, or one of its parts can be bought now. */
+  const newFor = (s: GameState, k: RoverKind) => {
     const j = roverIndex(s, k);
-    if (j < 0) return [];
-    return UPGRADES.filter((u) => canBuy(s, u.id, 1, j)).map((u) => `${k}:${u.id}:${levelOn(s, u.id, s.bots[j])}`);
+    return canBuild(s, world, k) || (j >= 0 && UPGRADES.some((u) => canBuy(s, u.id, 1, j)));
   };
-  /** Whether a kind has something new: it can be built, or one of its parts became affordable since it was last shown. */
-  const newFor = (s: GameState, k: RoverKind) => canBuild(s, world, k) || affordable(s, k).some((key) => !seenBuys.has(key));
   function fillPicker(s: GameState) {
-    // What is on screen counts as seen.
-    if (!list.hidden) for (const key of affordable(s, kind)) seenBuys.add(key);
     ROVER_KINDS.forEach((k, q) => {
       const b = pickBtns[q];
       b.classList.toggle('on', k.id === kind);
