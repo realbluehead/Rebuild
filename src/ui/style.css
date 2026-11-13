@@ -286,14 +286,13 @@ button { font: inherit; color: inherit; }
 .goal-pips.works { gap: 1px; }
 .goal-pips.works i { height: 5px; }
 .list.goals .work-card .gain-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.list.library-sum .lib-info { grid-column: 1 / -1; margin: 0; }
 
 /* Library view: shelves in place of the map. */
 .library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 48px;
   background: repeating-linear-gradient(90deg, #16241f 0 22px, #13201c 22px 24px); overflow-y: auto; }
 .library-view[hidden] { display: none; }
 .map-wrap.library-open .zoom-ctl, .map-wrap.library-open .cell-info { display: none; }
-.map-wrap:not(.library-open) .lib-dark, .map-wrap:not(.library-open) .lib-caption { display: none; }
+.map-wrap:not(.library-open) .lib-dark, .map-wrap:not(.library-open) .lib-caption, .lib-caption[hidden] { display: none; }
 /* The torch: dark everywhere but a warm circle around (--x, --y), with dust motes in the beam. */
 .lib-dark { position: absolute; inset: 0; z-index: 6; pointer-events: none;
   background: radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), #ffe9a014, transparent 70%),

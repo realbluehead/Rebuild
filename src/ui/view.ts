@@ -251,7 +251,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   tabs.append(tabUpg, tabRoutes, tabLibrary, tabGoals);
   const showTab = (k: number) => {
     [tabUpg, tabRoutes, tabLibrary, tabGoals].forEach((t, q) => t.classList.toggle('on', q === k));
-    [list, routesList, worksList, goalsList].forEach((l, q) => { l.hidden = q !== k; });
+    // The Library tab folds the panel down to the tabs, so the shelves take the whole screen.
+    [list, routesList, null, goalsList].forEach((l, q) => { if (l) l.hidden = q !== k; });
     // The Library tab swaps the map for the shelves.
     libView.hidden = k !== 2;
     mapWrap.classList.toggle('library-open', k === 2);
@@ -441,9 +442,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Only the next locked route is shown; the rest stay a mystery.
   const routesMore = h('p', 'info routes-more');
   routesList.append(routesMore, orderCard);
-  // Library tab: the shelves replace the map; the panel sums up each collection. Works are made on the Goals tab.
-  const worksList = h('div', 'list goals library-sum');
-  worksList.hidden = true;
   /** Icons floating up from the map when something is found (no words). */
   const itemPopIcons = ITEM_SPRITES.map(spriteCanvas);
   const lorePopIcons = LORE_SPRITES.map(spriteCanvas);
@@ -451,25 +449,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
   /** Collections on show in the library (albums are hidden for now: they may be replaced by another kind of item). */
   const SHOWN = WORKS.filter((wd) => wd.id !== 'album');
-  const sums = SHOWN.map((wd) => {
-    const card = h('div', 'upg px-box');
-    const head = h('div', 'head');
-    head.append(h('span', 'name', wd.name));
-    const count = h('div', 'eff');
-    const bonus = h('div', 'gain-line');
-    card.append(head, count, bonus);
-    worksList.append(card);
-    return { wd, count, bonus };
-  });
-  // The archive: scraps of lore found (receipts, tickets, leaflets), read on the shelf view.
-  const archiveCard = h('div', 'upg px-box');
-  const archiveHead = h('div', 'head');
-  archiveHead.append(h('span', 'name', 'Archive'));
-  const archiveCount = h('div', 'eff');
-  archiveCard.append(archiveHead, archiveCount);
-  worksList.append(archiveCard);
-  const libInfo = h('p', 'info lib-info');
-  worksList.append(libInfo);
   // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
   const worksTable = table('works-table', ['Work', 'Made', 'Next', 'Bonus', 'Progress']);
   goalsList.append(worksTable);
@@ -664,7 +643,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const kind = world.lore[world.loreCells[Number(pk)]] - 1;
       set(libCaption, `${LORE[kind].name} #${Number(pk) + 1} · ${loreText(LORE[kind].id, Number(pk))}`);
     } else if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
-    else set(libCaption, `Library ${whole(libraryShare(s))} complete · tap a volume`);
+    // Nothing picked: no caption.
+    libCaption.hidden = !wd && pid !== 'lore';
   }
   /** Button content for a price (bluetreri + item icons), rebuilt only when it changes. */
   type Keyed<K extends string> = Record<K, string>;
@@ -689,7 +669,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     c[key] = text;
     btn.replaceChildren(h('span', '', text));
   }
-  panel.append(tabs, list, routesList, worksList, goalsList);
+  panel.append(tabs, list, routesList, goalsList);
 
   /** Every tab of the bottom panel (and every rover on the Rovers tab) gets the height of the tallest, so the map above
    *  does not jump when switching. Measured in one go (each tab shown in turn, each rover drawn, then back as it was)
@@ -699,7 +679,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const key = `${s.bots.map((b) => b.kind).join()}|${s.routes.length}|${panel.clientWidth}`;
     if (key === sizedKey) return;
     sizedKey = key;
-    const lists = [list, routesList, worksList, goalsList];
+    const lists = [list, routesList, goalsList];
     const was = lists.map((l) => l.hidden);
     for (const l of lists) l.style.minHeight = '';
     let tallest = 0;
@@ -1133,14 +1113,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
-      for (const x of sums) {
-        const n = s.works[x.wd.id];
-        set(x.count, `${n}/${WORKS_MAX} · ${whole(libraryShare(s, x.wd.id))}`);
-        set(x.bonus, `${x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
-      }
-      set(libInfo, `Library ${whole(libraryShare(s))} complete. New works are made on the Goals tab.`);
       const lore = loreFound(s, world);
-      set(archiveCount, `${lore.length}/${world.loreCells.length} found`);
       // New scraps float up from their cells as icons.
       if (loreSeen >= 0 && lore.length > loreSeen) {
         for (const k of lore.slice(-Math.min(6, lore.length - loreSeen))) {
