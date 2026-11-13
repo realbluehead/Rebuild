@@ -659,6 +659,7 @@ describe('game', () => {
   it('format', () => {
     expect(fmt(999)).toBe('999');
     expect(fmt(0.115)).toBe('0.12');
+    expect(fmt(4.24e-108)).toBe('0');
     expect(fmt(2.5)).toBe('2.5');
     expect(fmt(1234)).toBe('1.23k');
     expect(fmt('1e40')).toBe('1.00e40');

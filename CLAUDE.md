@@ -113,7 +113,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   bluetreri is paid. Route cards show collected/needed (red while short). Saves v8/v9 and v18 are recounted once on load
   (`s.recount` → `recountItems`: items = collected − spent on works at today's prices, never fewer than before).
 - End of the game: the tick where the map is done and everything is unloaded sets `s.doneAt` (play time) and
-  `TickEvents.completed`; `main.ts` shows the congratulations dialog (also after offline catch-up), once per device.
+  `TickEvents.completed`; `main.ts` shows the congratulations dialog (also after offline catch-up), once per device. From then on `boot.ts` stops ticking (only the view runs) and the rate at the top shows 0; `fmt` shows anything under 0.005 as 0.
 - Radar: each exploring rover spots items within `radar` cells of its own cell (`nearestItem`, item buckets in the world) and that
   rover fetches it (`trip` 'detour', `target`). `s.fetched` lists claimed items so exploring does not collect them again
   (pruned in `nextRing`). The detour starts from the rover's cell (`Bot.from`) and follows the straight path (`pathCells`)

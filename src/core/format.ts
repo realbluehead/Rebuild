@@ -5,6 +5,7 @@ const SUFFIXES = ['', 'k', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'D
 /** 1234 -> "1.23k", 1e40 -> "1.00e40". */
 export function fmt(v: DecimalSource): string {
   const d = D(v);
+  if (d.abs().lt(0.005)) return '0'; // (shown as 0.00 anyway; avoids 4.24e-108)
   if (d.lt(1000)) {
     if (d.eq(d.floor())) return d.toString();
     return d.lt(1) ? d.toFixed(2) : d.lt(10) ? d.toFixed(1) : d.floor().toString();

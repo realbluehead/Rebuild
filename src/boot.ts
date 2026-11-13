@@ -145,7 +145,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   // The rate at the top is measured as the rovers produce. Until there is something to measure it starts from the
   // average while away (long enough to cover a few unloads) or, failing that, from the estimate.
   const meter = new RateMeter(report && report.seconds >= 600 ? report.gold.toNumber() / report.seconds : goldPerSec(state, world), carried(state));
-  view.setRate(() => meter.rate);
+  view.setRate(() => (state.doneAt === undefined ? meter.rate : 0)); // (nothing more to produce once the game is over)
   const handle = (ev: ReturnType<typeof tick>, now: number) => {
     const loot = stats(state).loot;
     for (const i of ev.specials) view.specialFound(i, fmt(world.value[i] * loot), now);
@@ -165,7 +165,10 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   const frame = (now: number) => {
     const dt = (now - last) / 1000;
     last = now;
-    if (dt > MAX_FRAME_SEC) {
+    if (state.doneAt !== undefined) {
+      // The game is over (the whole map explored and everything at camp): the simulation stops; only the view runs.
+      acc = 0;
+    } else if (dt > MAX_FRAME_SEC) {
       // The tab was frozen: simulate it in chunks, like offline time.
       const r = applyOffline(state, world, Date.now() - dt * 1000, Date.now());
       meter.reset(r && r.seconds >= 600 ? r.gold.toNumber() / r.seconds : meter.rate, carried(state));
