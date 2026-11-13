@@ -491,8 +491,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   tipEl.hidden = true;
   document.body.append(tipEl);
   let tipTimer = 0;
+  /** The button the bubble is over: `render` refreshes its text while it shows. */
+  let tipOwner: HTMLElement | null = null;
   function showTip(el: HTMLElement, text: string, ms = 0) {
     if (!text) return;
+    tipOwner = el;
     tipEl.textContent = text;
     tipEl.hidden = false;
     const r = el.getBoundingClientRect();
@@ -502,7 +505,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     clearTimeout(tipTimer);
     if (ms) tipTimer = window.setTimeout(hideTip, ms);
   }
-  function hideTip() { tipEl.hidden = true; }
+  function hideTip() { tipEl.hidden = true; tipOwner = null; }
 
   // The library view: three shelves (books, records, albums), WORKS_MAX slots each. Tap a volume to read its title.
   const libView = h('div', 'library-view');
@@ -1004,6 +1007,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         const plain = n >= WORKS_MAX || early;
         set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${have}/${price}`);
         x.tip = plain ? '' : `${x.wd.item}s ${have}/${price}`;
+        if (tipOwner === x.btn) { if (x.tip) set(tipEl, x.tip); else hideTip(); }
         x.btn.classList.toggle('plain', plain);
         x.bar.style.setProperty('--p', `${plain ? 0 : Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
