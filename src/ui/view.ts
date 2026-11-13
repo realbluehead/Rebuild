@@ -3,7 +3,7 @@ import { HAUL_LEVELS, ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrde
 import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
-import { ROUTES, type RouteId } from '../content/routes';
+import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
 import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
@@ -400,26 +400,29 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       return { id, kind: k, btn };
     });
   routesList.append(rdPicker);
-  const routesTable = table('routes-table', ['Route', 'Lv', 'Pace', '', 'Next level']);
+  const routesTable = table('routes-table', ['Route', 'Lv', 'Pace', 'Use', 'Next']);
   routesList.append(routesTable);
+  // One line per route: name, level, pace, a radio square for the route in use, and the next step (unlock or level) for
+  // bluetreri. The items that step asks for (collected, not spent) go on a thin line under it.
   const routeCards = ROUTES.map((rd) => {
     const card = h('div', 'part-row');
     const state = h('span', 'lvl');
     const eff = h('span', 'eff');
-    const btn = h('button', 'px-btn buy');
-    btn.addEventListener('click', () => {
+    const btn = h('button', 'radio');
+    btn.setAttribute('role', 'radio');
+    btn.addEventListener('click', () => actions.chooseRoute(rd.id));
+    const up = h('button', 'px-btn buy up');
+    up.addEventListener('click', () => {
       const s = current;
       if (!s) return;
-      if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id);
+      if (s.routes.includes(rd.id)) actions.upgradeRoute(rd.id);
       else actions.unlockRoute(rd.id);
     });
-    // Next level: less entropy (shown once the route is unlocked).
-    const up = h('button', 'px-btn buy up');
-    up.addEventListener('click', () => actions.upgradeRoute(rd.id));
+    const needs = h('div', 'needs');
     card.title = `${rd.name}: ${rd.desc}`;
-    card.append(h('span', 'name', rd.name), state, eff, btn, up);
+    card.append(h('span', 'name', rd.name), state, eff, btn, up, needs);
     routesTable.append(card);
-    return { rd, card, state, eff, btn, up, btnKey: '', upKey: '' };
+    return { rd, card, state, eff, btn, up, needs, btnKey: '', upKey: '', needKey: '' };
   });
   // Only the next locked route is shown; the rest stay a mystery.
   const routesMore = h('p', 'info routes-more');
@@ -504,9 +507,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     else set(libCaption, `Library ${whole(libraryShare(s))} complete · tap a volume`);
   }
   /** Button content for a price (bluetreri + item icons), rebuilt only when it changes. */
-  type Keyed = { btnKey: string; upKey: string };
+  type Keyed<K extends string> = Record<K, string>;
   /** With `have`, the items are a requirement (collected so far / needed), not a price. */
-  function price(c: Keyed, key: keyof Keyed, btn: HTMLElement, gold: number, items: Partial<Record<ItemId, number>>, prefix = '', have?: Record<ItemId, number>) {
+  function price<K extends string>(c: Keyed<K>, key: K, btn: HTMLElement, gold: number, items: Partial<Record<ItemId, number>>, prefix = '', have?: Record<ItemId, number>) {
     const k = `${prefix}|${gold}|${JSON.stringify(items)}|${have ? Object.keys(items).map((id) => Math.min(have[id as ItemId], items[id as ItemId] ?? 0)).join(',') : ''}`;
     if (c[key] === k) return;
     c[key] = k;
@@ -521,7 +524,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       if (have) btn.lastElementChild!.classList.toggle('short', got < (n ?? 0));
     }
   }
-  function label(c: Keyed, key: keyof Keyed, btn: HTMLElement, text: string) {
+  function label<K extends string>(c: Keyed<K>, key: K, btn: HTMLElement, text: string) {
     if (c[key] === text) return;
     c[key] = text;
     btn.replaceChildren(h('span', '', text));
@@ -954,32 +957,44 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         const owned = s.routes.includes(id);
         const lv = routeLevel(s, id);
         c.card.hidden = !owned && c.rd !== nextRoute;
+        // The next step: unlock (not owned) or one more level; its items show under the row while any is still short.
+        let items: Partial<Record<ItemId, number>> = {};
+        let step = '';
         if (!owned) {
           const need = routeLevelNeeded(world, id);
           set(c.state, '');
-          set(c.eff, myLevel < need ? `Lv ${need}` : `×${routePace(id, 0).toFixed(2)}`);
-          if (myLevel < need) label(c, 'btnKey', c.btn, `Lv ${need}`);
-          else price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items, '', got);
-          c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
-          c.up.style.display = 'none'; // (the hidden attribute loses to the button's display rule)
+          set(c.eff, `×${routePace(id, 0).toFixed(2)}`);
+          c.btn.style.visibility = 'hidden';
+          if (myLevel < need) label(c, 'upKey', c.up, `Lv ${need}`);
+          else { price(c, 'upKey', c.up, c.rd.gold, {}); items = c.rd.items; step = 'Unlock'; }
+          c.up.title = myLevel < need ? `Unlocks at explorer level ${need}` : `Unlock ${c.rd.name}`;
+          c.up.classList.toggle('can', canUnlockRoute(s, world, id));
+          c.up.style.visibility = '';
         } else {
           const [ar, al] = activeSector(s, 0);
           const running = ar === id && al === lv;
           const picked = s.bots[0].route === id;
           const pending = picked && !running;
           set(c.state, c.rd.maxLevel ? `${lv}` : '–');
-          set(c.eff, pending ? `${whole(Math.min(0.99, ringDone))}` : `×${routePace(id, lv).toFixed(2)}`);
-          c.eff.title = pending ? `Takes over at the next ring (this one ${whole(Math.min(0.99, ringDone))} done)` : c.rd.short;
-          label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
-          c.btn.classList.toggle('can', !picked);
+          set(c.eff, `×${routePace(id, lv).toFixed(2)}`);
+          c.eff.title = c.rd.short;
+          c.btn.style.visibility = '';
+          c.btn.classList.toggle('on', picked);
+          c.btn.setAttribute('aria-checked', String(picked));
+          set(c.btn, pending ? whole(Math.min(0.99, ringDone)) : '');
+          c.btn.title = running ? 'In use' : pending ? `Takes over at the next ring (this one ${whole(Math.min(0.99, ringDone))} done)` : `Use ${c.rd.name} from the next ring`;
           const next = routeUpgradeCost(s, id);
-          c.up.style.display = c.rd.maxLevel ? '' : 'none'; // Random has no levels
+          c.up.style.visibility = c.rd.maxLevel ? '' : 'hidden'; // Random has no levels
           const upNeed = routeLevelNeeded(world, id, lv + 1);
-          if (next && myLevel < upNeed) label(c, 'upKey', c.up, `lv${lv + 1} · needs Lv ${upNeed}`);
-          else if (next) price(c, 'upKey', c.up, next.gold, next.items, `lv${lv + 1}`, got);
-          else label(c, 'upKey', c.up, `lv${c.rd.maxLevel} max`);
+          if (next && myLevel < upNeed) label(c, 'upKey', c.up, `Lv ${upNeed}`);
+          else if (next) { price(c, 'upKey', c.up, next.gold, {}); items = next.items; step = `lv${lv + 1}`; }
+          else label(c, 'upKey', c.up, 'max');
+          c.up.title = !next ? 'Top level' : myLevel < upNeed ? `Level ${lv + 1} at explorer level ${upNeed}` : `Level ${lv + 1}: less entropy, ×${ROUTE_PACE_LEVEL} pace`;
           c.up.classList.toggle('can', canUpgradeRoute(s, world, id));
         }
+        const short = Object.entries(items).some(([k, q]) => got[k as ItemId] < (q ?? 0));
+        c.needs.hidden = !short;
+        if (short) price(c, 'needKey', c.needs, 0, items, `${step} needs`, got);
       }
       tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
       for (const c of goalCards) {
