@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { newGame as freshGame } from './state';
-import { buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, newRover, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { newBot, newGame as freshGame, type GameState } from './state';
+import { build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
-import { UPGRADES } from '../content/upgrades';
+import { SCOUT_SHARE, UPGRADES, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
-import { applyPlan, arcOf, arcStarts, createWorld, sectorAt, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
+import { applyPlan, createWorld, sectorAt, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
 import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { WORKS, WORKS_MAX } from '../content/collection';
 
@@ -25,6 +25,12 @@ const newGame = (seed?: number) => {
   const s = freshGame(seed);
   s.routes.push('circular');
   chooseRoute(s, 'circular');
+  return s;
+};
+
+/** Adds rovers of these kinds (free and ready to work, as `build` leaves them once paid for). */
+const crew = (s: GameState, ...kinds: RoverKind[]) => {
+  for (const k of kinds) s.bots.push(newBot(k === 'hauler' ? 'idle' : 'out', 0, s.playTime, k));
   return s;
 };
 
@@ -131,7 +137,7 @@ describe('game', () => {
     expect(s.bots[0].trip).toBe('explore');
     expect(explored(s, world)).toBeGreaterThan(0);
     // Rovers carry the bluetreri until they unload it at camp.
-    expect(s.gold.toNumber() + carried(s)).toBeCloseTo(goldBetween(world, 0, explored(s, world)));
+    expect(s.gold.toNumber() + carried(s)).toBeCloseTo(goldBetween(world, 0, explored(s, world)) * SCOUT_SHARE); // (the Scout's share)
   });
 
   it('with a full hold the rover returns to camp, unloads and heads out again', () => {
@@ -153,35 +159,42 @@ describe('game', () => {
     expect(s.gold.toNumber()).toBeGreaterThanOrEqual(cap - 1e-6);
   });
 
-  it('with several rovers, each goes and returns on its own (not synchronised)', () => {
+  it('the Miner digs out what the Scout revealed, behind it, and waits when it catches up', () => {
     const s = newGame(42);
-    s.upgrades.explorers = 2;
     s.upgrades.speed = 12;
-    let staggered = 0;
-    let cargoDiffers = 0;
+    s.upgrades.cargo = 10;
+    crew(s, 'miner');
+    Object.assign(s.bots[1].up, { drill: 30, speed: 10 }); // fast: it catches up
+    let waited = 0;
+    let dug = 0;
     for (let k = 0; k < 20000 && explored(s, world) < 3000; k++) {
       tick(s, world, 0.2);
-      if (s.bots.length !== 3) continue;
-      // Much of the time they are not all doing the same thing, and each carries its own cargo.
-      if (new Set(s.bots.map((b) => b.trip)).size > 1) staggered++;
-      if (new Set(s.bots.map((b) => b.cargo.toFixed(6))).size > 1) cargoDiffers++;
+      expect(s.dug).toBeLessThanOrEqual(frontier(s, world) + 1e-9);
+      expect(s.dug).toBeGreaterThanOrEqual(dug);
+      dug = s.dug;
+      if (s.bots[1].trip === 'explore' && s.bots[1].walked === 1) waited++;
     }
-    expect(s.bots.length).toBe(3);
-    expect(staggered).toBeGreaterThan(50);
-    expect(cargoDiffers).toBeGreaterThan(50);
+    expect(s.dug).toBeGreaterThan(1000);
+    expect(waited).toBeGreaterThan(0);
+    expect(s.bots[1].log.trips).toBeGreaterThan(0);
   });
 
   it('one long tick gives the same as many short ones (exact offline)', () => {
     const a = newGame(42);
     const b = newGame(42);
-    for (const s of [a, b]) Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 2, tyres: 2, body: 1 });
+    for (const s of [a, b]) {
+      Object.assign(s.upgrades, { speed: 12, radar: 2, tyres: 2, body: 1, cargo: 3 });
+      crew(s, 'miner', 'hauler');
+    }
     tick(a, world, 900);
     for (let k = 0; k < 9000; k++) tick(b, world, 0.1);
     expect(a.weather.epoch).toBeGreaterThan(0); // the sky changed on the way
     expect(a.fetched).toEqual(b.fetched);
     expect(a.items).toEqual(b.items);
     expect(a.ring).toBe(b.ring);
+    expect(a.dug).toBeCloseTo(b.dug, 3);
     expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 3);
+    expect(a.bots[2].log.trips).toBeGreaterThan(0); // the Hauler did some runs
     a.bots.forEach((bot, j) => {
       expect(bot.trip).toBe(b.bots[j].trip);
       expect(bot.prog).toBeCloseTo(b.bots[j].prog, 3);
@@ -189,35 +202,39 @@ describe('game', () => {
     });
   });
 
-  it('upgrades are bought per rover, and rovers with different levels stay exact', () => {
+  it('rovers are built one of each, in order, to the Scout\'s standard; parts are per rover and stay exact', () => {
     const a = newGame(42);
     const b = newGame(42);
     for (const s of [a, b]) {
-      Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 1 });
-      s.bots[0].up.tyres = 3;
-      s.bots[0].up.radar = 2;
+      Object.assign(s.upgrades, { speed: 12, cargo: 4 });
+      Object.assign(s.bots[0].up, { tyres: 3, radar: 2 });
+      s.gold = D(1e9);
     }
-    // The second rover joins at the next ring, built like the weakest rover out (here the only one).
-    while (a.bots.length < 2) tick(a, world, 1);
-    while (b.bots.length < 2) tick(b, world, 1);
-    expect(a.bots[1].up).toEqual(a.bots[0].up);
-    a.bots[1].up.tyres = 0;
-    b.bots[1].up.tyres = 0;
-    expect(stats(a, a.bots[1]).grip).toBeGreaterThan(stats(a, a.bots[0]).grip);
-    expect(newRover(a).up.tyres).toBe(0); // the lowest level among them
-    a.gold = D(1e9);
-    b.gold = D(1e9);
-    const cost0 = costOf(UPGRADES.find((u) => u.id === 'speed')!, 12).toNumber();
+    expect(canBuild(a, world, 'hauler')).toBe(false); // the Miner comes first
+    expect(canBuild(a, world, 'scout')).toBe(false);
+    expect(canBuild(a, world, 'miner')).toBe(false); // explorer level
+    while (levelOf(a, world) < roverLevelNeeded(world, 'miner')) { tick(a, world, 1); tick(b, world, 1); }
+    expect(build(a, world, 'miner')).toBe(true);
+    expect(build(b, world, 'miner')).toBe(true);
+    expect(build(a, world, 'miner')).toBe(false); // one of each
+    expect(a.bots[1].kind).toBe('miner');
+    expect(a.bots[1].trip).toBe('out');
+    expect(a.bots[1].up.tyres).toBe(3); // the Scout's level
+    expect(a.bots[1].up.radar).toBe(0); // a Miner has no radar
+    expect(stats(a, a.bots[1]).radar).toBe(0);
+    expect(buy(a, world, 'radar', 1, 1)).toBe(false);
+    expect(buy(a, world, 'drill', 1, 0)).toBe(false); // nor a Scout a drill
+    const g0 = a.gold.toNumber();
     expect(buy(a, world, 'speed', 1, 1)).toBe(true);
-    expect(a.gold.toNumber()).toBe(1e9 - cost0); // its own level: 12 from the fleet + 0
-    expect(stats(a, a.bots[1]).speed).toBeGreaterThan(stats(a, a.bots[0]).speed);
+    expect(a.gold.toNumber()).toBeCloseTo(g0 - costOf(botes, 12).toNumber(), 3); // its own level: 12 from the fleet + 0
     expect(a.bots[0].up.speed).toBe(0);
     buy(b, world, 'speed', 1, 1);
-    // Tyres on one rover keep it on its cell; the rest of the game stays exact.
-    for (const s of [a, b]) buy(s, world, 'tyres', 2, 1);
+    for (const s of [a, b]) { buy(s, world, 'drill', 3, 1); buy(s, world, 'tyres', 2, 0); }
     tick(a, world, 600);
     for (let k = 0; k < 6000; k++) tick(b, world, 0.1);
     expect(a.ring).toBe(b.ring);
+    expect(a.dug).toBeGreaterThan(0);
+    expect(a.dug).toBeCloseTo(b.dug, 2);
     expect(a.gold.toNumber()).toBeCloseTo(b.gold.toNumber(), 2);
     a.bots.forEach((bot, j) => {
       expect(bot.trip).toBe(b.bots[j].trip);
@@ -225,36 +242,49 @@ describe('game', () => {
     });
   });
 
-  for (const [robots, radar] of [[1, 0], [3, 0], [1, 2], [3, 4]]) {
-    it(`with ${robots} rover(s) and radar ${radar}, all bluetreri, deposits and items arrive exactly once`, () => {
+  for (const [kinds, radar] of [[[], 0], [['miner'], 0], [[], 2], [['miner', 'hauler'], 0], [['miner', 'hauler'], 4]] as [RoverKind[], number][]) {
+    it(`Scout${kinds.map((k) => ` + ${k}`).join('')}, radar ${radar}: deposits and items arrive exactly once, and all the bluetreri once dug out`, () => {
       const s = newGame(42);
-      s.upgrades.explorers = robots - 1;
-      s.upgrades.speed = 40;
-      s.upgrades.cargo = 20;
-      s.upgrades.radar = radar;
+      Object.assign(s.upgrades, { speed: 40, cargo: 20, drill: 10, radar });
+      crew(s, ...kinds);
       const ev = run(s, 40000);
       expect(isComplete(s, world)).toBe(true);
       expect(explored(s, world)).toBeCloseTo(totalCells(world));
       expect(ev.specials).toBe(world.special.reduce((a, b) => a + b, 0));
       expect(ev.items.size).toBe(world.itemRanks.length);
       expect(s.items.page + s.items.note + s.items.photo).toBe(world.itemRanks.length);
-      expect(s.totalGold.toNumber() / world.goldPrefix[totalCells(world)]).toBeCloseTo(1, 6);
+      // The Scout scratches its share; the Miner digs out the rest.
+      expect(s.totalGold.toNumber() / world.goldPrefix[totalCells(world)]).toBeCloseTo(kinds.includes('miner') ? 1 : SCOUT_SHARE, 6);
+      expect(s.bots.every((b) => b.cargo === 0)).toBe(true);
     });
   }
 
-  it('a rover bought mid-ring starts working on the next ring', () => {
-    const s = newGame(42);
-    s.upgrades.speed = 20;
-    s.upgrades.cargo = 20;
-    while (s.ring < 3) tick(s, world, 0.05);
-    s.upgrades.explorers = 2;
-    const ring = s.ring;
-    tick(s, world, 0.0001);
-    expect(s.bots.length).toBe(1);
-    while (s.ring === ring) tick(s, world, 0.1);
-    expect(s.bots.length).toBe(3);
-    expect(s.ringRobots).toBe(3);
-    expect(s.bots[1].trip).toBe('out'); // leaves camp
+  it('the Hauler picks up loads in the field, so the others keep working', () => {
+    const play = (kinds: RoverKind[]) => {
+      const s = newGame(42);
+      Object.assign(s.upgrades, { speed: 12, cargo: 2 });
+      crew(s, ...kinds);
+      let waitedFull = 0;
+      for (let k = 0; k < 3000; k++) {
+        const before = s.bots.map((b) => b.trip);
+        const h = s.bots[2];
+        const coming = h?.trip === 'out' ? h.target : -1;
+        tick(s, world, 0.2);
+        // A rover the Hauler is driving to never drives to camp itself.
+        if (coming >= 0 && h.trip === 'out') expect(before[coming] !== 'home' && s.bots[coming].trip === 'home').toBe(false);
+        if (coming >= 0 && s.bots[coming].trip === 'explore' && s.bots[coming].cargo >= stats(s, s.bots[coming]).cargo * (1 - 1e-9)) waitedFull++;
+      }
+      return { s, waitedFull };
+    };
+    const alone = play(['miner']);
+    const hauled = play(['miner', 'hauler']);
+    const h = hauled.s.bots[2];
+    expect(h.log.trips).toBeGreaterThan(3);
+    expect(h.log.gold).toBeGreaterThan(0);
+    expect(hauled.s.bots[0].log.trips).toBeLessThan(alone.s.bots[0].log.trips);
+    expect(explored(hauled.s, world)).toBeGreaterThan(explored(alone.s, world));
+    expect(hauled.s.totalGold.toNumber()).toBeGreaterThan(alone.s.totalGold.toNumber());
+    expect(hauled.waitedFull).toBeGreaterThan(0);
   });
 
   it('the radar sends rovers to fetch items in the dark, before exploring reaches them', () => {
@@ -343,7 +373,8 @@ describe('game', () => {
   it('a detour walks at exploring pace and mines its path; a full hold sends the rover home and leaves the item', () => {
     const w = createWorld(42, SIZE);
     const s = newGame(42);
-    Object.assign(s.upgrades, { speed: 30, radar: 4, explorers: 1 });
+    Object.assign(s.upgrades, { speed: 30, radar: 4, drill: 10 });
+    crew(s, 'miner');
     const items = new Set<number>();
     let specials = 0;
     let gaveUp = 0;
@@ -381,9 +412,9 @@ describe('game', () => {
     const sum = (f: (b: (typeof s.bots)[number]) => number) => s.bots.reduce((x, b) => x + f(b), 0);
     expect(sum((b) => b.log.gold)).toBeCloseTo(s.totalGold.toNumber(), 6);
     expect(sum((b) => b.log.items)).toBe(items.size);
-    expect(sum((b) => b.log.cells)).toBe(totalCells(w)); // every cell exactly once
+    expect(s.bots[0].log.cells).toBe(totalCells(w)); // every cell explored exactly once
+    expect(s.bots[1].log.cells).toBe(totalCells(w)); // and dug out exactly once
     expect(sum((b) => b.log.gaveUp)).toBeGreaterThanOrEqual(gaveUp); // (several can happen within one tick)
-    expect(s.bots[1].log.since).toBeGreaterThan(0); // the second rover joined later
     const share = s.totalGold.toNumber() / w.goldPrefix[totalCells(w)];
     expect(share).toBeLessThanOrEqual(1 + 1e-9);
     expect(share).toBeGreaterThan(0.85);
@@ -407,14 +438,13 @@ describe('game', () => {
 
   it('an old save (total steps) is converted into a ring and rovers', () => {
     const s = newGame(42);
-    s.upgrades.explorers = 1;
     s.upgrades.speed = 40;
     s.upgrades.cargo = 20;
     s.legacyWalked = 2000;
     fromLegacy(s, world);
     expect(s.legacyWalked).toBeUndefined();
     expect(s.ring).toBeGreaterThan(0);
-    expect(s.bots.length).toBe(2);
+    expect(s.bots.length).toBe(1);
     expect(explored(s, world)).toBeGreaterThan(0);
     const ev = run(s, 100000);
     expect(isComplete(s, world)).toBe(true);
@@ -495,10 +525,10 @@ describe('game', () => {
   it('buying subtracts the cost and raises the speed', () => {
     const s = newGame(42);
     s.gold = D(botes.baseCost);
-    const before = stats(s).stepsPerSec;
+    const before = stats(s).speed;
     expect(buy(s, world, 'speed')).toBe(true);
     expect(s.gold.toNumber()).toBe(0);
-    expect(stats(s).stepsPerSec).toBeGreaterThan(before);
+    expect(stats(s).speed).toBeGreaterThan(before);
   });
 
   it('the cost of N levels is the sum of the individual ones', () => {
@@ -565,7 +595,8 @@ describe('routes', () => {
   /** Plays until the map is done, switching route (and level) at the given rings. Returns cells of items and deposits seen. */
   const play = (w: World, switches: [number, RouteId, number][], dt = 0.1) => {
     const s = newGame(42);
-    Object.assign(s.upgrades, { speed: 30, cargo: 20, radar: 2, explorers: 2 });
+    Object.assign(s.upgrades, { speed: 30, cargo: 20, radar: 2, drill: 10 });
+    crew(s, 'miner', 'hauler');
     s.routes = ROUTES.map((r) => r.id);
     const items = new Set<number>();
     let specials = 0;
@@ -643,55 +674,38 @@ describe('routes', () => {
     expect(again.order).toEqual(w.order);
   });
 
-  it('each rover can follow its own route in its slice of the map', () => {
+  it('a plan from an old save with one route per rover slice still replays; the Scout then follows its own', () => {
+    const plan: PlanEntry[] = [[5, 'circular', 0], [12, [['circular', 0], ['prospect', 0], ['random', 0]]]];
     const w = createWorld(42, SIZE);
-    const s = newGame(42);
-    Object.assign(s.upgrades, { speed: 30, cargo: 20, radar: 2, explorers: 2 });
-    s.routes = ROUTES.map((r) => r.id);
-    const items = new Set<number>();
-    let specials = 0;
-    let picked = false;
-    for (let t = 0; t < 100000 && !isComplete(s, w); t += 0.1) {
-      if (!picked && s.bots.length === 3 && s.ring >= 12) {
-        picked = true;
-        expect(chooseRoute(s, 'prospect', 1)).toBe(true);
-        expect(chooseRoute(s, 'random', 2)).toBe(true);
-        expect(chooseRoute(s, 'north', 0)).toBe(false); // not offered
-      }
-      const e = tick(s, w, 0.1);
-      specials += e.specials.length;
-      for (const i of e.items) { expect(items.has(i)).toBe(false); items.add(i); }
-    }
-    tick(s, w, 1);
-    expect(isComplete(s, w)).toBe(true);
-    const mixed = s.plan.at(-1)!;
-    expect(mixed[1]).toEqual([['circular', 0], ['prospect', 0], ['random', 0]]);
-    expect(items.size).toBe(w.itemRanks.length);
-    expect(specials).toBe(w.special.reduce((a, b) => a + b, 0));
-    expect(s.totalGold.toNumber() / w.goldPrefix[totalCells(w)]).toBeCloseTo(1, 6);
+    applyPlan(w, plan);
     // Loading the game rebuilds the same order from the plan.
     const again = createWorld(42, SIZE);
-    applyPlan(again, s.plan);
+    applyPlan(again, plan);
     expect(again.order).toEqual(w.order);
-    // Each rover's slice follows its route: the Prospector's slice is ordered differently from a plain circular one.
+    // Each slice follows its route: the Prospector's slice is ordered differently from a plain circular one.
     const plain = createWorld(42, SIZE);
-    applyPlan(plain, [...s.plan.slice(0, -1), [mixed[0], 'circular', 0]]);
-    const from = w.rings[mixed[0]];
+    applyPlan(plain, [[5, 'circular', 0], [12, 'circular', 0]]);
+    const from = w.rings[12];
     const slice = (x: World, k: number) => Array.from(x.order.subarray(from)).filter((i) => sectorAt(x, i, 3) === k).slice(0, 400);
     expect(slice(w, 1)).not.toEqual(slice(plain, 1));
-    // Each rover's arc of a ring is (nearly all) its own slice.
-    for (let ring = mixed[0]; ring < Math.min(ringCount(w), mixed[0] + 20); ring++) {
-      const st = arcStarts(w, ring, 3);
-      for (let j = 0; j < 3; j++) {
-        const k = arcOf(ring, j, 3);
-        let own = 0;
-        for (let r = st[k]; r < st[k + 1]; r++) if (sectorAt(w, w.order[r], 3) === j) own++;
-        expect(own).toBeGreaterThanOrEqual(0.6 * (st[k + 1] - st[k]));
-      }
+    // A game on that plan (ring 12 under way) goes on with one Scout and its own route from the next ring.
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 30, cargo: 20, radar: 2, drill: 10 });
+    crew(s, 'miner');
+    s.routes = ROUTES.map((r) => r.id);
+    s.plan = plan.map((e) => [...e] as PlanEntry);
+    s.ring = 12;
+    s.dug = from;
+    chooseRoute(s, 'trail');
+    const items = new Set<number>();
+    for (let t = 0; t < 100000 && !isComplete(s, w); t += 0.1) {
+      const e = tick(s, w, 0.1);
+      for (const i of e.items) { expect(items.has(i)).toBe(false); items.add(i); }
     }
-    // Picking the same route for everyone goes back to a single entry.
-    expect(chooseRoute(s, 'survey')).toBe(true);
-    expect(s.bots.every((b) => b.route === 'survey')).toBe(true);
+    expect(isComplete(s, w)).toBe(true);
+    expect(s.plan.at(-1)).toEqual([13, 'trail', 0]);
+    expect(items.size).toBe(w.itemRanks.filter((r) => r >= from).length);
+    expect(s.totalGold.toNumber() / (w.goldPrefix[totalCells(w)] - w.goldPrefix[from])).toBeCloseTo(1, 6);
   });
 
   it('with a route switch, one long tick still gives the same as many short ones', () => {
@@ -700,7 +714,8 @@ describe('routes', () => {
     const a = newGame(42);
     const b = newGame(42);
     for (const s of [a, b]) {
-      Object.assign(s.upgrades, { speed: 12, explorers: 1, radar: 2 });
+      Object.assign(s.upgrades, { speed: 12, radar: 2 });
+      crew(s, 'miner', 'hauler');
       s.routes.push('prospect');
       chooseRoute(s, 'prospect');
       s.routeLevels.prospect = 2;
@@ -790,7 +805,7 @@ describe('routes', () => {
     const rw = w;
     const s = newGame(42);
     while (levelOf(s, w) < routeLevelNeeded(w, 'circular', 1)) tick(s, w, 1);
-    Object.assign(s.upgrades, { speed: 20, explorers: 1 });
+    Object.assign(s.upgrades, { speed: 20 });
     s.gold = D(1e6);
     s.items.page = 100;
     expect(upgradeRoute(s, rw, 'circular')).toBe(true);
@@ -829,7 +844,8 @@ describe('items at camp', () => {
   it('pages, notes and photos are the player\'s only once the rover unloads', () => {
     const w = createWorld(42, SIZE);
     const s = newGame(42);
-    Object.assign(s.upgrades, { speed: 20, explorers: 1 });
+    Object.assign(s.upgrades, { speed: 20 });
+    crew(s, 'miner', 'hauler'); // (the Hauler carries the others' items too)
     let waited = false;
     for (let t = 0; t < 4000 && !(waited && s.bots.every((b) => b.found === 0)); t++) {
       tick(s, w, 0.5);

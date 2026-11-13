@@ -4,14 +4,17 @@ import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
 import type { RouteId } from '../content/routes';
+import type { RoverKind } from '../content/upgrades';
 import type { PlanEntry } from './world';
 
-/** What a rover is doing: exploring its part of the ring, returning to camp to unload, heading back out to
- *  the frontier, or fetching an item the radar spotted. */
-export type Trip = 'explore' | 'home' | 'out' | 'detour';
+/** What a rover is doing: working (the Scout exploring, the Miner digging), returning to camp to unload, heading back
+ *  out (the Hauler: to the rover it picks up from), fetching an item the radar spotted (Scout), or parked at camp
+ *  (the Hauler between runs; everyone once the map is done). */
+export type Trip = 'explore' | 'home' | 'out' | 'detour' | 'idle';
 
-/** Each rover works on its own: it has its own cargo, its own trip and its own part (arc) of the current ring. */
+/** Each rover works on its own: it has its own cargo and its own trip. */
 export interface Bot {
+  kind: RoverKind;
   trip: Trip;
   /** Steps made along its arc of the current ring. */
   prog: number;
@@ -21,9 +24,11 @@ export interface Bot {
    *  at exploring pace (each cell costs what exploring it costs) and back the same way (see `detourPlan`). */
   travel: number;
   travelLen: number;
-  /** Item (index into `world.itemRanks`) it is fetching, on a detour; otherwise -1. */
+  /** Item (index into `world.itemRanks`) it is fetching, on a detour; for the Hauler on its way out, the rover (index
+   *  into `bots`) it is driving to; otherwise -1. */
   target: number;
-  /** Rank of the cell the detour started from (its path is revealed on the way); otherwise -1. */
+  /** Rank of the cell the detour started from (its path is revealed on the way); for the Hauler, the rank where it
+   *  meets the rover it drives to; otherwise -1. */
   from: number;
   /** Pages, notes and photos it has picked up since it last left camp. */
   found: number;
@@ -61,8 +66,8 @@ export interface BotLog {
 
 export const newLog = (since = 0): BotLog => ({ since, cells: 0, steps: 0, gold: 0, best: 0, items: 0, trips: 0, detours: 0, gaveUp: 0 });
 
-export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0): Bot =>
-  ({ trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since), up: newUp(), route: 'random' });
+export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0, kind: RoverKind = 'scout'): Bot =>
+  ({ kind, trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since), up: newUp(), route: 'random' });
 
 export const newUp = (): Record<RoverStat, number> => Object.fromEntries(ROVER_STATS.map((id) => [id, 0])) as Record<RoverStat, number>;
 
@@ -97,14 +102,18 @@ export interface GameState {
   seed: number;
   /** Ring being explored now (all earlier ones are fully revealed). */
   ring: number;
-  /** How many arcs the current ring is split into (one per rover; new rovers join on the next ring). */
+  /** How many arcs the current ring is split into (1: only the Scout explores; older saves had one per rover). */
   ringRobots: number;
+  /** The Scout first, then the Miner and the Hauler once built. */
   bots: Bot[];
+  /** Rank up to which the Miner has dug out every cell (with fraction): cells revealed beyond it still hold what the
+   *  Scout left. */
+  dug: number;
   gold: Decimal;
   /** Total bluetreri earned since the start. */
   totalGold: Decimal;
-  /** Rover count, and the fleet's base level of every other upgrade (levels bought before they were per rover, save v14;
-   *  each rover adds its own `Bot.up`). */
+  /** The fleet's base level of every upgrade (levels bought before they were per rover, save v14; each rover adds its
+   *  own `Bot.up`). */
   upgrades: Record<StatId, number>;
   /** Items found and not spent yet. */
   items: Record<ItemId, number>;
@@ -139,6 +148,9 @@ export interface GameState {
   doneAt?: number;
   /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
   recount?: boolean;
+  /** Saves from before rover kinds (v15): the current ring restarts for the Scout alone once the world exists
+   *  (`toKinds`). */
+  kinds?: boolean;
   /** Old saves (v3 or earlier): total steps, converted once the world exists (`fromLegacy`). */
   legacyWalked?: number;
 }
@@ -149,6 +161,7 @@ export function newGame(seed = randomSeed()): GameState {
     ring: 0,
     ringRobots: 1,
     bots: [newBot()],
+    dug: 0,
     gold: D(0),
     totalGold: D(0),
     upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])) as Record<StatId, number>,

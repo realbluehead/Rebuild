@@ -254,3 +254,10 @@ button { font: inherit; color: inherit; }
 .rover-pick .pick-label { color: var(--muted); font-size: 16px; margin-right: 2px; }
 .rover-pick .pick { flex: 1; min-height: 26px; padding: 2px 0; font-family: var(--font-num); font-size: 9px; }
 .rover-pick .pick.on { filter: brightness(1.35); outline: 2px solid var(--ok); outline-offset: -2px; }
+/* Rover kinds: one not built yet looks dimmed; one that can be built now blinks. Its card spans the row. */
+.rover-pick .pick.locked { color: var(--muted); }
+.rover-pick .pick.alert:not(.on) { color: var(--gold); animation: blink 1s steps(2) infinite; }
+.list.rover .build-card { grid-column: 1 / -1; }
+.list.rover .build-card .eff { white-space: normal; }
+.list.rover .build-card .buy { flex-wrap: wrap; gap: 2px 6px; }
+.list.rover .build-card .buy .part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

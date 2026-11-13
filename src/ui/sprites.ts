@@ -385,7 +385,14 @@ const CAMP_ROWS = (lamp: string) => [
 const CAMP_KEYS = { k: PAL.ink, a: PAL.lamp, o: PAL.lampOff, m: PAL.metal, M: PAL.metalHi, b: PAL.hull, d: px('#2a2238'), y: PAL.gold };
 export const campFrames = (): HTMLCanvasElement[] => ['a', 'o'].map((l) => spriteCanvas(sprite(CAMP_ROWS(l), CAMP_KEYS)));
 
-export const robotFrames = (): HTMLCanvasElement[] => ROBOT_ROWS.map((rows) => spriteCanvas(sprite(rows, ROBOT_KEYS)));
+/** Hull colours of each kind of rover: the Scout grey-blue, the Miner orange, the Hauler green. */
+const HULLS: Record<'scout' | 'miner' | 'hauler', [number, number]> = {
+  scout: [PAL.hull, PAL.hullHi],
+  miner: [px('#b8642a'), px('#e08c43')],
+  hauler: [px('#4f7a3a'), px('#73a552')],
+};
+export const robotFrames = (kind: keyof typeof HULLS = 'scout'): HTMLCanvasElement[] =>
+  ROBOT_ROWS.map((rows) => spriteCanvas(sprite(rows, { ...ROBOT_KEYS, b: HULLS[kind][0], B: HULLS[kind][1] })));
 
 /** Bluetreri icon (currency): a faceted blue crystal. */
 export const COIN = sprite([

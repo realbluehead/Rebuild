@@ -1,10 +1,10 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
-import { UPGRADES, type StatId } from '../content/upgrades';
+import { ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type RoverKind, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeSector, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -15,11 +15,13 @@ import { COIN, FLAT, ITEM_SPRITES, spriteCanvas } from './sprites';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
-  /** Rover `rover` follows route `id` from the next ring (every rover without `rover`). */
-  chooseRoute(id: RouteId, rover?: number): void;
+  /** The Scout follows route `id` from the next ring. */
+  chooseRoute(id: RouteId): void;
   upgradeRoute(id: RouteId): void;
-  /** Buys a level of `id` for rover `rover` (the rover count is for the fleet). */
+  /** Buys a level of `id` for rover `rover` (index into `bots`). */
   buy(id: StatId, rover: number): void;
+  /** Builds the rover of kind `kind`. */
+  build(kind: RoverKind): void;
   craft(id: WorkId): void;
   zoom(delta: number): void;
   exportText(): string;
@@ -49,7 +51,7 @@ export function effectText(id: StatId, a: Stats, b: Stats): string {
     case 'body': return `storms −${Math.round(100 * (1 - a.armour))}→${pct(1 - b.armour)}`;
     case 'cargo': return `hold ${fmt(a.cargo)}→${fmt(b.cargo)}`;
     case 'radar': return `range ${a.radar}→${b.radar}`;
-    case 'explorers': return `rovers ${a.explorers}→${b.explorers}`;
+    case 'drill': return `dig ${fmt(a.drill)}→${fmt(b.drill)}/step`;
   }
 }
 
@@ -213,13 +215,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
     const i = selected;
     const r = world.rank[i];
-    const mined = revealed(s, world, r) || s.mined.includes(i);
+    const seen = revealed(s, world, r) || s.mined.includes(i);
+    const dug = r + 1 <= s.dug;
     const value = (world.goldPrefix[r + 1] - world.goldPrefix[r]) * st.loot;
     const it = world.item[i] ? ITEMS[world.item[i] - 1] : null;
-    const gone = it && (mined || s.fetched.includes(world.itemRanks.indexOf(r)));
+    const gone = it && (seen || s.fetched.includes(world.itemRanks.indexOf(r)));
+    const taken = gone ? ` · ${it!.name} taken` : '';
     set(cellTitle, `${TERRAINS[world.terrain[i]].name}${world.special[i] ? ' · deposit' : ''}`);
-    if (mined) set(cellLine, `Mined out (gave ${fmt(value)})${gone ? ` · ${it!.name} taken` : ''}`);
-    else set(cellLine, `${fmt(value)} bluetreri${gone ? ` · ${it!.name} taken` : ' · ???'}`);
+    if (dug) set(cellLine, `Dug out (gave ${fmt(value)})${taken}`);
+    else if (seen) set(cellLine, `${fmt(value * (1 - SCOUT_SHARE))} left to dig${taken}`);
+    else set(cellLine, `${fmt(value)} bluetreri${gone ? taken : ' · ???'}`);
     const storm = stormAt(s.weather.storms, world.size, i);
     set(cellSky, storm ? `${stormName(storm)}: −${pct((1 - stormFactor(storm)) * st.armour)} speed` : 'Sky: clear');
   }
@@ -227,7 +232,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const panel = h('aside', 'panel');
   // Tabs: upgrades (bought with bluetreri), routes, and the library (works made from pages, notes and photos).
   const tabs = h('div', 'tabs');
-  const tabUpg = h('button', 'px-btn tab on', 'Rover');
+  const tabUpg = h('button', 'px-btn tab on', 'Rovers');
   const tabRoutes = h('button', 'px-btn tab', 'Routes');
   const tabLibrary = h('button', 'px-btn tab', 'Library');
   tabs.append(tabUpg, tabRoutes, tabLibrary);
@@ -239,37 +244,41 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   tabRoutes.addEventListener('click', () => showTab(1));
   tabLibrary.addEventListener('click', () => showTab(2));
   const list = h('div', 'list rover');
-  // Upgrades and routes are per rover: pick which one the cards are for (the Rovers card is for the whole fleet). The
-  // Routes tab can also pick for every rover at once.
-  let rover = 0;
-  let allRoutes = false;
-  const pickers = [h('div', 'rover-pick'), h('div', 'rover-pick')];
-  list.append(pickers[0]);
-  let pickerCount = -1;
+  // One rover of each kind: pick which one the cards are for. A kind not built yet shows what it does and its price.
+  let kind: RoverKind = 'scout';
+  const picker = h('div', 'rover-pick');
+  const pickBtns = ROVER_KINDS.map((k) => {
+    const b = h('button', 'px-btn pick', k.name);
+    b.addEventListener('click', () => {
+      kind = k.id;
+      const s = current;
+      const j = s ? roverIndex(s, k.id) : -1;
+      if (j >= 0) { map.focus = j; map.goToRobot(); }
+    });
+    picker.append(b);
+    return b;
+  });
+  list.append(picker);
   function fillPicker(s: GameState) {
-    if (rover >= s.bots.length) rover = 0;
-    if (pickerCount !== s.bots.length) {
-      pickerCount = s.bots.length;
-      pickers.forEach((picker, q) => {
-        picker.replaceChildren(h('span', 'pick-label', 'Rover'));
-        s.bots.forEach((_, j) => {
-          const b = h('button', 'px-btn pick', `#${j + 1}`);
-          b.addEventListener('click', () => { rover = j; allRoutes = false; map.focus = j; map.goToRobot(); });
-          picker.append(b);
-        });
-        if (q === 1 && s.bots.length > 1) {
-          const all = h('button', 'px-btn pick all', 'All');
-          all.addEventListener('click', () => { allRoutes = true; });
-          picker.append(all);
-        }
-      });
-    }
-    pickers.forEach((picker, q) => {
-      const all = q === 1 && allRoutes && s.bots.length > 1;
-      [...picker.querySelectorAll('.pick')].forEach((b, j) => b.classList.toggle('on', all ? b.classList.contains('all') : j === rover));
+    ROVER_KINDS.forEach((k, q) => {
+      const b = pickBtns[q];
+      b.classList.toggle('on', k.id === kind);
+      b.classList.toggle('locked', roverIndex(s, k.id) < 0);
+      b.classList.toggle('alert', canBuild(s, world, k.id));
     });
   }
-  // Rover parts in a 3x2 grid: everything within thumb reach, no scrolling.
+  // Card for a rover not built yet: what it does, and Build.
+  const buildCard = h('div', 'upg px-box build-card');
+  const buildHead = h('div', 'head');
+  const buildName = h('span', 'name');
+  buildHead.append(buildName);
+  const buildDesc = h('div', 'eff');
+  const buildBtn = h('button', 'px-btn buy');
+  buildBtn.addEventListener('click', () => actions.build(kind));
+  buildCard.append(buildHead, buildDesc, buildBtn);
+  list.append(buildCard);
+  const buildKey = { btnKey: '', upKey: '' };
+  // Rover parts in a grid: everything within thumb reach, no scrolling. Each kind shows only its own parts.
   const rows = UPGRADES.map((u) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
@@ -280,23 +289,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const btn = h('button', 'px-btn buy');
     const cost = h('span');
     btn.append(h('i', 'coin'), cost);
-    btn.addEventListener('click', () => actions.buy(u.id, u.id === 'explorers' ? 0 : rover));
+    btn.addEventListener('click', () => { const s = current; if (s) actions.buy(u.id, roverIndex(s, kind)); });
     card.title = u.desc;
-    // Rovers: a new one waits for the next ring; the bar shows how much of the current ring is done.
-    const bar = h('div', 'bar slim');
-    const fill = h('i');
-    bar.append(fill);
-    bar.hidden = true;
     // Estimated gain in bluetreri per second from one more level.
     const gain = h('div', 'gain-line');
-    card.append(head, eff, gain, bar, btn);
+    card.append(head, eff, gain, btn);
     list.append(card);
-    return { def: u, lvl, eff, btn, cost, bar, fill, gain };
+    return { def: u, card, lvl, eff, btn, cost, gain };
   });
-  // Exploration routes: unlock with bluetreri + items, then pick the one the rovers follow from the next ring.
+  // Exploration routes: unlock with bluetreri + items, then pick the one the Scout follows from the next ring.
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
-  routesList.append(pickers[1]);
   const routeCards = ROUTES.map((rd) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
@@ -307,7 +310,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.addEventListener('click', () => {
       const s = current;
       if (!s) return;
-      if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id, allRoutes && s.bots.length > 1 ? undefined : rover);
+      if (s.routes.includes(rd.id)) actions.chooseRoute(rd.id);
       else actions.unlockRoute(rd.id);
     });
     // Next level: less entropy (shown once the route is unlocked).
@@ -387,7 +390,18 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   /** Fleet: every rover, what it is doing and its record so far. Refreshed while open. */
   let fleetBody: HTMLElement | null = null;
   let fleetAt = 0;
-  const TRIP_NAMES: Record<Bot['trip'], string> = { explore: 'Exploring', home: 'Driving to camp', out: 'Heading out', detour: 'Fetching an item' };
+  /** What a rover is doing, in words. */
+  function doing(s: GameState, b: Bot, j: number): string {
+    const h = roverIndex(s, 'hauler');
+    if (b.trip === 'explore' && h >= 0 && s.bots[h].trip === 'out' && s.bots[h].target === j && b.cargo >= stats(s, b).cargo * (1 - 1e-9)) return 'Waiting for the Hauler';
+    switch (b.trip) {
+      case 'explore': return b.kind === 'miner' ? (b.walked ? 'Waiting for the Scout' : 'Digging') : 'Exploring';
+      case 'home': return 'Driving to camp';
+      case 'out': return b.kind === 'hauler' ? `Driving to the ${s.bots[b.target]?.kind === 'miner' ? 'Miner' : 'Scout'}` : 'Heading out';
+      case 'detour': return 'Fetching an item';
+      case 'idle': return 'At camp';
+    }
+  }
   function openFleet() {
     const m = modal('help');
     m.box.append(h('div', 'name', 'Fleet'));
@@ -400,7 +414,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const s = current;
     if (!s || !fleetBody) return;
     if (!fleetBody.isConnected) { fleetBody = null; return; }
-    const st = stats(s);
     const body = fleetBody;
     body.replaceChildren();
     const line = (label: string, value: string) => {
@@ -409,21 +422,20 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       body.append(p);
     };
     s.bots.forEach((b, j) => {
-      body.append(h('h3', '', `Rover #${j + 1} · ${TRIP_NAMES[b.trip]}`));
+      body.append(h('h3', '', `${kindById(b.kind).name} · ${doing(s, b, j)}`));
       const bs = stats(s, b);
       line('Hold', `${fmt(b.cargo)} / ${fmt(bs.cargo)} (${whole(Math.min(1, b.cargo / bs.cargo))})`);
-      line('Levels', UPGRADES.filter((u) => u.id !== 'explorers').map((u) => `${u.name} ${levelOn(s, u.id, b)}`).join(' · '));
+      line('Levels', UPGRADES.filter((u) => hasPart(b, u.id)).map((u) => `${u.name} ${levelOn(s, u.id, b)}`).join(' · '));
       line('On the job', b.log.since < 0 ? 'since before records' : fmtTime(Math.max(0, s.playTime - b.log.since)));
-      line('Cells explored', fmt(b.log.cells));
+      if (b.kind !== 'hauler') line(b.kind === 'miner' ? 'Cells dug out' : 'Cells explored', fmt(b.log.cells));
       line('Distance', `${fmt(b.log.steps)} steps`);
       line('Bluetreri delivered', fmt(b.log.gold));
       line('Biggest load', fmt(b.log.best));
       line('Pages, notes, photos', fmt(b.log.items));
       line('Trips to camp', fmt(b.log.trips));
-      line('Detours', `${fmt(b.log.detours)} done · ${fmt(b.log.gaveUp)} given up`);
+      if (b.kind === 'scout') line('Detours', `${fmt(b.log.detours)} done · ${fmt(b.log.gaveUp)} given up`);
     });
-    const waiting = st.explorers - s.bots.length;
-    if (waiting > 0) body.append(h('p', 'info', `${waiting} more ${waiting === 1 ? 'rover leaves' : 'rovers leave'} camp when the current ring is done.`));
+    if (roverIndex(s, 'miner') >= 0) body.append(h('p', 'info', `Dug out: ${whole(s.dug / n)} of the map.`));
     if (s.bots.some((b) => b.log.since < 0)) body.append(h('p', 'info', 'Records started with this version: older rovers count from now.'));
   }
 
@@ -485,7 +497,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'Each cell yields bluetreri by terrain (and the farther from camp, the more). Rough terrain is slower to explore: streets are fast, jungle and rubble are slow. Found so far:'] },
       { on: seenSpecial, title: 'Deposits', lines: ['Cells with blue crystals are bluetreri deposits: they yield far more than the rest.'] },
       { on: u.speed > 0, title: 'Engine', lines: ['The rover explores and travels faster. Every upgrade costs more at each level; the button lights up when you can afford it.',
-        'Upgrades are fitted to one rover at a time: with several, pick which one at the top of the Rover tab (a green chevron marks it on the map). A new rover is built like your weakest one. Each card shows how much more bluetreri per second its next level would bring.'] },
+        'Upgrades are fitted to one rover at a time: pick which one at the top of the Rovers tab (a green chevron marks it on the map). A new rover is built to the Scout\'s standard. Each card shows how much more bluetreri per second its next level would bring.'] },
       { on: u.cargo > 0, title: 'Hold', lines: ['The rover can carry more bluetreri, so it returns to camp less often. A loaded rover drives home slowly: the fuller, the slower.'] },
       { on: u.tyres > 0, title: 'Tyres', lines: ['Better grip on rough ground: rubble, jungle, ruins and towers slow the rovers down less.'] },
       { on: s.weather.storms.length > 0 || u.body > 0, title: 'Weather', lines: [
@@ -501,8 +513,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.',
         `Each collection has ${WORKS_MAX} works and the tab shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
-        'A submarine-style radar sweeps around each rover, reaching as many cells as its range. It detects pages, notes and photos in the dark around that rover: they light up as the needle passes.',
-        'The rover that spots an item leaves its exploring and goes for it (the one it is after is framed), as slowly as if it were exploring, and mines the bluetreri of every cell on its way. Then it comes back the same way.',
+        'A submarine-style radar sweeps around the Scout, reaching as many cells as its range. It detects pages, notes and photos in the dark around it: they light up as the needle passes.',
+        'When it spots an item the Scout leaves its exploring and goes for it (the one it is after is framed), as slowly as if it were exploring, and mines the bluetreri of every cell on its way. Then it comes back the same way.',
         'If its hold fills before it gets there, bad luck: it leaves the item for later and heads to camp.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
         'The Routes tab sets how the rovers push into the dark. They start out wandering at random; each new route is more efficient than the last, and only the next one shows until you unlock it.',
@@ -511,7 +523,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: levelOf(s, world) >= 2, title: 'Explorer level', lines: [
         'Under the top bar: your explorer level and how far you are to the next. It grows with the cells explored, and each level asks for about a third more ground than the one before, so the first come fast and the last take hours.',
         'New routes, route levels and library works each need an explorer level; until you reach it, they stay hidden behind ???.'] },
-      { on: u.explorers > 0, title: 'Rovers', lines: ['One more rover leaves camp. It joins when the others start a new ring (the next band of dark ground); each ring is split between all of them, and each works at its own pace.'] },
+      { on: true, title: 'Rovers', lines: [
+        'The Scout explores: it is fast, but its hold is tiny and its drill only scratches each cell (a little of its bluetreri). The rest stays in the ground: revealed cells keep their colour until they are dug out.',
+        'The Rovers tab has a card for each kind. Kinds you have not built yet show what they do, their price and the explorer level they need.'] },
+      { on: roverIndex(s, 'miner') >= 0, title: 'Miner', lines: [
+        'The Miner is slow but digs fast: it follows the Scout over the ground already revealed, in the same order, and digs out what the Scout left. Dug-out cells turn grey.',
+        'When it catches up with the Scout it waits until the Scout is a few cells ahead. The Drill makes it dig faster.'] },
+      { on: roverIndex(s, 'hauler') >= 0, title: 'Hauler', lines: [
+        'The Hauler has a huge hold and no drill. It waits at camp until the Scout or the Miner is half full, drives out to it and brings its load (and its pages, notes and photos) to camp.',
+        'A rover that fills up while the Hauler is on its way waits for it instead of driving back, so it loses no time.'] },
       { on: true, title: 'Other', lines: [
         'If you close the game, the rovers keep going (up to 24 hours) and you see what they found when you return.',
         'Menu ≡: export and import your game (to move it to another device) or restart with a new map. Speed ×N speeds up time for testing.'] },
@@ -613,13 +633,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const prog = progress(s, world);
       const trips: TripView[] = s.bots.map((b) => ({
         kind: b.trip,
+        rover: b.kind,
         f: b.trip === 'detour' ? detourShare(b) : b.travelLen > 0 ? b.travel / b.travelLen : 1,
-        target: b.target >= 0 ? world.itemRanks[b.target] : undefined,
-        from: b.from >= 0 ? b.from : undefined,
+        target: b.kind === 'scout' && b.target >= 0 ? world.itemRanks[b.target] : undefined,
+        from: b.kind === 'scout' && b.from >= 0 ? b.from : undefined,
+        at: b.kind === 'miner' ? Math.min(n - 1, s.dug) : b.kind === 'hauler' && b.from >= 0 ? b.from : undefined,
       }));
       if (selected >= 0 && selected >= totalCells(world)) selected = -1;
-      map.focus = rover;
-      map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected);
+      const sel = roverIndex(s, kind);
+      map.focus = sel >= 0 ? sel : 0;
+      map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected, Math.floor(s.dug));
       showCell(s, st);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
@@ -649,29 +672,37 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       // How much of the current ring is done: new rovers, and a queued route or level, start with the next ring.
       const ringNow = progress(s, world);
       const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
-      const waiting = ringNow.b > ringNow.a ? Math.max(0, st.explorers - s.bots.length) : 0;
       fillPicker(s);
-      const bot = s.bots[rover];
+      const bot = sel >= 0 ? s.bots[sel] : undefined;
+      const kd = kindById(kind);
+      buildCard.hidden = !!bot;
+      if (!bot) {
+        const need = roverLevelNeeded(world, kind);
+        const prevMissing = ROVER_KINDS.slice(0, ROVER_KINDS.indexOf(kd)).find((k) => roverIndex(s, k.id) < 0);
+        set(buildName, kd.name);
+        set(buildDesc, kd.desc);
+        if (prevMissing) label(buildKey, 'btnKey', buildBtn, `Build the ${prevMissing.name} first`);
+        else if (levelOf(s, world) < need) label(buildKey, 'btnKey', buildBtn, `needs explorer Lv ${need}`);
+        else price(buildKey, 'btnKey', buildBtn, kd.gold, {}, 'Build');
+        buildBtn.classList.toggle('can', canBuild(s, world, kind));
+      }
       for (const r of rows) {
         const id = r.def.id;
-        const own = id !== 'explorers' && bot;
-        const lvl = levelOn(s, id, own ? bot : undefined);
+        r.card.hidden = !bot || !hasPart(bot, id);
+        if (r.card.hidden || !bot) continue;
+        const lvl = levelOn(s, id, bot);
         set(r.lvl, `lv${lvl}`);
         const cur = stats(s, bot);
-        if (own) bot.up[id]++; else s.upgrades[id]++;
+        bot.up[id]++;
         const next = stats(s, bot);
-        if (own) bot.up[id]--; else s.upgrades[id]--;
-        const wait = r.def.id === 'explorers' && waiting > 0;
-        r.bar.hidden = !wait;
-        if (wait) {
-          set(r.eff, `+${waiting} · ring ${whole(Math.min(0.99, ringDone))}`);
-          r.fill.style.width = `${Math.min(99, ringDone * 100).toFixed(1)}%`;
-        } else set(r.eff, effectText(r.def.id, cur, next));
+        bot.up[id]--;
+        set(r.eff, effectText(r.def.id, cur, next));
         set(r.cost, fmt(costOf(r.def, lvl)));
-        r.btn.classList.toggle('can', canBuy(s, id, 1, rover));
-        const g = upgradeGain(s, world, id, rover);
-        set(r.gain, g === null ? (r.def.id === 'radar' ? 'finds items' : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}% bluetreri/s`);
+        r.btn.classList.toggle('can', canBuy(s, id, 1, sel));
+        const g = upgradeGain(s, world, id, sel);
+        set(r.gain, g === null ? (id === 'radar' ? 'finds items' : bot.kind === 'hauler' ? (id === 'speed' ? 'quicker pick-ups' : 'bigger loads') : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}% bluetreri/s`);
       }
+      tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => canBuild(s, world, k.id)));
       const myLevel = levelOf(s, world);
       for (const x of works) {
         const n = s.works[x.wd.id];
@@ -684,8 +715,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
       tabLibrary.classList.toggle('alert', ready);
-      const forAll = allRoutes && s.bots.length > 1;
-      const who = forAll ? s.bots.map((_, j) => j) : [rover];
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
       set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
@@ -704,13 +733,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
           c.up.style.display = 'none'; // (the hidden attribute loses to the button's display rule)
         } else {
-          const running = who.every((j) => { const [r, l] = activeSector(s, j); return r === id && l === lv; });
-          const picked = who.every((j) => s.bots[j].route === id);
+          const [ar, al] = activeSector(s, 0);
+          const running = ar === id && al === lv;
+          const picked = s.bots[0].route === id;
           const pending = picked && !running;
-          const users = s.bots.flatMap((b, j) => (b.route === id ? [`#${j + 1}`] : []));
           set(c.state, c.rd.maxLevel ? `lv${lv}` : '');
-          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : s.bots.length > 1 && users.length ? `rovers ${users.join(' ')}` : c.rd.short);
-          label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : forAll ? 'Use for all' : 'Use');
+          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : c.rd.short);
+          label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
           c.btn.classList.toggle('can', !picked);
           const next = routeUpgradeCost(s, id);
           c.up.style.display = c.rd.maxLevel ? '' : 'none'; // Random has no levels
@@ -746,9 +775,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       showToast(`New: ${workTitle(wd, n - 1)}\n${workEffect(wd.effect, before, after)}`, 4200);
     },
     /** An upgrade was bought: what it changed. */
-    bought(id: StatId, level: number, before: Stats, after: Stats, rover?: number) {
+    bought(id: StatId, level: number, before: Stats, after: Stats, rover: RoverKind) {
       const u = UPGRADES.find((x) => x.id === id)!;
-      showToast(`${rover === undefined ? '' : `Rover #${rover + 1} · `}${u.name} lv${level}\n${effectText(id, before, after)}`, 2600);
+      showToast(`${kindById(rover).name} · ${u.name} lv${level}\n${effectText(id, before, after)}`, 2600);
     },
     /** Chosen speed multiplier (1 = normal). */
     gameSpeed: () => speed,

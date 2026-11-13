@@ -1,11 +1,12 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
 import { fmt } from './core/format';
 import { ZOOMS } from './content/world';
 import { routeById } from './content/routes';
+import { kindById } from './content/upgrades';
 import { applyOffline, type OfflineReport } from './save/offline';
 import { loadGame, saveGame, wipeGame } from './save/persist';
 import { deserialize, exportSave, importSave, serialize, type SaveData } from './save/save';
@@ -62,10 +63,16 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
 
   const view = createView(app, world, state, {
     buy: (id, rover) => {
-      const bot = id === 'explorers' ? undefined : state.bots[rover];
+      const bot = state.bots[rover];
+      if (!bot) return;
       const before = stats(state, bot);
       if (!buy(state, world, id, 1, rover)) return;
-      view.bought(id, levelOn(state, id, bot), before, stats(state, bot), bot ? rover : undefined);
+      view.bought(id, levelOn(state, id, bot), before, stats(state, bot), bot.kind);
+      void save();
+    },
+    build: (kind) => {
+      if (!build(state, world, kind)) return;
+      view.toast(`${kindById(kind).name} built!\nIt leaves camp now`);
       void save();
     },
     unlockRoute: (id) => {
@@ -79,9 +86,9 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       view.toast(`${routeById(id)!.name} lv${lv}: less entropy${state.bots.some((b) => b.route === id) ? '\nfrom the next ring' : ''}`);
       void save();
     },
-    chooseRoute: (id, rover) => {
-      if (!chooseRoute(state, id, rover)) return;
-      view.toast(`${rover === undefined ? 'All rovers' : `Rover #${rover + 1}`} · ${routeById(id)!.name}\nfrom the next ring`);
+    chooseRoute: (id) => {
+      if (!chooseRoute(state, id)) return;
+      view.toast(`Scout · ${routeById(id)!.name}\nfrom the next ring`);
       void save();
     },
     craft: (id) => {

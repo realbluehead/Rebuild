@@ -14,7 +14,7 @@ const seed = Number(process.argv[4] ?? 12345);
 
 const w0 = createWorld(seed);
 const s0 = newGame(seed);
-const value = () => goldPerSec(s0, w0) * Math.sqrt(stats(s0).stepsPerSec);
+const value = () => goldPerSec(s0, w0) * Math.sqrt(stats(s0).speed);
 for (let t = 0; t < warm * 3600; t++) {
   for (;;) {
     let best = UPGRADES[0].id;
@@ -33,7 +33,7 @@ for (let t = 0; t < warm * 3600; t++) {
   for (let k = 0; k < 1 / TICK_SEC; k++) tick(s0, w0, TICK_SEC);
 }
 const snap = serialize(s0, 0);
-console.log(`Start: ring ${s0.ring}, ${explored(s0, w0)} cells, rovers ${stats(s0).explorers}, ${s0.gold.toNumber().toFixed(0)} bluetreri\n`);
+console.log(`Start: ring ${s0.ring}, ${explored(s0, w0)} cells, rovers ${s0.bots.length}, ${s0.gold.toNumber().toFixed(0)} bluetreri\n`);
 
 function trial(route: RouteId, level: number): [number, number] {
   const { state: s } = deserialize(JSON.parse(JSON.stringify(snap)));

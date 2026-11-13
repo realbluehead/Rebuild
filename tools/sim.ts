@@ -1,10 +1,10 @@
 // Balance simulator: plays on its own with a greedy strategy and prints when it reaches each milestone.
 // Usage: npm run sim [-- hours [seed]]
-import { UPGRADES, type StatId } from '../src/content/upgrades';
+import { ROVER_KINDS, UPGRADES, type StatId } from '../src/content/upgrades';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { WORKS_MAX } from '../src/content/collection';
-import { buy, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, levelOf, levelOn, newRover, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, goldPerSec, isComplete, fleetSpeed, stats, TICK_SEC, tick } from '../src/core/game';
+import { build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -30,34 +30,19 @@ let zoom = 1;
 
 // Value of an upgrade: how much it raises the bluetreri/s reaching camp (and, a little, the exploring
 // speed, which is what opens the map) per unit of bluetreri spent.
-function value(): number {
-  // New rovers will work on the next ring: value them as if they were already there.
-  // (They join with the weakest rover's levels.)
-  const bots = s.bots;
-  s.bots = Array.from({ length: stats(s).explorers }, (_, j) => bots[j] ?? newRover({ ...s, bots }));
-  // Storms: roughly a tenth of the exploring happens under one, at about half speed (the body softens it).
-  let gold = 0;
-  let steps = 0;
-  for (const b of s.bots) {
-    const all = s.bots;
-    s.bots = [b];
-    const sky = 1 - 0.1 * 0.5 * stats(s, b).armour;
-    gold += goldPerSec(s, w) * sky;
-    steps += stats(s, b).speed * sky;
-    s.bots = all;
-  }
-  s.bots = bots;
-  return gold * Math.sqrt(steps);
-}
-/** Gain per bluetreri of one more level of `id` on rover `j` (the rover count: for the fleet). */
+const value = (): number => plannedRate(s, w) * Math.sqrt(stats(s).speed);
+/** Gain per bluetreri of one more level of `id` on rover `j`. The Hauler's parts are not in the estimate: it gets the
+ *  Scout's engine and hold levels at a tenth of the score, so it keeps up. */
 function score(id: StatId, j: number): number {
   const b = s.bots[j];
-  const own = id !== 'explorers';
+  if (!hasPart(b, id)) return -1;
+  const cost = costOf(UPGRADES.find((u) => u.id === id)!, levelOn(s, id, b)).toNumber();
+  if (b.kind === 'hauler') return b.up[id] < s.bots[0].up[id] ? 0.1 / cost : -1;
   const before = value();
-  if (own) b.up[id]++; else s.upgrades[id]++;
+  b.up[id]++;
   const after = value();
-  if (own) b.up[id]--; else s.upgrades[id]--;
-  return (after / before - 1) / costOf(UPGRADES.find((u) => u.id === id)!, levelOn(s, id, own ? b : undefined)).toNumber();
+  b.up[id]--;
+  return (after / before - 1) / cost;
 }
 
 /** Routes: the player unlocks each route as soon as it can (in order, the next one being better), switches to it and
@@ -90,25 +75,33 @@ for (let t = 0; t < hours * 3600; t += DT) {
       if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
     }
   }
+  // New rovers: as soon as they can be built.
+  for (const k of ROVER_KINDS) {
+    if (canBuild(s, w, k.id)) {
+      build(s, w, k.id);
+      mark(t, k.name);
+    }
+  }
   for (;;) {
-    let best: StatId = 'explorers';
+    let best: StatId = 'speed';
     let bestJ = 0;
-    let bestScore = score(best, 0);
+    let bestScore = -Infinity;
     for (const u of UPGRADES) {
-      if (u.id === 'explorers') continue;
       for (let j = 0; j < s.bots.length; j++) {
         const sc = score(u.id, j);
         if (sc > bestScore) { bestScore = sc; best = u.id; bestJ = j; }
       }
     }
-    if (!canBuy(s, best, 1, bestJ)) break;
+    if (bestScore < 0 || !canBuy(s, best, 1, bestJ)) break;
+    // Saving up for the next rover once its level is reached.
+    const nextKind = ROVER_KINDS.find((k) => !s.bots.some((b) => b.kind === k.id));
+    if (nextKind && levelOf(s, w) >= nextKind.level && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ]))).lt(nextKind.gold)) break;
     // Saving up: once the next route is open (explorer level and items) only spend what is above its price.
     const saveFor = useRoutes ? ROUTES.find((r) => !s.routes.includes(r.id)) : undefined;
     if (saveFor && levelOf(s, w) >= routeLevelNeeded(w, saveFor.id)
       && Object.entries(saveFor.items).every(([k, q]) => s.items[k as keyof typeof s.items] >= (q ?? 0))
-      && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, best === 'explorers' ? undefined : s.bots[bestJ]))).lt(saveFor.gold)) break;
+      && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ]))).lt(saveFor.gold)) break;
     buy(s, w, best, 1, bestJ);
-    if (best === 'explorers') mark(t, `rover #${stats(s).explorers}`);
   }
   for (let k = 0; k < DT / TICK_SEC; k++) {
     const ev = tick(s, w, TICK_SEC);
@@ -118,7 +111,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
     }
   }
   while (nextPct < pctMilestones.length && explored(s, w) >= n * pctMilestones[nextPct]) {
-    console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% of the map · ${fleetSpeed(s).toFixed(1)} steps/s · hold ${s.bots.map((b) => fmt(stats(s, b).cargo)).join('/')} · bluetreri ${fmt(s.totalGold)} · rovers ${s.bots.map((b) => Object.values(b.up).join(',')).join(' | ')} · works ${JSON.stringify(s.works)}`);
+    console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% of the map · ${fleetSpeed(s).toFixed(1)} steps/s · hold ${s.bots.map((b) => fmt(stats(s, b).cargo)).join('/')} · dug ${(100 * s.dug / n).toFixed(1)}% · bluetreri ${fmt(s.totalGold)} · rovers ${s.bots.map((b) => `${b.kind[0]}:${Object.values(b.up).join(',')}`).join(' | ')} · works ${JSON.stringify(s.works)}`);
     nextPct++;
   }
   if (isComplete(s, w)) break;

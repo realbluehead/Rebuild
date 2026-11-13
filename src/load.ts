@@ -1,7 +1,7 @@
 // Everything heavy at start-up, in one pure function so it can run in a worker (load.worker.ts) while the title screen
 // animates: build the world from the seed (or take it from the cache), replay the routes, convert old saves and simulate
 // the time away.
-import { fromLegacy, recountItems } from './core/game';
+import { fromLegacy, recountItems, toKinds } from './core/game';
 import { newGame } from './core/state';
 import { applyPlan, createWorld, type World } from './core/world';
 import { applyOffline } from './save/offline';
@@ -42,6 +42,7 @@ export function loadWorld(save: SaveData | null, now: number, progress: (p: numb
   applyPlan(world, state.plan.slice(from), (k, n) => progress(0.4 + (0.45 * (k + 1)) / n));
   fromLegacy(state, world); // saves from before independent rovers
   recountItems(state, world); // saves that made works at older prices
+  toKinds(state, world); // saves from before rover kinds
   progress(0.88);
   const r = loaded ? applyOffline(state, world, loaded.savedAt, now) : null;
   progress(0.95);

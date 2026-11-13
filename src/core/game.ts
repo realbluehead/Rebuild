@@ -1,20 +1,22 @@
 // Pure simulation: no DOM, clock or storage access. Everything is testable.
 //
-// Each rover works on its own. When a ring starts it is split into arcs (one per rover) and each rover explores
-// its arc at its own pace (terrain roughness and storms slow it down). When its hold is full, or it finishes its
-// arc with cargo, it drives back to camp (slower the more it carries) to unload and heads out again. The next ring
-// starts once every arc is done. Each rover's radar spots items around it; that rover leaves its arc to fetch them.
-// `tick` processes events (hold full, arc done, trip done, arriving at a cell where the weather changes or the
-// radar spots something, the sky changing) in time order, so one long step (offline) gives the same result as
-// many short ones.
+// Three kinds of rover, at most one of each. The Scout explores the current ring at its own pace (terrain roughness and
+// storms slow it down), taking a share of each cell's bluetreri as it goes; its radar spots items around it and it
+// leaves its way to fetch them. The Miner follows behind over the revealed cells, in the same order, digging out what
+// the Scout left (`GameState.dug`); it waits when it catches up. When a hold is full, the rover drives back to camp
+// (slower the more it carries) to unload and heads out again, unless the Hauler is already on its way to pick the load
+// up there. The Hauler waits at camp until a rover's hold is half full, drives out to it, takes its load and brings it
+// to camp. `tick` processes events (hold full, ring done, trip done, arriving at a cell where the weather changes or
+// the radar spots something, the Scout getting far enough ahead of a waiting Miner, the sky changing) in time order,
+// so one long step (offline) gives the same result as many short ones.
 import { D, Decimal } from './decimal';
 import { newBot, type Bot, type GameState } from './state';
-import { ROVER_STATS, type RoverStat, ARMOUR_MULT, BASE_CARGO, BASE_SPEED, CARGO_MULT, GRIP_MULT, LOAD_DRAG, radarRange, SPEED_MULT, TRAVEL_MULT, upgradeById, type StatId, type UpgradeDef } from '../content/upgrades';
+import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_AT, kindById, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
 import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteId } from '../content/routes';
-import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
+import { arcOf, arcStarts, goldBetween, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 
 export const TICK_RATE = 10; // ticks per second
@@ -36,42 +38,41 @@ export interface Stats {
   grip: number;
   /** Share of a storm's slowdown still felt (body; 1 = none). */
   armour: number;
-  explorers: number;
-  /** Exploring steps per second of all rovers together (clear sky). */
-  stepsPerSec: number;
+  /** Share of each cell's bluetreri it takes on its pass (Scout: a scratch; Miner: what is left; Hauler: none). */
+  share: number;
+  /** Miner: bluetreri (before multipliers) it digs out per step of work (0 for the others). */
+  drill: number;
 }
 
-/** Stats of rover `b` (the fleet's base levels plus its own; by default the first rover). */
+/** Stats of rover `b` (the fleet's base levels plus its own, by its kind; by default the Scout). */
 export function stats(s: GameState, b: Bot | undefined = s.bots[0]): Stats {
   const u = { ...s.upgrades };
   if (b) for (const id of ROVER_STATS) u[id] += b.up[id];
+  const kind = b?.kind ?? 'scout';
+  const kd = kindById(kind);
   const wk = (id: WorkId) => workById(id).bonus ** s.works[id];
-  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book');
+  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book') * kd.speed;
   const loot = wk('cd');
-  const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album');
-  const explorers = 1 + u.explorers;
+  const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album') * kd.cargo;
   return {
-    speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: radarRange(u.radar), cargo,
-    grip: GRIP_MULT ** u.tyres, armour: ARMOUR_MULT ** u.body, explorers, stepsPerSec: speed * explorers,
+    speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: kind === 'scout' ? radarRange(u.radar) : 0, cargo,
+    grip: GRIP_MULT ** u.tyres, armour: ARMOUR_MULT ** u.body,
+    share: kind === 'scout' ? SCOUT_SHARE : kind === 'miner' ? 1 - SCOUT_SHARE : 0,
+    drill: kind === 'miner' ? BASE_DRILL * DRILL_MULT ** u.drill : 0,
   };
 }
 
-/** A new rover is built to the standard of the weakest one already out: each of its levels is the lowest among them. It
- *  follows the route last picked. */
-export function newRover(s: GameState, b: Bot = newBot()): Bot {
-  if (s.bots.length) for (const id of ROVER_STATS) b.up[id] = Math.min(...s.bots.map((x) => x.up[id]));
-  b.route = s.route;
-  return b;
-}
+/** Level of upgrade `id` on rover `b` (the fleet's base plus its own). */
+export const levelOn = (s: GameState, id: StatId, b?: Bot): number => s.upgrades[id] + (b ? b.up[id] : 0);
 
-/** Level of upgrade `id` on rover `b` (the rover count is the fleet's). */
-export const levelOn = (s: GameState, id: StatId, b?: Bot): number => s.upgrades[id] + (b && id !== 'explorers' ? b.up[id as RoverStat] : 0);
+/** The rover of kind `k` (index into `bots`), or -1 while it is not built. */
+export const roverIndex = (s: GameState, k: RoverKind): number => s.bots.findIndex((b) => b.kind === k);
 
 /** Bluetreri all rovers can carry together. */
 export const capacity = (s: GameState): number => s.bots.reduce((a, b) => a + stats(s, b).cargo, 0);
 
-/** Steps per second of the whole fleet while exploring. */
-export const fleetSpeed = (s: GameState): number => s.bots.reduce((a, b) => a + stats(s, b).speed, 0);
+/** Exploring steps per second (the Scout's, clear sky). */
+export const fleetSpeed = (s: GameState): number => stats(s).speed;
 
 /** Bluetreri all rovers are carrying right now. */
 export const carried = (s: GameState): number => s.bots.reduce((a, b) => a + b.cargo, 0);
@@ -157,21 +158,83 @@ export function botCells(s: GameState, w: World): number[] {
   });
 }
 
+/** Map explored, every load at camp and, if there is a Miner, every cell dug out. */
 export const isComplete = (s: GameState, w: World): boolean =>
-  s.ring >= ringCount(w) && s.bots.every((b) => b.trip === 'explore' && b.cargo <= 0 && b.found <= 0);
+  s.ring >= ringCount(w) && (roverIndex(s, 'miner') < 0 || s.dug >= totalCells(w) - EPS)
+  && s.bots.every((b) => (b.kind === 'scout' ? b.trip === 'explore' : b.trip === 'idle') && b.cargo <= 0 && b.found <= 0);
 
-/** Average bluetreri per second reaching camp (per rover: explore until the hold is full + the round trip). */
+/** First rank the Scout has not revealed yet (everything before it is revealed, detours aside). */
+export function frontier(s: GameState, w: World, p = progress(s, w)): number {
+  if (s.ring >= ringCount(w)) return totalCells(w);
+  return p.a + Math.floor((p.reach[0] ?? 0) + 1e-7);
+}
+
+/** Steps to cover the cells before (fractional) rank x. */
+function stepsX(w: World, grip: number, x: number): number {
+  const n = totalCells(w);
+  if (x >= n) return stepsAt(w, grip, n);
+  const i = Math.floor(x);
+  const a = stepsAt(w, grip, i);
+  return a + (x - i) * (stepsAt(w, grip, i + 1) - a);
+}
+/** Seconds the Miner takes to dig from rank x to rank y: it crosses the cells and digs out what the Scout left. */
+export const digTime = (w: World, st: Stats, x: number, y: number): number =>
+  (stepsX(w, st.grip, y) - stepsX(w, st.grip, x) + (st.share * goldBetween(w, x, y)) / st.drill) / st.speed;
+/** Bluetreri the Miner digs out between ranks x and y. */
+const digGold = (w: World, st: Stats, x: number, y: number): number => st.share * goldBetween(w, x, y) * st.loot;
+/** Rank (≤ hi) reached from x when `f(x, y)` reaches `v` (f grows with y). */
+function rankWhere(x: number, hi: number, v: number, f: (x: number, y: number) => number): number {
+  if (f(x, hi) <= v) return hi;
+  let lo = x;
+  let up = hi;
+  for (let i = 0; i < 60 && up - lo > 1e-9; i++) {
+    const mid = (lo + up) / 2;
+    if (f(x, mid) <= v) lo = mid;
+    else up = mid;
+  }
+  return lo;
+}
+
+/** Ring (index) the cell of rank r belongs to. */
+function ringOfRank(w: World, r: number): number {
+  let lo = 0;
+  let hi = ringCount(w) - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (w.rings[mid] <= r) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+
+/** Average bluetreri per second reaching camp: the Scout explores until its hold is full and drives to camp and back,
+ *  the Miner digs until its hold is full and does the same (but never faster than the Scout reveals new ground once it
+ *  has caught up). With a Hauler nobody drives back: they keep working. */
 export function goldPerSec(s: GameState, w: World): number {
-  if (s.ring >= ringCount(w)) return 0;
-  const a = w.rings[s.ring];
-  const b = w.rings[s.ring + 1];
-  const d = homeDistance(s, w);
-  let sum = 0;
-  for (const bot of s.bots) {
-    const st = stats(s, bot);
-    const g = ((w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, stepsAt(w, st.grip, b) - stepsAt(w, st.grip, a))) * st.loot; // per step
+  const hauled = roverIndex(s, 'hauler') >= 0;
+  const trip = (st: Stats, perSec: number, d: number) => (hauled ? perSec : st.cargo / (st.cargo / perSec + d / homeSpeed(st, st.cargo) + d / st.travelSpeed));
+  /** Raw bluetreri per step of ring `k`, with that rover's grip. */
+  const perStep = (k: number, grip: number) => {
+    const a = w.rings[k];
+    const b = w.rings[k + 1];
+    return (w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, stepsAt(w, grip, b) - stepsAt(w, grip, a));
+  };
+  let scout = 0;
+  if (s.ring < ringCount(w)) {
+    const st = stats(s);
+    const g = perStep(s.ring, st.grip);
     if (!(g > 0)) return 0;
-    sum += st.cargo / (st.cargo / (g * st.speed) + d / homeSpeed(st, st.cargo) + d / st.travelSpeed);
+    scout = trip(st, st.share * g * st.loot * st.speed, homeDistance(s, w));
+  }
+  let sum = scout;
+  const j = roverIndex(s, 'miner');
+  const n = totalCells(w);
+  if (j >= 0 && s.dug < n - EPS) {
+    const st = stats(s, s.bots[j]);
+    const r = Math.min(n - 1, Math.floor(s.dug));
+    const g = perStep(ringOfRank(w, r), st.grip);
+    if (g > 0) {
+      const dig = (st.share * g * st.loot * st.speed) / (1 + (st.share * g) / st.drill);
+      // Once it has caught up, it digs only what the Scout leaves behind.
+      const caughtUp = s.ring < ringCount(w) && frontier(s, w) - s.dug < 4 * MINER_GAP;
+      sum += Math.min(trip(st, dig, homeDistance(s, w, r)), caughtUp ? ((1 - SCOUT_SHARE) / SCOUT_SHARE) * scout : Infinity);
+    }
   }
   return sum;
 }
@@ -180,36 +243,23 @@ export function goldPerSec(s: GameState, w: World): number {
 const STORM_SHARE = 0.1;
 const STORM_SLOW = 0.5;
 
-/** Estimated bluetreri per second at camp for the planning cards: `goldPerSec` with rovers still waiting for the next
- *  ring counted as if they were out, and an average storm slowdown (none before storms start). */
-function plannedRate(s: GameState, w: World): number {
-  const bots = s.bots;
-  s.bots = Array.from({ length: stats(s).explorers }, (_, j) => bots[j] ?? newRover({ ...s, bots }));
-  let rate = 0;
-  for (const b of s.bots) {
-    const one = s.bots;
-    s.bots = [b];
-    const sky = s.ring >= WEATHER_FROM_RING ? 1 - STORM_SHARE * STORM_SLOW * stats(s, b).armour : 1;
-    rate += goldPerSec(s, w) * sky;
-    s.bots = one;
-  }
-  s.bots = bots;
-  return rate;
+/** Estimated bluetreri per second at camp for the planning cards: `goldPerSec` with an average storm slowdown on the
+ *  Scout (none before storms start). */
+export function plannedRate(s: GameState, w: World): number {
+  return goldPerSec(s, w) * (s.ring >= WEATHER_FROM_RING ? 1 - STORM_SHARE * STORM_SLOW * stats(s).armour : 1);
 }
 
-/** How much one more level of upgrade `id` on rover `j` (the rover count: for the fleet) would raise the fleet's
- *  bluetreri per second (0.25 = +25%), or null when it does not bring bluetreri (the Radar finds items) or nothing is
+/** How much one more level of upgrade `id` on rover `j` would raise the bluetreri per second (0.25 = +25%), or null when
+ *  it does not bring bluetreri (the Radar finds items; the Hauler saves trips the estimate does not see) or nothing is
  *  left to explore. */
 export function upgradeGain(s: GameState, w: World, id: StatId, j = 0): number | null {
-  if (id === 'radar') return null;
+  const b = s.bots[j];
+  if (id === 'radar' || !b || b.kind === 'hauler') return null;
   const before = plannedRate(s, w);
   if (!(before > 0)) return null;
-  const b = s.bots[j];
-  if (id === 'explorers' || !b) s.upgrades[id]++;
-  else b.up[id]++;
+  b.up[id]++;
   const after = plannedRate(s, w);
-  if (id === 'explorers' || !b) s.upgrades[id]--;
-  else b.up[id]--;
+  b.up[id]--;
   return after / before - 1;
 }
 
@@ -302,13 +352,12 @@ function itemAt(w: World, r: number): number {
 const cellOf = (w: World, grip: number, a: Arc, prog: number): number =>
   Math.min(a.hi - 1, a.lo + Math.floor(arcReach(w, grip, a, prog + 1e-7)));
 
-/** Starts the next ring: it is split between all rovers, and new rovers leave camp. */
-function nextRing(s: GameState, w: World, explorers: number): void {
+/** Starts the next ring (the Scout explores all of it). */
+function nextRing(s: GameState, w: World): void {
   s.ring++;
   while (s.ring < ringCount(w) && w.rings[s.ring + 1] === w.rings[s.ring]) s.ring++;
-  while (s.bots.length < explorers) s.bots.push(newRover(s, newBot('out', homeDistance(s, w), s.playTime)));
   if (s.ring < ringCount(w) && sectorsKey(roverSectors(s)) !== sectorsKey(activeSectors(s))) switchRoute(s, w);
-  s.ringRobots = s.bots.length;
+  s.ringRobots = 1;
   for (const b of s.bots) b.prog = 0;
   // Detour paths and fetched items that exploring has caught up with are no longer needed.
   const a = s.ring < ringCount(w) ? w.rings[s.ring] : totalCells(w);
@@ -330,8 +379,8 @@ export function activeSector(s: GameState, j: number): Sector {
   const a = activeSectors(s);
   return a.length === 1 ? a[0] : a[j] ?? a[0];
 }
-/** [route, level] per rover as they picked them (it takes over at the next ring). */
-export const roverSectors = (s: GameState): Sector[] => s.bots.map((b) => [b.route, routeLevel(s, b.route)]);
+/** [route, level] the Scout picked (it takes over at the next ring). */
+export const roverSectors = (s: GameState): Sector[] => s.bots.filter((b) => b.kind === 'scout').map((b) => [b.route, routeLevel(s, b.route)]);
 /** Same key for the same order: one route for all compares equal whatever the rover count. */
 const sectorsKey = (x: readonly Sector[]): string => {
   const keys = x.map(([r, l]) => `${r}:${l}`);
@@ -381,40 +430,96 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
   /** Per rover: cells ahead already checked (nothing happens on arriving there) for this ring and sky. */
   const clearTo: number[] = [];
   let clearKey = '';
+  const n = totalCells(w);
+  const hj = roverIndex(s, 'hauler');
+  const mj = roverIndex(s, 'miner');
+  /** Whether the Hauler is on its way to rover j (which then waits for it instead of driving to camp). */
+  const coming = (j: number) => hj >= 0 && s.bots[hj].trip === 'out' && s.bots[hj].target === j;
   for (let guard = 0; left > EPS && guard < 500000; guard++) {
-    const explorers = stats(s).explorers;
     const sts = s.bots.map((b) => stats(s, b));
     const live = s.ring < ringCount(w);
     const key = `${s.ring}/${s.weather.epoch}`;
     if (key !== clearKey) { clearKey = key; clearTo.length = 0; }
+    const full = (j: number) => s.bots[j].cargo >= sts[j].cargo * (1 - EPS);
+    /** Bluetreri the Scout takes from each unit of a cell's value. */
+    const take = (j: number) => sts[j].loot * sts[j].share;
 
     // The sky changes.
     const nextSky = (s.weather.epoch + 1) * WEATHER_EPOCH;
     if (s.playTime >= nextSky - 1e-7) { s.weather = evolveWeather(s, w, Math.floor((s.playTime + 1e-7) / WEATHER_EPOCH)); continue; }
 
-    const starts = live ? arcStarts(w, s.ring, s.ringRobots) : [totalCells(w)];
-    const arcs = s.bots.map((_, j) => arcOfBot(s, w, j, starts, sts[j].grip));
+    const starts = live ? arcStarts(w, s.ring, s.ringRobots) : [n];
+    const arcs = s.bots.map((b, j) => (b.kind === 'scout' ? arcOfBot(s, w, j, starts, sts[j].grip) : null));
 
-    // Ring done (every arc finished): on to the next.
-    if (live && arcs.every((a, j) => !a || s.bots[j].prog >= a.len - EPS)) {
-      nextRing(s, w, explorers);
+    // Ring done (the Scout finished it): on to the next.
+    if (live && arcs.every((a, j) => s.bots[j].kind !== 'scout' || !a || s.bots[j].prog >= a.len - EPS)) {
+      nextRing(s, w);
       fetched = new Set(s.fetched); // a new route renumbers the items
       mined = null;
       continue;
     }
 
-    // Instant decisions: hold full, or arc done with cargo -> head to camp.
-    let changed = false;
-    s.bots.forEach((b, j) => {
-      if (b.trip !== 'explore') return;
+    let pr: Progress | null = null;
+    const prog = () => (pr ??= progress(s, w));
+    /** Rank of the cell rover j is on (where the Hauler meets it). */
+    const rankOf = (j: number): number => {
+      const b = s.bots[j];
+      if (b.kind === 'miner') return Math.min(n - 1, Math.floor(s.dug));
+      if (b.trip === 'detour') return b.from;
       const a = arcs[j];
-      const done = !a || b.prog >= a.len - EPS;
-      if (b.cargo >= sts[j].cargo * (1 - EPS) || (done && (b.cargo > 0 || b.found > 0))) {
-        goHome(s, w, b, a ? cellOf(w, sts[j].grip, a, b.prog) : undefined);
+      return a ? cellOf(w, sts[j].grip, a, b.prog) : n - 1;
+    };
+
+    // Instant decisions. The Hauler at camp drives out to the fullest rover once one is half full.
+    let changed = false;
+    if (hj >= 0 && s.bots[hj].trip === 'idle') {
+      let best = -1;
+      let most = HAUL_AT - 1e-6;
+      s.bots.forEach((b, j) => {
+        if (j === hj || (b.trip !== 'explore' && b.trip !== 'detour')) return;
+        const f = b.cargo / sts[j].cargo;
+        if (f > most) { best = j; most = f; }
+      });
+      if (best >= 0) {
+        const h = s.bots[hj];
+        h.trip = 'out';
+        h.target = best;
+        h.from = rankOf(best);
+        h.travel = 0;
+        h.travelLen = homeDistance(s, w, h.from);
+        changed = true;
+      }
+    }
+    // A full hold (or the Scout done with the map and still loaded, or the Miner done digging): to camp, unless the
+    // Hauler is on its way.
+    s.bots.forEach((b, j) => {
+      if (b.trip !== 'explore' || coming(j)) return;
+      if (b.kind === 'scout') {
+        const a = arcs[j];
+        const done = !a || b.prog >= a.len - EPS;
+        if (full(j) || (done && (b.cargo > 0 || b.found > 0))) {
+          goHome(s, w, b, a ? cellOf(w, sts[j].grip, a, b.prog) : undefined);
+          changed = true;
+        }
+      } else if (b.kind === 'miner' && (full(j) || (!live && s.dug >= n - EPS))) {
+        goHome(s, w, b, rankOf(j));
         changed = true;
       }
     });
     if (changed) continue;
+
+    // The Miner digs up to the Scout's frontier. Once it catches up it waits (`walked` = 1) until the Scout is
+    // MINER_GAP cells ahead, so it does not stop at every cell.
+    let front = n;
+    if (mj >= 0 && s.bots[mj].trip === 'explore') {
+      const b = s.bots[mj];
+      if (live) {
+        const p = prog();
+        front = frontier(s, w, p);
+        if (b.walked === 0 && s.dug >= front - EPS) b.walked = 1;
+        else if (b.walked === 1 && p.a + (p.reach[0] ?? 0) >= Math.ceil(s.dug - 1e-9) + MINER_GAP - 1e-6) b.walked = 0;
+      } else b.walked = 0;
+    }
 
     // Detours: each cell reached on the way out is mined (its bluetreri, deposit and item, unless exploring got there
     // first). A full hold ends the detour: the item is left for later and the rover heads to camp from where it is.
@@ -424,14 +529,14 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       if (!plan) return;
       if (b.travelLen <= 0) b.travelLen = plan.total; // a detour loaded from an older save
       const last = plan.path.length - 1;
-      let pr: Progress | null = null;
+      let dp: Progress | null = null;
       while (b.walked < last && b.travel >= plan.cum[b.walked + 1] - EPS * Math.max(1, plan.cum[b.walked + 1])) {
         b.walked++;
         const cell = plan.path[b.walked];
         const r = w.rank[cell];
-        pr ??= progress(s, w);
-        if (!revealed(s, w, r, pr) && !minedSet.has(cell)) {
-          b.cargo = Math.min(sts[j].cargo, b.cargo + w.value[cell] * sts[j].loot);
+        dp ??= progress(s, w);
+        if (!revealed(s, w, r, dp) && !minedSet.has(cell)) {
+          b.cargo = Math.min(sts[j].cargo, b.cargo + w.value[cell] * take(j));
           if (sts[j].cargo - b.cargo < sts[j].cargo * EPS * 10) b.cargo = sts[j].cargo;
           s.mined.push(cell);
           minedSet.add(cell);
@@ -465,7 +570,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     });
     if (changed) { mined = null; continue; }
 
-    // Radar: a rover that spots an item around it leaves its arc to fetch it.
+    // Radar: the Scout, when it spots an item around it, leaves its way to fetch it.
     const p = live && sts.some((x) => x.radar > 0) ? progress(s, w) : null;
     const spot = (cell: number, own: number, range: number) => range <= 0 ? -1 : nearestItem(w, w.order[cell], range, (k) => {
       const r = w.itemRanks[k];
@@ -475,7 +580,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       for (let j = 0; j < s.bots.length; j++) {
         const b = s.bots[j];
         const a = arcs[j];
-        if (b.trip !== 'explore' || !a || b.prog >= a.len - EPS) continue;
+        if (b.kind !== 'scout' || b.trip !== 'explore' || !a || b.prog >= a.len - EPS || full(j)) continue;
         const c = cellOf(w, sts[j].grip, a, b.prog);
         const k = spot(c, c, sts[j].radar);
         if (k < 0) continue;
@@ -492,12 +597,15 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
     }
     if (changed) continue;
 
-    // Each rover's speed right now: storms slow exploring and detours, a full hold slows the drive home.
+    // Each rover's speed right now: storms slow exploring and detours, a full hold slows the drive home; a full rover
+    // waiting for the Hauler, the Miner waiting for the Scout and the Hauler at camp stand still.
     const exploreCell: number[] = [];
     const speedOf = s.bots.map((b, j) => {
-      const a = arcs[j];
+      if (b.trip === 'idle') return 0;
       if (b.trip === 'explore') {
-        if (!a || b.prog >= a.len - EPS) return 0;
+        if (b.kind === 'miner') return b.walked === 0 && !full(j) && s.dug < front - EPS ? sts[j].speed : 0;
+        const a = arcs[j];
+        if (b.kind !== 'scout' || !a || b.prog >= a.len - EPS || full(j)) return 0;
         exploreCell[j] = cellOf(w, sts[j].grip, a, b.prog);
         return sts[j].speed * weatherFactor(s.weather.storms, w.size, w.order[exploreCell[j]], sts[j].armour);
       }
@@ -506,26 +614,41 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       return sts[j].travelSpeed;
     });
 
-    // When each rover's next event happens.
+    // When each rover's next event happens. While the Hauler waits at camp, a working hold getting half full is one.
     let step = Math.min(left, nextSky - s.playTime);
     const stopAt: (number | undefined)[] = [];
+    const watch = hj >= 0 && s.bots[hj].trip === 'idle';
+    /** Room left before rover j's next cargo event (half full for the Hauler, or full). */
+    const roomOf = (j: number) => {
+      const cap = sts[j].cargo;
+      const b = s.bots[j];
+      return watch && b.cargo < HAUL_AT * cap * (1 - 1e-9) ? HAUL_AT * cap - b.cargo : cap - b.cargo;
+    };
+    let minerHalf = false;
     s.bots.forEach((b, j) => {
       const a = arcs[j];
       const v = speedOf[j];
-      if (b.trip === 'explore') {
-        if (!a || b.prog >= a.len - EPS) return; // waits for the others to finish
+      if (v <= 0) return;
+      if (b.trip === 'explore' && b.kind === 'miner') {
+        // Up to the frontier, or where its hold fills.
+        const st = sts[j];
+        const room = roomOf(j);
+        minerHalf = room < st.cargo - b.cargo;
+        stopAt[j] = rankWhere(s.dug, front, room, (x, y) => digGold(w, st, x, y));
+        step = Math.min(step, digTime(w, st, s.dug, stopAt[j]!));
+      } else if (b.trip === 'explore' && a) {
         let target = a.len;
         // Where the hold fills up: find the exact point (bluetreri grows continuously with the steps).
-        const room = sts[j].cargo - b.cargo;
+        const room = roomOf(j);
         mined ??= minedIndex(s, w);
         const m = mined;
         const g0 = arcGold(w, sts[j].grip, a, b.prog, m);
-        if ((arcGold(w, sts[j].grip, a, a.len, m) - g0) * sts[j].loot >= room) {
+        if ((arcGold(w, sts[j].grip, a, a.len, m) - g0) * take(j) >= room) {
           let lo = b.prog;
           let hi = a.len;
           for (let i = 0; i < 50; i++) {
             const mid = (lo + hi) / 2;
-            if ((arcGold(w, sts[j].grip, a, mid, m) - g0) * sts[j].loot >= room) hi = mid;
+            if ((arcGold(w, sts[j].grip, a, mid, m) - g0) * take(j) >= room) hi = mid;
             else lo = mid;
           }
           target = hi;
@@ -553,21 +676,39 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         step = Math.min(step, (b.travelLen - b.travel) / v);
       }
     });
-    if (!live && s.bots.every((b) => b.trip === 'explore')) break; // map done and everyone unloaded
+    // A Miner waiting for the Scout wakes when the Scout is far enough ahead.
+    if (mj >= 0 && live && s.bots[mj].trip === 'explore' && s.bots[mj].walked === 1 && speedOf[0] > 0 && arcs[0] && s.bots[0].trip === 'explore') {
+      const a = arcs[0];
+      const r = Math.ceil(s.dug - 1e-9) + MINER_GAP;
+      if (r > a.lo && r < a.hi) step = Math.min(step, Math.max(0, (stepsAt(w, sts[0].grip, r) - stepsAt(w, sts[0].grip, a.lo) - s.bots[0].prog) / speedOf[0]));
+    }
+    if (!live && s.bots.every((b, j) => (b.kind === 'scout' ? b.trip === 'explore' && !coming(j) : b.trip === 'idle'))) break; // all done and unloaded
     step = Math.max(0, step);
 
     // Everyone advances `step` seconds.
     s.bots.forEach((b, j) => {
       const a = arcs[j];
       const v = speedOf[j];
-      if (b.trip === 'explore') {
-        if (!a || b.prog >= a.len - EPS) return;
+      if (v <= 0) return;
+      if (b.trip === 'explore' && b.kind === 'miner') {
+        const st = sts[j];
+        const from = s.dug;
+        const stop = stopAt[j]!;
+        const to = step >= digTime(w, st, from, stop) * (1 - 1e-12) ? stop : rankWhere(from, stop, step, (x, y) => digTime(w, st, x, y));
+        b.cargo = Math.min(st.cargo, b.cargo + digGold(w, st, from, to));
+        if (to === stop && stop < front) b.cargo = minerHalf ? Math.max(b.cargo, HAUL_AT * st.cargo) : st.cargo; // (stopped where it fills)
+        if (st.cargo - b.cargo < st.cargo * EPS * 10) b.cargo = st.cargo;
+        b.log.cells += Math.floor(to) - Math.floor(from);
+        b.log.steps += stepsX(w, st.grip, to) - stepsX(w, st.grip, from);
+        s.dug = to;
+      } else if (b.trip === 'explore') {
+        if (!a) return;
         const from = b.prog;
         const stop = stopAt[j]!;
         let to = Math.min(stop, from + v * step);
         if (to >= stop - EPS * Math.max(1, stop)) to = stop;
         mined ??= minedIndex(s, w);
-        const g = (arcGold(w, sts[j].grip, a, to, mined) - arcGold(w, sts[j].grip, a, from, mined)) * sts[j].loot;
+        const g = (arcGold(w, sts[j].grip, a, to, mined) - arcGold(w, sts[j].grip, a, from, mined)) * take(j);
         b.prog = to;
         b.log.steps += to - from;
         b.cargo = Math.min(sts[j].cargo, b.cargo + g);
@@ -589,6 +730,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         } else b.travel = Math.min(b.travelLen, b.travel + v * step);
         b.log.steps += b.travel - was;
         if (b.travel < b.travelLen - EPS) return;
+        b.travel = 0;
         if (b.trip === 'home') {
           const g = D(b.cargo);
           s.gold = s.gold.add(g);
@@ -602,9 +744,11 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           ITEMS.forEach((it, q) => { s.items[it.id] += b.bag[q] ?? 0; });
           b.bag = ITEMS.map(() => 0);
           b.found = 0;
-          b.trip = 'out';
-          b.travel = 0;
-          if (s.ring >= ringCount(w)) b.trip = 'explore';
+          // Back out (the same way), unless there is nothing left for it to do.
+          b.trip = b.kind === 'hauler' ? 'idle' : 'out';
+          if (b.kind === 'hauler') b.from = -1;
+          if (s.ring >= ringCount(w) && b.kind === 'scout') b.trip = 'explore';
+          if (s.ring >= ringCount(w) && b.kind === 'miner' && s.dug >= n - EPS) b.trip = 'idle';
         } else if (b.trip === 'detour') {
           // Back where it left its arc (the item was picked up on arrival).
           if (b.from >= 0) {
@@ -618,10 +762,24 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           b.walked = 0;
           b.log.detours++;
           b.trip = 'explore';
+        } else if (b.kind === 'hauler') {
+          // At the rover: it takes the load (as much as fits) and the items, and drives it to camp.
+          const t = s.bots[b.target];
+          if (t && (t.trip === 'explore' || t.trip === 'detour')) {
+            const load = Math.min(sts[j].cargo - b.cargo, t.cargo);
+            b.cargo += load;
+            t.cargo = t.cargo - load < EPS ? 0 : t.cargo - load;
+            t.bag.forEach((q, k) => { b.bag[k] += q; });
+            b.found += t.found;
+            t.bag = ITEMS.map(() => 0);
+            t.found = 0;
+          }
+          b.target = -1;
+          goHome(s, w, b, b.from); // (it keeps `from`: where it is driving back from)
         } else {
           b.trip = 'explore';
+          b.walked = 0;
         }
-        b.travel = 0;
       }
     });
     left -= step;
@@ -676,9 +834,17 @@ export function recountItems(s: GameState, w: World): void {
 export function fromLegacy(s: GameState, w: World): void {
   if (s.legacyWalked === undefined) return;
   s.ring = Math.min(ringCount(w), ringAt(w, s.legacyWalked));
-  s.bots = Array.from({ length: stats(s).explorers }, () => newBot());
-  s.ringRobots = s.bots.length;
+  s.bots = [newBot()];
+  s.ringRobots = 1;
   delete s.legacyWalked;
+}
+
+/** Saves from before rover kinds: rover #1 is now the Scout (save.ts restarts the ring under way for it when the ring
+ *  was split between several rovers) and everything explored before counts as dug out. */
+export function toKinds(s: GameState, w: World): void {
+  if (!s.kinds) return;
+  delete s.kinds;
+  s.dug = s.ring >= ringCount(w) ? totalCells(w) : w.rings[s.ring];
 }
 
 function collect(w: World, k: number, ev: TickEvents, b: Bot): void {
@@ -761,25 +927,27 @@ export function craft(s: GameState, w: World, id: WorkId): boolean {
   return true;
 }
 
-/** Whether the next `qty` levels of `id` are affordable: for rover `j` (the rover count is for the fleet). */
+/** Whether rover `b` has part `id` (each kind only has the parts it uses). */
+export const hasPart = (b: Bot | undefined, id: StatId): boolean => !!b && kindById(b.kind).parts.includes(id);
+
+/** Whether the next `qty` levels of `id` for rover `j` are affordable. */
 export function canBuy(s: GameState, id: StatId, qty = 1, j = 0): boolean {
   const def = upgradeById(id);
-  return !!def && s.gold.gte(costOf(def, levelOn(s, id, s.bots[j]), qty));
+  return !!def && hasPart(s.bots[j], id) && s.gold.gte(costOf(def, levelOn(s, id, s.bots[j]), qty));
 }
 
-/** Buys `qty` levels of `id` for rover `j` (the rover count: one more rover for the fleet). */
+/** Buys `qty` levels of `id` for rover `j`. */
 export function buy(s: GameState, w: World, id: StatId, qty = 1, j = 0): boolean {
   const def = upgradeById(id);
   const bot = s.bots[j];
-  if (!def || (id !== 'explorers' && !bot)) return false;
+  if (!def || !hasPart(bot, id)) return false;
   const cost = costOf(def, levelOn(s, id, bot), qty);
   if (s.gold.lt(cost)) return false;
   s.gold = s.gold.sub(cost);
-  if (id === 'explorers') { s.upgrades.explorers += qty; return true; }
-  // Tyres change how many steps each cell costs: keep the rover on the same cell of its arc.
-  const before = id === 'tyres' ? progress(s, w) : null;
+  // Tyres change how many steps each cell costs: keep the Scout on the same cell of its arc.
+  const before = id === 'tyres' && bot.kind === 'scout' ? progress(s, w) : null;
   const oldGrip = stats(s, bot).grip;
-  bot.up[id as RoverStat] += qty;
+  bot.up[id] += qty;
   if (before) {
     const grip = stats(s, bot).grip;
     // A detour keeps the same share of its way.
@@ -791,6 +959,30 @@ export function buy(s: GameState, w: World, id: StatId, qty = 1, j = 0): boolean
     const k = before.robotOf.indexOf(j);
     if (k >= 0) bot.prog = stepsForReach(w, grip, before.starts[k], before.starts[k + 1], before.reach[k]);
   }
+  return true;
+}
+
+/** Explorer level needed to build a rover of kind `k`. */
+export const roverLevelNeeded = (w: World, k: RoverKind): number => capLevel(w, kindById(k).level);
+
+/** Whether a rover of kind `k` can be built now: one of each, in order (the Miner before the Hauler), with its price
+ *  and explorer level. */
+export function canBuild(s: GameState, w: World, k: RoverKind): boolean {
+  const q = ROVER_KINDS.findIndex((d) => d.id === k);
+  if (q <= 0 || roverIndex(s, k) >= 0 || roverIndex(s, ROVER_KINDS[q - 1].id) < 0) return false;
+  return levelOf(s, w) >= roverLevelNeeded(w, k) && s.gold.gte(kindById(k).gold);
+}
+
+/** Builds a rover of kind `k`, to the Scout's standard (it gets the Scout's levels of the parts they share). The Miner
+ *  heads out to where there is digging to do; the Hauler waits at camp. */
+export function build(s: GameState, w: World, k: RoverKind): boolean {
+  if (!canBuild(s, w, k)) return false;
+  s.gold = s.gold.sub(kindById(k).gold);
+  const b = newBot(k === 'hauler' ? 'idle' : 'out', k === 'miner' ? homeDistance(s, w, Math.min(totalCells(w) - 1, Math.floor(s.dug))) : 0, s.playTime, k);
+  const scout = s.bots[0];
+  for (const id of kindById(k).parts) if (hasPart(scout, id)) b.up[id] = scout.up[id];
+  b.route = s.route;
+  s.bots.push(b);
   return true;
 }
 
@@ -834,12 +1026,11 @@ export function upgradeRoute(s: GameState, w: World, id: RouteId): boolean {
   return true;
 }
 
-/** Picks the route rover `j` follows in its slice of the map from the next ring on (every rover without `j`). New rovers
- *  follow the last route picked. */
-export function chooseRoute(s: GameState, id: RouteId, j?: number): boolean {
-  if (!s.routes.includes(id) || (j !== undefined && !s.bots[j])) return false;
+/** Picks the route the Scout follows from the next ring on. */
+export function chooseRoute(s: GameState, id: RouteId): boolean {
+  if (!s.routes.includes(id)) return false;
   s.route = id;
-  for (const [k, b] of s.bots.entries()) if (j === undefined || k === j) b.route = id;
+  for (const b of s.bots) b.route = id;
   return true;
 }
 

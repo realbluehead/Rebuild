@@ -17,6 +17,9 @@
 // v12: each rover keeps a lifetime record (`Bot.log`); older rovers start it at 0 with `since` -1.
 // v13: items a rover picks up wait in its `bag` until it unloads at camp (older ones were already counted: empty bags).
 // v14: upgrades are bought per rover (`Bot.up`); the levels bought before stay in `upgrades` as every rover's base.
+// v15: each rover follows its own route (`Bot.route`; plan entries with one [route, level] per rover).
+// v16: rover kinds (`Bot.kind`: Scout, Miner, Hauler, one of each) and the Miner's progress (`dug`). Rover #1 becomes
+//      the Scout; the other rovers, their parts and the Rovers upgrade are refunded, and their load goes to camp.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -24,9 +27,13 @@ import { WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 import type { PlanEntry } from '../core/world';
-import { ROVER_STATS } from '../content/upgrades';
+import { ROVER_KINDS, ROVER_STATS, UPGRADES, type RoverKind } from '../content/upgrades';
+import { costOf } from '../core/game';
 
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
+
+/** The Rovers upgrade (one more rover per level) before v16, refunded then. */
+const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
 
 /** What the v7 routes cost, refunded when they are withdrawn (random stays unlocked, but its old price is refunded too). */
 const V7_PRICES: Record<string, [number, Record<string, number>]> = {
@@ -46,6 +53,7 @@ export interface SaveData {
   ring: number;
   ringRobots: number;
   bots: Bot[];
+  dug: number;
   /** Only in saves migrated from v3 or earlier: the old total steps. */
   legacyWalked?: number;
   gold: string;
@@ -66,6 +74,7 @@ export interface SaveData {
   playTime: number;
   doneAt?: number;
   recount?: boolean;
+  kinds?: boolean;
 }
 
 type RawSave = { v: number } & Record<string, unknown>;
@@ -144,6 +153,32 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   13: (s) => ({ ...s, v: 14 }),
   // v14 -> v15: every rover follows the route the fleet had picked.
   14: (s) => ({ ...s, v: 15, bots: (Array.isArray(s.bots) ? (s.bots as Bot[]) : []).map((b) => ({ ...b, route: s.route })) }),
+  // v15 -> v16: rover #1 becomes the Scout (it keeps its parts). Every other rover is refunded with its parts, and the
+  // Rovers upgrade; what they carry reaches camp. The ring under way restarts for the Scout alone (`toKinds`, needs the
+  // world); everything explored before counts as dug out.
+  15: (s) => {
+    const bots = Array.isArray(s.bots) ? (s.bots as Bot[]) : [];
+    const upgrades = { ...((s.upgrades ?? {}) as Record<string, number>) };
+    const n = (x: unknown) => Math.max(0, Number(x) || 0);
+    let gold = D(typeof s.gold === 'string' || typeof s.gold === 'number' ? s.gold : 0);
+    const items = { ...((s.items ?? {}) as Record<string, number>) };
+    const rovers = Math.floor(n(upgrades.explorers));
+    if (rovers > 0) gold = gold.add(costOf({ id: 'speed', name: '', desc: '', ...V15_ROVERS }, 0, rovers));
+    delete upgrades.explorers;
+    const kinds = ['page', 'note', 'photo'];
+    for (const b of bots.slice(1)) {
+      for (const def of UPGRADES) {
+        const own = Math.floor(n(b?.up?.[def.id]));
+        if (own > 0) gold = gold.add(costOf(def, Math.floor(n(upgrades[def.id])), own));
+      }
+      gold = gold.add(n(b?.cargo));
+      kinds.forEach((k, q) => { items[k] = n(items[k]) + Math.floor(n(Array.isArray(b?.bag) ? b.bag[q] : 0)); });
+    }
+    // A ring split between several rovers starts again for the Scout alone (the other arcs are gone).
+    const split = Number(s.ringRobots) > 1;
+    const scout = bots[0] ? { ...bots[0], kind: 'scout', ...(split ? { prog: 0 } : {}) } : undefined;
+    return { ...s, v: 16, gold: gold.toString(), items, upgrades, bots: scout ? [scout] : [], ringRobots: 1, kinds: true, dug: 0 };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -153,6 +188,7 @@ export function serialize(s: GameState, now: number): SaveData {
     seed: s.seed,
     ring: s.ring,
     ringRobots: s.ringRobots,
+    dug: s.dug,
     bots: s.bots.map((b) => ({ ...b, bag: [...b.bag], log: { ...b.log }, up: { ...b.up } })),
     ...(s.legacyWalked !== undefined ? { legacyWalked: s.legacyWalked } : {}),
     gold: s.gold.toString(),
@@ -173,6 +209,7 @@ export function serialize(s: GameState, now: number): SaveData {
     playTime: s.playTime,
     ...(s.doneAt !== undefined ? { doneAt: s.doneAt } : {}),
     ...(s.recount ? { recount: true } : {}),
+    ...(s.kinds ? { kinds: true } : {}),
   };
 }
 
@@ -187,7 +224,8 @@ export function migrate(raw: RawSave): SaveData {
   return s as unknown as SaveData;
 }
 
-const TRIPS: Trip[] = ['explore', 'home', 'out', 'detour'];
+const TRIPS: Trip[] = ['explore', 'home', 'out', 'detour', 'idle'];
+const KINDS = ROVER_KINDS.map((k) => k.id) as string[];
 const num = (x: unknown, min = 0): number => Math.max(min, Number(x) || 0);
 
 export function deserialize(raw: RawSave): { state: GameState; savedAt: number } {
@@ -201,6 +239,8 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   if (data.recount) state.recount = true;
+  if (data.kinds) state.kinds = true;
+  state.dug = num(data.dug);
   const routeIds = ROUTES.map((d) => d.id) as string[];
   const isRoute = (x: unknown): x is RouteId => typeof x === 'string' && routeIds.includes(x);
   // Plans may still name withdrawn routes (they rebuild the map as it was).
@@ -241,13 +281,18 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
       }),
     nextId: Math.floor(num(data.weather?.nextId)),
   };
-  state.bots = (Array.isArray(data.bots) && data.bots.length ? data.bots : [newBot()]).map((b) => {
-    const bot = newBot(TRIPS.includes(b?.trip) ? b.trip : 'explore', num(b?.travelLen));
+  // One rover of each kind at most, the Scout first.
+  const raws = (Array.isArray(data.bots) ? data.bots : []).filter((b, q, all) => KINDS.includes(b?.kind) && all.findIndex((x) => x?.kind === b.kind) === q);
+  raws.sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
+  if (raws[0]?.kind !== 'scout') raws.unshift(newBot());
+  state.bots = raws.map((b) => {
+    const kind = b.kind as RoverKind;
+    const bot = newBot(TRIPS.includes(b?.trip) ? b.trip : kind === 'hauler' ? 'idle' : 'explore', num(b?.travelLen), 0, kind);
     bot.prog = num(b?.prog);
     bot.cargo = num(b?.cargo);
     bot.travel = Math.min(bot.travelLen, num(b?.travel));
     bot.target = Number.isInteger(b?.target) ? b.target : -1;
-    bot.from = bot.trip === 'detour' && Number.isInteger(b?.from) ? b.from : -1;
+    bot.from = (bot.trip === 'detour' || kind === 'hauler') && Number.isInteger(b?.from) ? b.from : -1;
     bot.bag = [0, 1, 2].map((q) => Math.floor(num(Array.isArray(b?.bag) ? b.bag[q] : 0)));
     bot.found = bot.bag.reduce((x, y) => x + y, 0);
     for (const id of ROVER_STATS) bot.up[id] = Math.floor(num(b?.up?.[id]));
@@ -259,13 +304,15 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
       cells: num(log?.cells), steps: num(log?.steps), gold: num(log?.gold), best: num(log?.best), items: Math.floor(num(log?.items)),
       trips: Math.floor(num(log?.trips)), detours: Math.floor(num(log?.detours)), gaveUp: Math.floor(num(log?.gaveUp)),
     };
-    if (bot.trip === 'detour' && bot.target < 0) bot.trip = 'explore';
+    if (bot.trip === 'detour' && (bot.target < 0 || kind !== 'scout')) bot.trip = 'explore';
+    if (kind === 'hauler' && bot.trip === 'explore') bot.trip = 'idle';
+    if (kind === 'hauler' && bot.trip === 'out' && (bot.target < 1 || bot.target >= raws.length)) { bot.trip = 'idle'; bot.target = -1; }
     return bot;
   });
   const sc = Array.isArray(data.scouted) ? data.scouted.map((x) => Math.floor(num(x))) : [];
   state.scouted = sc.slice(0, sc.length - (sc.length % 3));
   state.mined = Array.isArray(data.mined) ? [...new Set(data.mined.map((x) => Math.floor(num(x))))] : [];
-  state.ringRobots = Math.max(1, Math.floor(num(data.ringRobots, 1)));
+  state.ringRobots = 1; // only the Scout explores (older splits are undone in the v16 migration)
   if (data.legacyWalked !== undefined) state.legacyWalked = num(data.legacyWalked);
   state.zoomUnlocked = Math.min(ZOOMS.length, Math.max(1, data.zoomUnlocked ?? 1));
   state.zoom = Math.min(state.zoomUnlocked - 1, Math.max(0, data.zoom ?? 0));

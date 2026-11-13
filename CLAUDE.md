@@ -9,25 +9,37 @@ Exploration idle with a **retro pixel** look, set in a **post-apocalyptic city**
 toxic dumps, toxic water and urban jungle). Top-down view of a 2D map (1024×1024 cells) that starts completely dark;
 rovers reveal it on their own, little by little, over time. 4 zoom levels (Street 16 → District 64 → City 256 → Metropolis 1024
 cells per side); you start at the closest and the next unlocks when 80% of the current zoom's square is revealed.
-- Bottom panel tabs: Rover, Routes, Library.
-- **Upgrades are per rover** (save v14): `Bot.up` holds each rover's own levels; `GameState.upgrades` holds the rover
-  count and a fleet base level (levels bought before v14) added to every rover. `stats(s, b)` (default: first rover),
-  `levelOn(s, id, b)`, `buy`/`canBuy`/`upgradeGain` take the rover index; `tick`, `progress`, `goldPerSec` and the map's
-  radar work per rover (each with its own grip, speed, hold, armour, radar). A new rover is built like the weakest one
-  (`newRover`: each level the lowest among the rovers). The Rover tab has a picker (#1, #2…) and the map marks the picked
-  rover with a chevron (`MapView.focus`). Prices were cut 4× when this came in so the pace stays similar; the sim buys the
-  best (upgrade, rover) pair and saves up for the next route once it is open.
-- Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), all on the **Rover** tab (3×2 grid): Engine (speed),
+- Bottom panel tabs: Rovers, Routes, Library.
+- **Three kinds of rover, at most one of each** (save v16; `Bot.kind`, `ROVER_KINDS` in `content/upgrades.ts`; `s.bots` is
+  always Scout first, then Miner, then Hauler). **Scout**: fast (×3 base speed), tiny hold (×0.6); the only one that explores
+  (reveals cells, drives rings, explorer level, radar detours) and takes only `SCOUT_SHARE` (0.4) of each cell's bluetreri.
+  **Miner** (1000 bluetreri, Lv 14): ×2 speed, ×2 hold, no radar; follows the Scout over revealed cells in rank order and digs
+  out the other 60% (`s.dug` = rank up to which everything is dug, fractional; `digTime`/`digGold`: crossing the cells plus
+  `share × value / drill` steps, `Drill` upgrade, `BASE_DRILL`/`DRILL_MULT`). It never passes `frontier()`; once it catches
+  up it waits (`Bot.walked` = 1 for the Miner) until the Scout is `MINER_GAP` cells ahead (hysteresis, so it does not stop at
+  every cell; the wake-up is an event). **Hauler** (20000, Lv 26, after the Miner): ×1.5 speed, ×8 hold, no drill; parked at
+  camp (`trip` 'idle') until a working rover is `HAUL_AT` (half) full, then drives out (`target` = rover index, `from` = the
+  rank where they meet), takes its load and items, and drives them home. A full rover the Hauler is driving to waits instead
+  of going home. Half full while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
+  `roverLevelNeeded`, price, order) give the new rover the Scout's levels of the parts they share; the Rovers tab picker
+  (Scout/Miner/Hauler) shows a Build card for a kind not built yet. Map: Miner orange, Hauler green (`robotFrames(kind)`);
+  revealed cells keep their colour (and deposits) until dug out, then drain (`dugTo` in `MapView.render`).
+- **Upgrades are per rover** (save v14): `Bot.up` holds each rover's own levels; `GameState.upgrades` holds a fleet base
+  level (levels bought before v14) added to every rover. Each kind only has its own parts (`parts`; `hasPart`): Scout Engine,
+  Tyres, Body, Hold, Radar; Miner Engine, Drill, Tyres, Hold; Hauler Engine, Hold. `stats(s, b)` (default: the Scout) applies
+  the kind's multipliers (`share`, `drill`, radar only on the Scout). `upgradeGain` returns null for the Hauler and Radar.
+  `goldPerSec` estimates Scout + Miner (capped by what the Scout reveals once caught up; no trips home with a Hauler).
+  The sim buys the best (upgrade, rover) pair, builds each rover as soon as it can and saves up for it and the next route.
+- Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), on the **Rovers** tab: Engine (speed),
   Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
-  Radar (range in cells around each rover), Rovers (count). Steps/s = speed × rovers. Bluetreri comes from every cell
-  (terrain × distance) and from deposits. Buying or crafting announces the effect (before→after) in a toast.
-- **Independent rovers** (`state.bots[]`, each with `trip`, `prog` along its arc, `cargo`, travel): when a ring starts it is
-  split into arcs (`arcStarts`/`arcOf`) and each rover explores its own. Hold full (or arc done with cargo) → back to camp
-  (`trip` home → out → explore, distance = ring + 1, at `TRAVEL_MULT`× the speed; the drive home is slower the fuller the hold,
-  `homeSpeed`, `LOAD_DRAG`) and only then is the bluetreri the player's.
-  The next ring starts when every arc is done. `tick` advances event by event (the point where the hold fills is found by
-  bisection; a look-ahead finds the next cell where the weather changes or the radar would spot something; sky changes are
-  events too), so it is exact for any dt (there is a test) and rovers leave and return at different times.
+  Radar (range in cells around the Scout), Drill (Miner). Bluetreri comes from every cell (terrain × distance) and from
+  deposits. Buying or crafting announces the effect (before→after) in a toast.
+- **Rovers on their own** (`state.bots[]`, each with `trip`, `cargo`, travel; the Scout's `prog` along the ring, which is a
+  single arc now, `ringRobots` 1). Hold full → back to camp (`trip` home → out → explore, at `TRAVEL_MULT`× the speed; the
+  drive home is slower the fuller the hold, `homeSpeed`, `LOAD_DRAG`) and only then is the bluetreri the player's.
+  `tick` advances event by event (the point where a hold fills, or gets half full for the Hauler, is found by bisection;
+  a look-ahead finds the next cell where the weather changes or the radar would spot something; sky changes are events
+  too), so it is exact for any dt (there are tests, with all three kinds).
 - **Roughness** (`TERRAINS[].rough`): exploring a cell costs `distance × (1 + grip × (rough − 1))` steps (streets 1, jungle 1.8,
   towers 2.6…). The world keeps `stepBase` and `stepRough` prefix sums; always use `stepsAt(w, grip, r)`. Buying Tyres rescales each
   rover's `prog` so it stays on the same cell (`buy` needs the world). `cost` only decides the exploration order.
@@ -44,13 +56,9 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (saves from before Random was the default own Circular and keep it). Upgrades have levels 0..`maxLevel` (`upgradeRoute`,
   `routeUpgradeCost`): a level lowers its **entropy**
   (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level).
-  **Routes are picked per rover** (`Bot.route`, save v15; `chooseRoute(s, id, j?)`, no `j` = all; `s.route` = last pick, which
-  new rovers follow; unlocks and levels stay global). The Routes tab has the same rover picker as the Rover tab plus "All".
-  Rover j explores **slice j** of the map around camp (`sectorAt`: angle from the west, n = rover count): with mixed routes
-  `algoField` uses each slice's algorithm and normalisation, `reorder` each slice's jitter/stray, and `arcStarts` cuts the
-  ring's arcs at the slice boundaries (`w.slices`/`w.slicesFrom`, `sliceStarts`; arcs stay even with one route for all).
-  Plan entries are `[ring, route, level]` when all rovers agree (whatever their number) or `[ring, [route, level][]]`
-  (`planEntry`/`planSectors`); a mixed plan re-sorts again when the rover count changes.
+  **The route is the Scout's** (`chooseRoute(s, id)`; `Bot.route` and mixed plan entries `[ring, [route, level][]]` come
+  from v15, when each of several rovers explored its own slice of the map: `sectorAt`, `w.slices`, `sliceStarts`; they still
+  replay for old saves, and the next ring after one goes back to a single entry).
   A pick/a new level take over at the next ring start (`switchRoute` in `nextRing`, `roverSectors` vs `activeSectors`):
   `reorder` grows the algorithm's field (`algoField`: multi-source Dijkstra from every explored cell over the algorithm's
   per-cell costs, normalised to ~1) and re-sorts the unexplored cells by band, then walks each band cell to adjacent cell
@@ -109,7 +117,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - The cell a rover explores gains colour (second half of the step; in the first it walks there). Notes: ? button and menu; shown by itself on the first game.
 - Rover rules: they leave camp (starting cell); **they only reveal the adjacent cell** and a cell counts as revealed when
   they reach it. If the next cell in the order is not adjacent they walk there (steps that reveal nothing).
-  With N rovers each ring is split into N arcs; rovers bought mid-ring join on the next ring (`ringRobots`).
+  Only the Scout reveals; v16 turned old fleets into one Scout (the other rovers, their parts, the Rovers upgrade and their
+  load refunded; a ring split between several rovers restarts for the Scout; `toKinds` sets `dug` to the ring start).
 - The map **is not saved**: it is regenerated from the `seed` (`core/world.ts`). The exploration order is a Dijkstra expansion from camp
   (cost per terrain + noise) walked by rings and angle: the explored area is always one connected patch (there is a test).
   Offline progress is exact. If generation changes, saves will see a different map.
@@ -131,12 +140,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   above the line and neon below it. The game loop already runs behind it; help, offline report and end message wait for the tap.
 - Rendering (`ui/map.ts`): low-resolution canvas (~256 logical px on the short side) scaled with crisp pixels; 16×16 tiles generated by
   code (`ui/sprites.ts`, own palette) up close, flat colour further out and a 4×4 mipmap at zoom 4. Bundled pixel fonts (work offline): `Press Start 2P` for numbers and titles (class/var `--font-num`), `VT323` for text (clear digits; Pixelify Sans was dropped because its 5 looked like an S).
-- Current balance (sim, `BASE_SPEED` 0.18 steps/s; greedy stats, unlocks each route as soon as it can and levels the one in
-  use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit further apart each
-  time** (~10–40 min early, ~1 h mid-game, 1–4 h late). Seed 12345: Circular ~9 min, zoom 2 ~22 min, rover #2 ~42 min,
-  zoom 3 ~1 h 30, Trail ~2 h 20, rover #3 ~2 h 55, zoom 4 ~5 h 45, Prospector ~5 h 55, Survey ~10 h 45, rover #5 ~11 h 15,
-  library ~15 h 30, full map ~20 h 55. `npm run sim` prints this timeline ("Big advances") with the gap before each one;
-  run it whenever prices or speeds change. `NOROUTES=1` keeps Random all game (much slower).
+- Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
+  levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
+  further apart each time**. Seed 12345: Circular ~7 min, zoom 2 ~11 min, Miner ~40 min, zoom 3 ~1 h 10, Trail ~2 h,
+  Hauler ~2 h 55, zoom 4 ~4 h 40, Prospector ~5 h 30, Survey ~15 h, library ~21 h, full map ~24 h, everything dug out ~29 h.
+  `npm run sim` prints this timeline ("Big advances") with the gap before each one; run it whenever prices or speeds change.
+  `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.
 
 ## Commands

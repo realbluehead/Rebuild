@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame } from '../core/state';
 import { D } from '../core/decimal';
-import { explored, fromLegacy, stats } from '../core/game';
+import { costOf, explored, fromLegacy, stats, toKinds } from '../core/game';
+import { UPGRADES } from '../content/upgrades';
 import { createWorld } from '../core/world';
 import { deserialize, exportSave, importSave, migrate, serialize } from './save';
 import { applyOffline, OFFLINE_CAP_SEC } from './offline';
@@ -13,13 +14,15 @@ describe('save', () => {
     const s = newGame(7);
     s.gold = D('1.5e300');
     s.ring = 12;
-    s.ringRobots = 2;
-    s.bots = [newBot('home', 13), newBot()];
+    s.dug = 1234.5;
+    s.bots = [newBot('detour', 13), newBot('explore', 0, 5, 'miner'), newBot('out', 20, 9, 'hauler')];
     s.bots[0].cargo = 3.5;
     s.bots[0].travel = 1.5;
-    s.bots[1].prog = 7.25;
-    s.bots[1].trip = 'detour';
-    s.bots[1].target = 4;
+    s.bots[0].prog = 7.25;
+    s.bots[0].target = 4;
+    s.bots[2].target = 1;
+    s.bots[2].from = 333;
+    s.bots[1].up.drill = 4;
     s.upgrades.speed = 7;
     s.items.page = 7;
     s.works.cd = 2;
@@ -36,7 +39,7 @@ describe('save', () => {
     const { state, savedAt } = deserialize(JSON.parse(JSON.stringify(serialize(s, 1234))));
     expect(savedAt).toBe(1234);
     expect(state.gold.eq(s.gold)).toBe(true);
-    expect(state).toMatchObject({ seed: 7, ring: 12, ringRobots: 2, zoomUnlocked: 3, zoom: 2, fetched: [11, 3] });
+    expect(state).toMatchObject({ seed: 7, ring: 12, ringRobots: 1, dug: 1234.5, zoomUnlocked: 3, zoom: 2, fetched: [11, 3] });
     expect(state.weather).toEqual(s.weather);
     expect(state.bots).toEqual(s.bots);
     expect(state.upgrades.speed).toBe(7);
@@ -54,14 +57,15 @@ describe('save', () => {
   it('migrates a v1 save (before the hold) and converts it into rovers when the world loads', () => {
     const v1 = { v: 1, savedAt: 9, seed: 3, walked: 50, gold: '12', totalGold: '40', upgrades: { speed: 4, radius: 2, loot: 3, explorers: 1 }, ringRobots: 2, zoomUnlocked: 2, zoom: 1, playTime: 99 };
     const { state } = deserialize(v1);
-    expect(state.upgrades).toEqual({ speed: 4, tyres: 0, body: 0, radar: 3, cargo: 0, explorers: 1 });
+    expect(state.upgrades).toEqual({ speed: 4, tyres: 0, body: 0, radar: 3, cargo: 0, drill: 0 });
+    expect(state.gold.toNumber()).toBe(12 + 1000); // v15 -> v16: the second rover is refunded
     expect(state.items).toEqual({ page: 0, note: 0, photo: 0 });
     expect(state.fetched).toEqual([]);
     expect(state.legacyWalked).toBe(50);
-    expect(state).toMatchObject({ ringRobots: 2, zoomUnlocked: 2 });
+    expect(state).toMatchObject({ ringRobots: 1, zoomUnlocked: 2 });
     fromLegacy(state, world);
     expect(state.legacyWalked).toBeUndefined();
-    expect(state.bots.length).toBe(2);
+    expect(state.bots.length).toBe(1);
     expect(state.ring).toBeGreaterThan(0);
   });
 
@@ -117,6 +121,35 @@ describe('save', () => {
     expect(back.recount).toBe(true);
   });
 
+  it('migrates a v15 save: rover #1 becomes the Scout, the others are refunded with their parts and load', () => {
+    const bot = (up: Record<string, number>, cargo: number, bag: number[], prog: number) =>
+      ({ trip: 'explore', prog, cargo, travel: 0, travelLen: 0, target: -1, from: -1, found: bag.reduce((a, b) => a + b, 0), bag, walked: 0, log: { since: 0, cells: 0, steps: 0, gold: 0, best: 0, items: 0, trips: 0, detours: 0, gaveUp: 0 }, up, route: 'random' });
+    const v15 = {
+      v: 15, savedAt: 9, seed: 7, ring: 20, ringRobots: 3, gold: '100', totalGold: '5000',
+      bots: [bot({ speed: 3, cargo: 1 }, 2, [1, 0, 0], 40), bot({ speed: 2 }, 5, [0, 2, 0], 30), bot({ tyres: 1 }, 1.5, [0, 0, 3], 20)],
+      upgrades: { speed: 4, tyres: 1, explorers: 2 }, items: { page: 1, note: 1, photo: 1 }, works: {}, fetched: [], routes: ['random'], route: 'random',
+      routeLevels: {}, plan: [], weather: { epoch: 0, storms: [], nextId: 0 }, scouted: [], mined: [], zoomUnlocked: 1, zoom: 0, playTime: 99,
+    };
+    const { state } = deserialize(v15);
+    const def = (id: string) => UPGRADES.find((u) => u.id === id)!;
+    const refund = 1000 + 10000 // two rovers
+      + costOf(def('speed'), 4, 2).toNumber() + costOf(def('tyres'), 1, 1).toNumber() // their parts, on top of the fleet's base
+      + 5 + 1.5; // their load
+    expect(state.gold.toNumber()).toBeCloseTo(100 + refund, 6);
+    expect(state.items).toEqual({ page: 1, note: 3, photo: 4 }); // their items reach camp (the Scout keeps its own)
+    expect(state.bots.length).toBe(1);
+    expect(state.bots[0].kind).toBe('scout');
+    expect(state.bots[0].up).toMatchObject({ speed: 3, cargo: 1, drill: 0 });
+    expect(state.bots[0].bag).toEqual([1, 0, 0]);
+    expect(state.bots[0].prog).toBe(0); // the split ring starts again for the Scout alone
+    expect(state.ringRobots).toBe(1);
+    expect('explorers' in state.upgrades).toBe(false);
+    expect(state.kinds).toBe(true);
+    toKinds(state, world);
+    expect(state.kinds).toBeUndefined();
+    expect(state.dug).toBe(world.rings[20]); // everything explored before counts as dug out
+  });
+
   it('rejects versions from the future', () => {
     expect(() => migrate({ v: 999 })).toThrow();
   });
@@ -137,7 +170,7 @@ describe('offline', () => {
     const r = applyOffline(s, world, 0, 600_000);
     expect(r?.seconds).toBe(600);
     expect(s.bots[0].prog).toBeGreaterThan(0);
-    expect(s.bots[0].prog).toBeLessThanOrEqual(600 * stats(s).stepsPerSec);
+    expect(s.bots[0].prog).toBeLessThanOrEqual(600 * stats(s).speed);
     expect(r?.cells).toBeCloseTo(explored(s, world));
   });
 

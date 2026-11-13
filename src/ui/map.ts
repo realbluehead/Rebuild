@@ -22,9 +22,17 @@ const SWEEP_TRAIL = 1.1;
 
 interface Popup { wx: number; wy: number; text: string; t0: number; }
 
-/** What a rover does when not exploring: going to or from camp, or fetching an item (`target`, a rank, walking
- *  from the cell of rank `from`). */
-export interface TripView { kind: 'explore' | 'home' | 'out' | 'detour'; f: number; target?: number; from?: number; }
+/** What a rover does: working, going to or from camp, fetching an item (`target`, a rank, walking from the cell of
+ *  rank `from`) or parked at camp. `rover` is its kind; `at` is where it works when that is not an arc of the ring (the
+ *  Miner's dig rank, the Hauler's meeting rank). */
+export interface TripView {
+  kind: 'explore' | 'home' | 'out' | 'detour' | 'idle';
+  rover: 'scout' | 'miner' | 'hauler';
+  f: number;
+  target?: number;
+  from?: number;
+  at?: number;
+}
 /** Each rover's radar range in cells (same order as the trips), and items (indices into `itemRanks`) already claimed. */
 export interface RadarView { ranges: readonly number[]; fetched: readonly number[]; }
 
@@ -66,8 +74,13 @@ export class MapView {
   private mipSize: number;
   private mipColor: Uint32Array;
   private mipPlain: Uint32Array;
+  /** Mean colour of each block, not drained (revealed but not dug out yet). */
+  private mipBright: Uint32Array;
   private mipMin: Uint32Array;
   private robot = robotFrames();
+  private robots = { scout: this.robot, miner: robotFrames('miner'), hauler: robotFrames('hauler') };
+  /** Kind of each rover drawn (same order as `bots`). */
+  private kinds: TripView['rover'][] = [];
   private camp = campFrames();
   private itemIcons = ITEM_SPRITES.map(spriteCanvas);
   /** Drawn position of each rover: follows the real one smoothly so it creeps forward without jumps. */
@@ -115,6 +128,7 @@ export class MapView {
     const m = this.mipSize;
     this.mipColor = new Uint32Array(m * m);
     this.mipPlain = new Uint32Array(m * m);
+    this.mipBright = new Uint32Array(m * m);
     this.mipMin = new Uint32Array(m * m);
     for (let by = 0; by < m; by++) {
       for (let bx = 0; bx < m; bx++) {
@@ -128,8 +142,10 @@ export class MapView {
           }
         }
         const k = MIP * MIP;
-        this.mipPlain[by * m + bx] = drain((0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0);
+        const mean = (0xff000000 | (Math.round(b / k) << 16) | (Math.round(g / k) << 8) | Math.round(r / k)) >>> 0;
+        this.mipPlain[by * m + bx] = drain(mean);
         this.mipColor[by * m + bx] = special ? PAL.blu : this.mipPlain[by * m + bx];
+        this.mipBright[by * m + bx] = special ? PAL.blu : mean;
       }
     }
     this.refreshRanks();
@@ -258,7 +274,7 @@ export class MapView {
   /** `scouted`: finished detour paths (triples [fromRank, toRank, maxRank], see GameState); `storms`: the weather;
    *  `selected`: the cell (map index) the player tapped, or -1. */
   render(prog: Progress, zoom: number, now: number, dt: number, trips: TripView[], radar: RadarView = { ranges: [], fetched: [] },
-    scouted: number[] = [], minedCells: readonly number[] = [], storms: readonly Storm[] = [], selected = -1): void {
+    scouted: number[] = [], minedCells: readonly number[] = [], storms: readonly Storm[] = [], selected = -1, dugTo = Infinity): void {
     const { w, W, H, buf } = this;
     if (this.version !== w.version) this.refreshRanks();
     const size = w.size;
@@ -313,9 +329,11 @@ export class MapView {
     const band = 2 * Math.sqrt(Math.PI * Math.max(1, explored)) + 8;
     const hx = w.cx + 0.5;
     const hy = w.cy + 0.5;
+    this.kinds = trips.map((t) => t.rover);
     const walkers: [number, number][] = trips.map((t, j) => {
+      if (t.kind === 'idle') return [hx, hy];
       const k = prog.robotOf.indexOf(j);
-      const p: [number, number] = k >= 0 ? this.walkerPos(arcStart[k] + prog.reach[k]) : [hx, hy];
+      const p: [number, number] = t.at !== undefined ? this.walkerPos(t.at) : k >= 0 ? this.walkerPos(arcStart[k] + prog.reach[k]) : [hx, hy];
       if (t.kind === 'home' || t.kind === 'out') {
         const f = t.kind === 'home' ? t.f : 1 - t.f;
         p[0] += (hx - p[0]) * f;
@@ -328,7 +346,7 @@ export class MapView {
       }
       return p;
     });
-    if (explored >= n) walkers.length = 0;
+    if (explored >= n && trips.every((t) => t.kind === 'idle' || (t.rover === 'scout' && t.kind === 'explore'))) walkers.length = 0;
     this.bots.length = Math.min(this.bots.length, walkers.length);
     walkers.forEach(([x, y], e) => {
       const b = this.bots[e];
@@ -377,9 +395,11 @@ export class MapView {
           const r = rank[i];
           const scouted = scout.has(i);
           if (r >= fogEnd && !scouted) { buf[row + pxl] = VOID; continue; }
-          // Mined out: revealed and no rover still working it. Its deposit is gone and it looks drained.
-          const mined = seen(r) || dug.has(i);
-          if (mined || scouted) mask[row + pxl] = OPAQUE;
+          // Revealed: in full colour while the Miner has still to dig it out; dug out, its deposit is gone and it looks
+          // drained.
+          const known = seen(r) || dug.has(i);
+          const mined = known && r < dugTo;
+          if (known || scouted) mask[row + pxl] = OPAQUE;
           let c: number;
           if (useTiles) {
             const sx = Math.floor((wx - cx) * TILE);
@@ -389,7 +409,7 @@ export class MapView {
           }
           if (mined) {
             c = drain(c);
-          } else if (!scouted) {
+          } else if (!scouted && !known) {
             // Still dark: dithered terrain, deposits glinting through, or the cell a rover is working on.
             const t = exploring.get(r);
             c = t !== undefined ? mix(darken(c), c, t) : special[i] || ((pxl + py) & 1) === 0 ? darken(c) : VOID;
@@ -410,7 +430,7 @@ export class MapView {
           const r = this.mipMin[b];
           const known = seen(r);
           if (known) mask[row + pxl] = OPAQUE;
-          buf[row + pxl] = known ? this.mipPlain[b] : r < fogEnd && ((pxl + py) & 1) === 0 ? darken(this.mipColor[b]) : VOID;
+          buf[row + pxl] = known ? (r < dugTo ? this.mipPlain[b] : this.mipBright[b]) : r < fogEnd && ((pxl + py) & 1) === 0 ? darken(this.mipColor[b]) : VOID;
         }
       }
     }
@@ -643,7 +663,7 @@ export class MapView {
       const sx = Math.round((b.x - left) * cp);
       const sy = Math.round((b.y - top) * cp);
       if (cp >= TILE_MIN_PX) {
-        const spr = this.robot[(step + e) % 2];
+        const spr = this.robots[this.kinds[e] ?? 'scout'][(step + e) % 2];
         ctx.save();
         ctx.translate(sx, sy - spr.height + 5);
         if (b.face < 0) ctx.scale(-1, 1);
@@ -652,7 +672,7 @@ export class MapView {
       } else if ((Math.floor(now / 300) + e) % 3 !== 0) {
         ctx.fillStyle = '#1b1420';
         ctx.fillRect(sx - 2, sy - 2, 5, 5);
-        ctx.fillStyle = e === 0 ? '#5ff0ff' : '#a9b4c2';
+        ctx.fillStyle = this.kinds[e] === 'miner' ? '#e08c43' : this.kinds[e] === 'hauler' ? '#73a552' : '#5ff0ff';
         ctx.fillRect(sx - 1, sy - 1, 3, 3);
       }
       // A bobbing green chevron over the picked rover (only worth it with more than one).
@@ -698,7 +718,7 @@ export class MapView {
         ctx.fillRect(-9, -9, 18, 18);
         ctx.fillStyle = '#1b1420';
         ctx.fillRect(-8, -8, 16, 16);
-        const icon = this.robot[0];
+        const icon = this.robots[this.kinds[this.focus] ?? 'scout'][0];
         ctx.drawImage(icon, -(icon.width >> 1), -(icon.height >> 1));
         // Arrow towards the rover
         ctx.rotate(ang);
