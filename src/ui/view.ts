@@ -449,7 +449,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const lorePopIcons = LORE_SPRITES.map(spriteCanvas);
   const loreIcon = (k: number) => { const c = spriteCanvas(LORE_SPRITES[k]); c.className = 'item-icon'; return c; };
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
-  const sums = WORKS.map((wd) => {
+  /** Collections on show in the library (albums are hidden for now: they may be replaced by another kind of item). */
+  const SHOWN = WORKS.filter((wd) => wd.id !== 'album');
+  const sums = SHOWN.map((wd) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
     head.append(h('span', 'name', wd.name));
@@ -572,7 +574,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   /** Old velvet bindings for the books: midnight blue, black, brown, purple. */
   const VELVET = ['#1d2a5c', '#17151c', '#4a2a17', '#3d1d50'];
   /** Records live in a classic jukebox: an arch with the record under the glass (spinning the one picked) and a title
-   *  card per record, A1 to E3. */
+   *  card per record, A1 to H1 in two columns. */
   function jukebox(wd: WorkDef, n: number): HTMLElement {
     const box = h('div', 'jukebox');
     const glass = h('div', 'jb-glass');
@@ -587,7 +589,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     arch.append(glass);
     const cards = h('div', 'jb-cards');
     for (let k = 0; k < WORKS_MAX; k++) {
-      const code = `${'ABCDE'[Math.floor(k / 3)]}${(k % 3) + 1}`;
+      const code = `${'ABCDEFGH'[k >> 1]}${(k % 2) + 1}`;
       if (k >= n) {
         cards.append(h('div', `jb-card empty${k === n ? ' next' : ''}`, code));
         continue;
@@ -609,13 +611,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
-    for (const wd of WORKS) {
+    // The books shelf across the top; below, the jukebox on one side and an empty alcove on the other.
+    const lower = h('div', 'lib-lower');
+    for (const wd of SHOWN) {
       const n = s.works[wd.id];
       const row = h('div', `shelf-row ${wd.id}`);
       const label = h('div', 'shelf-label', `${wd.name} ${n}/${WORKS_MAX}`);
       if (wd.id === 'cd') {
         row.append(label, jukebox(wd, n));
-        shelvesEl.append(row);
+        lower.append(row, h('div', 'lib-alcove'));
         continue;
       }
       const plank = h('div', 'plank');
@@ -639,6 +643,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       row.append(label, plank);
       shelvesEl.append(row);
     }
+    shelvesEl.append(lower);
     // The archive: a small icon per scrap found, in the order they lie on the map.
     archiveEl.replaceChildren(h('div', 'shelf-label', `Archive ${lore.length}/${world.loreCells.length}`));
     const drawer = h('div', 'drawer');
