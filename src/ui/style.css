@@ -231,7 +231,7 @@ button { font: inherit; color: inherit; }
 .tab.on { background: var(--panel); color: var(--text); box-shadow: inset 0 var(--u) 0 var(--hi); }
 .tab.alert:not(.on) { color: var(--gold); animation: blink 1s steps(2) infinite; }
 .list[hidden] { display: none; }
-.list { align-content: start; } /* (the panel keeps one height: content at the top) */
+.list { align-content: start; overflow-y: auto; overscroll-behavior: contain; } /* (the panel keeps one height: content at the top; a longer tab scrolls) */
 .item-icon { width: 16px; height: 16px; image-rendering: pixelated; flex: none; }
 .shelf .buy { font: 10px/1 var(--font-num); color: var(--text); }
 

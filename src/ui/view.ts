@@ -273,7 +273,16 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return t;
   };
   const goalsTable = table('goals-table', ['Goal', 'Tier', '%', 'Bonus', '']);
-  goalsList.append(goalsTable);
+  // Two kinds of goal in sub-tabs (like I+D): milestones to claim, and works made from the items found.
+  let goalTab: 'goals' | 'works' = 'goals';
+  const goalPicker = h('div', 'rover-pick');
+  const goalTabBtns = (['goals', 'works'] as const).map((id) => {
+    const btn = h('button', 'px-btn pick', id === 'goals' ? 'Milestones' : 'Works');
+    btn.addEventListener('click', () => { goalTab = id; const s = current; if (s) fillGoalTab(s); });
+    goalPicker.append(btn);
+    return btn;
+  });
+  goalsList.append(goalPicker, goalsTable);
   const goalCards = GOALS.map((g) => {
     const card = h('div', 'part-row');
     const tier = h('span', 'lvl');
@@ -535,6 +544,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
    *  does not jump when switching. Measured in one go (each tab shown in turn, each rover drawn, then back as it was)
    *  whenever the rovers built, the routes on show or the width change. */
   function sizePanel(s: GameState) {
+    const PANEL_MAX = 0.42;
     const key = `${s.bots.map((b) => b.kind).join()}|${s.routes.length}|${panel.clientWidth}`;
     if (key === sizedKey) return;
     sizedKey = key;
@@ -551,6 +561,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         fillRD(s);
         continue;
       }
+      if (l === goalsList) {
+        const keepGoal = goalTab;
+        for (const id of ['goals', 'works'] as const) { goalTab = id; fillGoalTab(s); tallest = Math.max(tallest, l.offsetHeight); }
+        goalTab = keepGoal;
+        fillGoalTab(s);
+        continue;
+      }
       if (l !== list) { tallest = Math.max(tallest, l.offsetHeight); continue; }
       const keep = kind;
       for (const k of ROVER_KINDS) {
@@ -561,7 +578,20 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       kind = keep;
       fillRover(s);
     }
-    lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = `${tallest}px`; });
+    // Never more than PANEL_MAX of the screen: the map stays big, and a longer tab scrolls.
+    tallest = Math.min(tallest, Math.round(PANEL_MAX * (panel.parentElement?.clientHeight ?? Infinity)));
+    lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = l.style.maxHeight = `${tallest}px`; });
+  }
+
+  /** Shows the picked sub-tab of Goals; the other one blinks when it has something to claim or make. */
+  function fillGoalTab(s: GameState) {
+    const alert = [GOALS.some((g) => canClaim(s, world, g.id)), WORKS.some((wd) => canCraft(s, world, wd.id))];
+    (['goals', 'works'] as const).forEach((id, q) => {
+      goalTabBtns[q].classList.toggle('on', id === goalTab);
+      goalTabBtns[q].classList.toggle('alert', alert[q]);
+    });
+    goalsTable.hidden = goalTab !== 'goals';
+    worksTable.hidden = goalTab !== 'works';
   }
 
   /** Fills the I+D tab for the picked sub-tab. A rover not built yet has its orders greyed out with a note. */
@@ -1020,6 +1050,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         c.btn.classList.toggle('can', canClaim(s, world, id));
       }
       tabGoals.classList.toggle('alert', ready || GOALS.some((g) => canClaim(s, world, g.id)));
+      fillGoalTab(s);
       sizePanel(s);
     },
     /** Bluetreri from a revealed deposit, floating over the map. */
