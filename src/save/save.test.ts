@@ -152,7 +152,8 @@ describe('save', () => {
   });
 
   it('migrates a v17 save to the old dig order and Hauler policy, and rejects odd values', () => {
-    const { v: _, digOrder: _a, digPick: _b, haulAt: _c, haulPick: _d, ...old } = serialize(newGame(3), 0);
+    const old: Record<string, unknown> = { ...serialize(newGame(3), 0) };
+    for (const k of ['v', 'digOrder', 'digPick', 'haulAt', 'haulPick']) delete old[k];
     const { state } = deserialize({ ...old, v: 17 });
     expect(state).toMatchObject({ digOrder: 'follow', digPick: 'follow', haulAt: 0.5, haulPick: 'fullest' });
     const odd = deserialize({ ...serialize(newGame(3), 0), digOrder: 'deep', haulAt: 0.42, haulPick: 'hauler' }).state;
