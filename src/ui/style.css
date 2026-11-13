@@ -231,8 +231,8 @@ button { font: inherit; color: inherit; }
 .help-body p { margin: 0 0 6px; color: var(--text); font-size: 19px; line-height: 1.05; }
 
 /* Tabs of the bottom panel */
-.tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-.tab { font: 9px/1 var(--font-num); padding: 8px 4px; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.tab { font: 8px/1 var(--font-num); padding: 8px 2px; }
 .tab.on { background: var(--panel); color: var(--text); box-shadow: inset 0 var(--u) 0 var(--hi); }
 .tab.alert:not(.on) { color: var(--gold); animation: blink 1s steps(2) infinite; }
 .list[hidden] { display: none; }
@@ -261,3 +261,17 @@ button { font: inherit; color: inherit; }
 .list.rover .build-card .eff { white-space: normal; }
 .list.rover .build-card .buy { flex-wrap: wrap; gap: 2px 6px; }
 .list.rover .build-card .buy .part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* Goals: five pips per goal (claimed lit, reached but unclaimed blinking). */
+.list.goals { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.list.goals .upg { padding: 6px; gap: 2px; }
+.list.goals .upg .name { font-size: 8px; }
+.list.goals .upg .eff { font-size: 15px; }
+.list.goals .upg .buy { min-height: 30px; font-size: 7px; padding: 2px; }
+/* The next tier's progress fills its own pip. */
+.goal-pips i.next { opacity: 1; background: linear-gradient(90deg, var(--ok) var(--p), #fff2 var(--p)); }
+.goal-pips { display: flex; gap: 3px; }
+.goal-pips i { flex: 1; height: 5px; background: var(--muted); opacity: 0.35; }
+.goal-pips i.on { background: var(--gold); opacity: 1; }
+.goal-pips i.ready { background: var(--ok); opacity: 1; animation: blink 1s steps(2) infinite; }
+.list.goals .upg .head .lvl { display: none; } /* (the pips show the tier) */
+.list.goals .upg .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

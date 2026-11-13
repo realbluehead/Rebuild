@@ -18,6 +18,7 @@ import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORK
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, goldBetween, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
+import { GOAL_TIERS, GOALS, goalById, type GoalId, type GoalReward } from '../content/goals';
 
 export const TICK_RATE = 10; // ticks per second
 export const TICK_SEC = 1 / TICK_RATE;
@@ -51,15 +52,60 @@ export function stats(s: GameState, b: Bot | undefined = s.bots[0]): Stats {
   const kind = b?.kind ?? 'scout';
   const kd = kindById(kind);
   const wk = (id: WorkId) => workById(id).bonus ** s.works[id];
-  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book') * kd.speed;
-  const loot = wk('cd');
-  const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album') * kd.cargo;
+  const gb = (r: GoalReward) => goalBonus(s, r);
+  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book') * kd.speed * gb('speed');
+  const loot = wk('cd') * gb('loot');
+  const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album') * kd.cargo * gb('cargo');
   return {
-    speed, travelSpeed: speed * TRAVEL_MULT, loot, radar: kind === 'scout' ? radarRange(u.radar) : 0, cargo,
+    speed, travelSpeed: speed * TRAVEL_MULT * gb('travel'), loot, radar: kind === 'scout' ? radarRange(u.radar) : 0, cargo,
     grip: GRIP_MULT ** u.tyres, armour: ARMOUR_MULT ** u.body,
     share: kind === 'scout' ? SCOUT_SHARE : kind === 'miner' ? 1 - SCOUT_SHARE : 0,
-    drill: kind === 'miner' ? BASE_DRILL * DRILL_MULT ** u.drill : 0,
+    drill: kind === 'miner' ? BASE_DRILL * DRILL_MULT ** u.drill * gb('drill') : 0,
   };
+}
+
+/** Multiplier from the claimed tiers of the goals that reward `r`. */
+export function goalBonus(s: GameState, r: GoalReward): number {
+  let m = 1;
+  for (const g of GOALS) if (g.reward === r) m *= g.mult ** (s.goals[g.id] ?? 0);
+  return m;
+}
+
+/** What goal `id` counts right now. */
+export function goalValue(s: GameState, w: World, id: GoalId): number {
+  switch (id) {
+    case 'cartographer': return explored(s, w);
+    case 'tycoon': return s.totalGold.toNumber();
+    case 'collector': return Object.values(itemsCollected(s, w)).reduce((a, b) => a + b, 0);
+    case 'excavator': return s.dug;
+    case 'engineer': return s.bots.reduce((a, b) => a + ROVER_STATS.reduce((x, k) => x + levelOn(s, k, b), 0), 0);
+  }
+}
+
+/** Threshold of tier `k` (0-based) of goal `id` on this map. */
+export function goalTarget(w: World, id: GoalId, k: number): number {
+  const g = goalById(id);
+  const t = g.tiers[Math.min(k, GOAL_TIERS - 1)];
+  if (g.per === 'cells') return Math.max(1, Math.ceil(t * totalCells(w)));
+  if (g.per === 'items') return Math.max(1, Math.ceil(t * w.itemRanks.length));
+  return t;
+}
+
+/** Tiers of goal `id` reached (claimed or not). */
+export function goalReached(s: GameState, w: World, id: GoalId): number {
+  const v = goalValue(s, w, id);
+  let k = 0;
+  while (k < GOAL_TIERS && v >= goalTarget(w, id, k) - 1e-6) k++;
+  return k;
+}
+
+export const canClaim = (s: GameState, w: World, id: GoalId): boolean => s.goals[id] < goalReached(s, w, id);
+
+/** Claims the next tier of goal `id`: its multiplier takes effect now. */
+export function claimGoal(s: GameState, w: World, id: GoalId): boolean {
+  if (!canClaim(s, w, id)) return false;
+  s.goals[id]++;
+  return true;
 }
 
 /** Level of upgrade `id` on rover `b` (the fleet's base plus its own). */

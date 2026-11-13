@@ -5,6 +5,7 @@ import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
 import type { RouteId } from '../content/routes';
 import type { RoverKind } from '../content/upgrades';
+import { GOALS, type GoalId } from '../content/goals';
 import type { PlanEntry } from './world';
 
 /** What a rover is doing: working (the Scout exploring, the Miner digging), returning to camp to unload, heading back
@@ -119,6 +120,8 @@ export interface GameState {
   items: Record<ItemId, number>;
   /** Works made of each kind. */
   works: Record<WorkId, number>;
+  /** Tiers claimed of each goal (0..GOAL_TIERS): each one multiplies its stat. */
+  goals: Record<GoalId, number>;
   /** Items (index into `world.itemRanks`) that a rover fetched, or is fetching, with the radar ahead of normal
    *  exploration, so exploring does not collect them again. Dropped once exploring has passed them. */
   fetched: number[];
@@ -167,6 +170,7 @@ export function newGame(seed = randomSeed()): GameState {
     upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 0])) as Record<StatId, number>,
     items: Object.fromEntries(ITEMS.map((i) => [i.id, 0])) as Record<ItemId, number>,
     works: Object.fromEntries(WORKS.map((x) => [x.id, 0])) as Record<WorkId, number>,
+    goals: Object.fromEntries(GOALS.map((g) => [g.id, 0])) as Record<GoalId, number>,
     fetched: [],
     weather: { epoch: 0, storms: [], nextId: 0 },
     routes: ['random'],

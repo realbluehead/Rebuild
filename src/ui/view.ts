@@ -4,7 +4,8 @@ import { ITEMS, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '..
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
-import { activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { GOAL_TIERS, GOALS, type GoalId } from '../content/goals';
+import { canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, capacity, carried, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -22,6 +23,8 @@ export interface ViewActions {
   buy(id: StatId, rover: number): void;
   /** Builds the rover of kind `kind`. */
   build(kind: RoverKind): void;
+  /** Claims the next tier of goal `id`. */
+  claimGoal(id: GoalId): void;
   craft(id: WorkId): void;
   zoom(delta: number): void;
   exportText(): string;
@@ -235,14 +238,35 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const tabUpg = h('button', 'px-btn tab on', 'Rovers');
   const tabRoutes = h('button', 'px-btn tab', 'Routes');
   const tabLibrary = h('button', 'px-btn tab', 'Library');
-  tabs.append(tabUpg, tabRoutes, tabLibrary);
+  const tabGoals = h('button', 'px-btn tab', 'Goals');
+  tabs.append(tabUpg, tabRoutes, tabLibrary, tabGoals);
   const showTab = (k: number) => {
-    [tabUpg, tabRoutes, tabLibrary].forEach((t, q) => t.classList.toggle('on', q === k));
-    [list, routesList, worksList].forEach((l, q) => { l.hidden = q !== k; });
+    [tabUpg, tabRoutes, tabLibrary, tabGoals].forEach((t, q) => t.classList.toggle('on', q === k));
+    [list, routesList, worksList, goalsList].forEach((l, q) => { l.hidden = q !== k; });
   };
   tabUpg.addEventListener('click', () => showTab(0));
   tabRoutes.addEventListener('click', () => showTab(1));
   tabLibrary.addEventListener('click', () => showTab(2));
+  tabGoals.addEventListener('click', () => showTab(3));
+  // Goals: 5 tiers each; a reached tier is claimed here and multiplies its stat for good.
+  const goalsList = h('div', 'list goals');
+  goalsList.hidden = true;
+  const goalCards = GOALS.map((g) => {
+    const card = h('div', 'upg px-box');
+    const head = h('div', 'head');
+    const tier = h('span', 'lvl');
+    head.append(h('span', 'name', g.name), tier);
+    const pips = h('div', 'goal-pips');
+    const pipEls = Array.from({ length: GOAL_TIERS }, () => pips.appendChild(h('i')));
+    const eff = h('div', 'eff');
+    const gain = h('div', 'gain-line');
+    const btn = h('button', 'px-btn buy');
+    btn.addEventListener('click', () => actions.claimGoal(g.id));
+    card.title = `${g.what}. Each tier: ${g.rewardText} ×${g.mult}`;
+    card.append(head, pips, eff, gain, btn);
+    goalsList.append(card);
+    return { g, tier, pipEls, eff, gain, btn };
+  });
   const list = h('div', 'list rover');
   // One rover of each kind: pick which one the cards are for. A kind not built yet shows what it does and its price.
   let kind: RoverKind = 'scout';
@@ -367,7 +391,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.replaceChildren(h('span', '', text));
   }
   worksList.append(shelfCard);
-  panel.append(tabs, list, routesList, worksList);
+  panel.append(tabs, list, routesList, worksList, goalsList);
 
   /** Where a rover is on its detour, for the map: 0 -> 0.5 out to the item (by cells walked: rough cells take longer)
    *  and 0.5 -> 1 back. */
@@ -523,6 +547,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: levelOf(s, world) >= 2, title: 'Explorer level', lines: [
         'Under the top bar: your explorer level and how far you are to the next. It grows with the cells explored, and each level asks for about a third more ground than the one before, so the first come fast and the last take hours.',
         'New routes, route levels and library works each need an explorer level; until you reach it, they stay hidden behind ???.'] },
+      { on: Object.values(s.goals).some((x) => x > 0), title: 'Goals', lines: [
+        'Each goal has 5 tiers. When you reach one, its Claim button lights up on the Goals tab; claiming it multiplies a stat for good (rover speed, bluetreri, holds, the Miner\'s drill or the drive to and from camp).'] },
       { on: true, title: 'Rovers', lines: [
         'The Scout explores: it is fast, but its hold is tiny and its drill only scratches each cell (a little of its bluetreri). The rest stays in the ground: revealed cells keep their colour until they are dug out.',
         'The Rovers tab has a card for each kind. Kinds you have not built yet show what they do, their price and the explorer level they need.'] },
@@ -752,6 +778,25 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
       set(shelfInfo, `Library ${whole(libraryShare(s))} complete`);
+      for (const c of goalCards) {
+        const id = c.g.id;
+        const got = s.goals[id];
+        const reached = goalReached(s, world, id);
+        const v = goalValue(s, world, id);
+        const next = Math.min(reached, GOAL_TIERS - 1);
+        const target = goalTarget(world, id, next);
+        const prev = reached > 0 ? goalTarget(world, id, reached - 1) : 0;
+        set(c.tier, `${got}/${GOAL_TIERS}`);
+        c.pipEls.forEach((p, k) => {
+          p.className = k < got ? 'on' : k < reached ? 'ready' : k === reached ? 'next' : '';
+          if (k === reached) p.style.setProperty('--p', `${Math.min(100, (100 * (v - prev)) / Math.max(1e-9, target - prev)).toFixed(0)}%`);
+        });
+        set(c.eff, reached >= GOAL_TIERS ? `${fmt(v)} ${c.g.what}` : `${fmt(Math.floor(v))}/${fmt(target)} ${c.g.what}`);
+        set(c.gain, `${c.g.rewardText} ×${fmt(goalBonus(s, c.g.reward))}`);
+        set(c.btn, canClaim(s, world, id) ? `Claim ×${c.g.mult}` : got >= GOAL_TIERS ? 'Complete' : `next ×${c.g.mult}`);
+        c.btn.classList.toggle('can', canClaim(s, world, id));
+      }
+      tabGoals.classList.toggle('alert', GOALS.some((g) => canClaim(s, world, g.id)));
     },
     /** Bluetreri from a revealed deposit, floating over the map. */
     specialFound(cell: number, amount: string, now: number) {

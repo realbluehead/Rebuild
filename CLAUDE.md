@@ -30,6 +30,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   the kind's multipliers (`share`, `drill`, radar only on the Scout). `upgradeGain` returns null for the Hauler and Radar.
   `goldPerSec` estimates Scout + Miner (capped by what the Scout reveals once caught up; no trips home with a Hauler).
   The sim buys the best (upgrade, rover) pair, builds each rover as soon as it can and saves up for it and the next route.
+- **Goals** (`content/goals.ts`, Goals tab, save v17 `s.goals`): Cartographer (cells explored), Tycoon (bluetreri earned),
+  Collector (items found), Excavator (cells dug out), Engineer (part levels fitted), 5 tiers each (`per` cells/items: shares of
+  the map, so small test maps scale). A reached tier is **claimed** by the player (`claimGoal`; never automatic, so stats only
+  change on a tap and `tick` stays exact) and multiplies one stat for good (`goalBonus` in `stats()`: speed, loot, cargo,
+  drill, travel). The sim claims each tier at once.
 - Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), on the **Rovers** tab: Engine (speed),
   Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
   Radar (range in cells around the Scout), Drill (Miner). Bluetreri comes from every cell (terrain × distance) and from
@@ -142,8 +147,9 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   code (`ui/sprites.ts`, own palette) up close, flat colour further out and a 4×4 mipmap at zoom 4. Bundled pixel fonts (work offline): `Press Start 2P` for numbers and titles (class/var `--font-num`), `VT323` for text (clear digits; Pixelify Sans was dropped because its 5 looked like an S).
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
   levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
-  further apart each time**. Seed 12345: Circular ~7 min, zoom 2 ~11 min, Miner ~40 min, zoom 3 ~1 h 10, Trail ~2 h,
-  Hauler ~2 h 55, zoom 4 ~4 h 40, Prospector ~5 h 30, Survey ~15 h, library ~21 h, full map ~24 h, everything dug out ~29 h.
+  further apart each time**. Seed 12345 (with goals claimed): Circular ~7 min, zoom 2 ~11 min, Miner ~38 min, zoom 3 ~1 h 05,
+  Trail ~1 h 45, Hauler ~2 h 35, zoom 4 ~3 h 45, Prospector ~4 h 20, Survey ~10 h, library ~13 h 40, full map ~16 h 45,
+  everything dug out ~20 h; goal tiers fall in between.
   `npm run sim` prints this timeline ("Big advances") with the gap before each one; run it whenever prices or speeds change.
   `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.

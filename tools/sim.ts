@@ -1,10 +1,11 @@
 // Balance simulator: plays on its own with a greedy strategy and prints when it reaches each milestone.
 // Usage: npm run sim [-- hours [seed]]
 import { ROVER_KINDS, UPGRADES, type StatId } from '../src/content/upgrades';
+import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { WORKS_MAX } from '../src/content/collection';
-import { build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { createWorld, totalCells } from '../src/core/world';
@@ -75,6 +76,8 @@ for (let t = 0; t < hours * 3600; t += DT) {
       if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
     }
   }
+  // Goals: every tier as soon as it is reached.
+  for (const g of GOALS) while (canClaim(s, w, g.id)) { claimGoal(s, w, g.id); mark(t, `${g.name} tier ${s.goals[g.id]}`); }
   // New rovers: as soon as they can be built.
   for (const k of ROVER_KINDS) {
     if (canBuild(s, w, k.id)) {

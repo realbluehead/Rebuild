@@ -20,6 +20,7 @@
 // v15: each rover follows its own route (`Bot.route`; plan entries with one [route, level] per rover).
 // v16: rover kinds (`Bot.kind`: Scout, Miner, Hauler, one of each) and the Miner's progress (`dug`). Rover #1 becomes
 //      the Scout; the other rovers, their parts and the Rovers upgrade are refunded, and their load goes to camp.
+// v17: goals (`goals`: tiers claimed of each).
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -29,8 +30,9 @@ import { ZOOMS } from '../content/world';
 import type { PlanEntry } from '../core/world';
 import { ROVER_KINDS, ROVER_STATS, UPGRADES, type RoverKind } from '../content/upgrades';
 import { costOf } from '../core/game';
+import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 16;
+export const SAVE_VERSION = 17;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -61,6 +63,7 @@ export interface SaveData {
   upgrades: Record<string, number>;
   items: Record<string, number>;
   works: Record<string, number>;
+  goals: Record<string, number>;
   fetched: number[];
   routes: RouteId[];
   route: RouteId;
@@ -179,6 +182,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     const scout = bots[0] ? { ...bots[0], kind: 'scout', ...(split ? { prog: 0 } : {}) } : undefined;
     return { ...s, v: 16, gold: gold.toString(), items, upgrades, bots: scout ? [scout] : [], ringRobots: 1, kinds: true, dug: 0 };
   },
+  // v16 -> v17: no goal claimed yet (they can be claimed at once for what was already done).
+  16: (s) => ({ ...s, v: 17, goals: {} }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -196,6 +201,7 @@ export function serialize(s: GameState, now: number): SaveData {
     upgrades: { ...s.upgrades },
     items: { ...s.items },
     works: { ...s.works },
+    goals: { ...s.goals },
     fetched: [...s.fetched],
     routes: [...s.routes],
     route: s.route,
@@ -320,6 +326,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   for (const id of Object.keys(state.upgrades) as (keyof GameState['upgrades'])[]) state.upgrades[id] = num(data.upgrades?.[id]);
   for (const id of Object.keys(state.items) as (keyof GameState['items'])[]) state.items[id] = num(data.items?.[id]);
   for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = Math.min(WORKS_MAX, Math.floor(num(data.works?.[id])));
+  for (const id of Object.keys(state.goals) as (keyof GameState['goals'])[]) state.goals[id] = Math.min(GOAL_TIERS, Math.floor(num(data.goals?.[id])));
   return { state, savedAt: data.savedAt };
 }
 

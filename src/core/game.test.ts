@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -812,6 +812,41 @@ describe('routes', () => {
     const ring = s.ring;
     while (s.ring === ring) tick(s, w, 0.5);
     expect(s.plan).toEqual([[s.ring, 'circular', 1]]);
+  });
+});
+
+describe('goals', () => {
+  it('a reached tier is claimed once and multiplies its stat; five tiers at most', () => {
+    const s = newGame(42);
+    const speed0 = stats(s).speed;
+    expect(canClaim(s, world, 'cartographer')).toBe(false);
+    expect(claimGoal(s, world, 'cartographer')).toBe(false);
+    s.upgrades.speed = 20;
+    while (goalValue(s, world, 'cartographer') < goalTarget(world, 'cartographer', 1)) tick(s, world, 1);
+    expect(goalReached(s, world, 'cartographer')).toBeGreaterThanOrEqual(2);
+    const before = stats(s).speed;
+    expect(claimGoal(s, world, 'cartographer')).toBe(true);
+    expect(stats(s).speed).toBeCloseTo(before * 1.05, 9);
+    expect(claimGoal(s, world, 'cartographer')).toBe(true);
+    expect(s.goals.cartographer).toBe(2);
+    expect(stats(s).speed / speed0).toBeGreaterThan(1);
+    // Tycoon: bluetreri earned; its tiers raise the bluetreri multiplier.
+    s.totalGold = D(1e9);
+    for (let k = 0; k < 5; k++) expect(claimGoal(s, world, 'tycoon')).toBe(true);
+    expect(claimGoal(s, world, 'tycoon')).toBe(false);
+    expect(stats(s).loot).toBeCloseTo(1.05 ** 5, 9);
+    // Engineer counts the part levels fitted on every rover.
+    crew(s, 'miner');
+    s.bots[1].up.drill = 7;
+    expect(goalValue(s, world, 'engineer')).toBe(20 * 2 + 7);
+  });
+
+  it('every tier is reachable on a finished map', () => {
+    const s = newGame(42);
+    Object.assign(s.upgrades, { speed: 40, cargo: 20, drill: 10 });
+    crew(s, 'miner');
+    for (let t = 0; t < 40000 && !isComplete(s, world); t += 0.5) tick(s, world, 0.5);
+    for (const id of ['cartographer', 'collector', 'excavator'] as const) expect(goalReached(s, world, id)).toBe(5);
   });
 });
 

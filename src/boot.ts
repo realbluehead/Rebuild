@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -7,6 +7,7 @@ import { fmt } from './core/format';
 import { ZOOMS } from './content/world';
 import { routeById } from './content/routes';
 import { kindById } from './content/upgrades';
+import { goalById } from './content/goals';
 import { applyOffline, type OfflineReport } from './save/offline';
 import { loadGame, saveGame, wipeGame } from './save/persist';
 import { deserialize, exportSave, importSave, serialize, type SaveData } from './save/save';
@@ -68,6 +69,12 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       const before = stats(state, bot);
       if (!buy(state, world, id, 1, rover)) return;
       view.bought(id, levelOn(state, id, bot), before, stats(state, bot), bot.kind);
+      void save();
+    },
+    claimGoal: (id) => {
+      if (!claimGoal(state, world, id)) return;
+      const g = goalById(id);
+      view.toast(`${g.name} tier ${state.goals[id]}\n${g.rewardText} ×${fmt(goalBonus(state, g.reward))}`);
       void save();
     },
     build: (kind) => {
