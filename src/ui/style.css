@@ -1,24 +1,24 @@
-/* Retro pixel style in rusted metal (post-apocalyptic city): oxidised plates with rivets, copper buttons,
-   and orange accents. Pixel fonts, hard square edges, "stepped" shadows. */
+/* Retro pixel style in corroded copper (post-apocalyptic city): verdigris plates with brass rivets, brass buttons
+   and accents. Pixel fonts, hard square edges, "stepped" shadows. */
 :root {
-  --void: #120c08;
-  --bg: #24170f;
-  --panel: #5c3b25;
-  --panel-2: #6f4a2f;
-  --edge: #120b07;
-  --hi: #8f6040;
-  --lo: #3a2416;
-  --text: #f3e2c6;
-  --muted: #cfae88;
-  --rivet: #d9ad80;
-  /* Buttons you can press: copper */
-  --gold: #e07a22;
-  --gold-2: #8a3e0e;
+  --void: #0a100e;
+  --bg: #13201c;
+  --panel: #2a4740;
+  --panel-2: #335850;
+  --edge: #050a08;
+  --hi: #3f6a5f;
+  --lo: #1a2f2a;
+  --text: #e8efe0;
+  --muted: #9fb8ab;
+  --rivet: #c9a85a;
+  /* Buttons you can press: brass */
+  --gold: #d9a441;
+  --gold-2: #7a5418;
   /* Bluetreri, the blue mineral (currency) */
   --blu: #5fd0ff;
-  --ok: #b5dc62;
+  --ok: #b8d86a;
   --red: #c63d2f;
-  /* Hazard */
+
   --u: 3px; /* size of one interface "pixel" */
   /* Two pixel fonts: a very clear one for numbers and titles, and a compact one for text. */
   --font-num: 'Press Start 2P', monospace;
@@ -98,13 +98,13 @@ button { font: inherit; color: inherit; }
   background: var(--lo);
   color: var(--muted);
   border: var(--u) solid var(--edge);
-  box-shadow: inset var(--u) var(--u) 0 #4d311e, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #24160c;
+  box-shadow: inset var(--u) var(--u) 0 #3a5e55, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #0f1c18;
   padding: 6px 10px;
   cursor: pointer;
   touch-action: manipulation;
 }
-.px-btn:active { box-shadow: inset var(--u) var(--u) 0 #24160c; }
-.px-btn.can { background: var(--gold); color: #2b1206; box-shadow: inset var(--u) var(--u) 0 #ffa95a, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 var(--gold-2); }
+.px-btn:active { box-shadow: inset var(--u) var(--u) 0 #0f1c18; }
+.px-btn.can { background: var(--gold); color: #1e1404; box-shadow: inset var(--u) var(--u) 0 #f0c870, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 var(--gold-2); }
 .px-btn.can:active { box-shadow: inset var(--u) var(--u) 0 var(--gold-2); }
 .px-btn:disabled { opacity: .35; cursor: default; }
 .coin {
@@ -131,7 +131,7 @@ button { font: inherit; color: inherit; }
 .cargo-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .cargo-bar { flex: 0 0 64px; margin: 0; height: 10px; }
 .cargo-bar i { background: var(--blu); }
-/* Hold full: the bar turns orange and blinks */
+/* Hold full: the bar turns brass and blinks */
 .cargo-bar.full i { background: var(--gold); animation: blink 1s steps(2) infinite; }
 .cargo-text { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .explored { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -147,7 +147,7 @@ button { font: inherit; color: inherit; }
 .pips { display: grid; gap: 4px; }
 .pips i { width: 12px; height: 12px; background: var(--lo); border: 2px solid var(--edge); }
 .pips i.on { background: var(--gold); }
-.pips i.locked { background: transparent; border-color: #4a3020; }
+.pips i.locked { background: transparent; border-color: #2f4d46; }
 
 .cell-info { position: absolute; left: 8px; bottom: 8px; padding: 7px 10px; width: min(220px, calc(100% - 130px)); cursor: pointer; }
 .cell-title { font: 9px/1.6 var(--font-num); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -168,7 +168,7 @@ button { font: inherit; color: inherit; }
   opacity: 0; pointer-events: none; transition: opacity .2s steps(3), transform .2s steps(3);
   white-space: pre-line; text-align: center; width: max-content; max-width: 92%; z-index: 2;
 }
-.toast::first-line { color: #ffa95a; }
+.toast::first-line { color: #f0c870; }
 .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
 /* Upgrade panel: a 2x2 grid at the bottom, within thumb reach */
@@ -203,7 +203,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* Dialogs */
-.modal { position: absolute; inset: 0; background: #0a0604cc; display: grid; place-items: center; padding: 16px; z-index: 10; }
+.modal { position: absolute; inset: 0; background: #050a08cc; display: grid; place-items: center; padding: 16px; z-index: 10; }
 .modal .box { padding: 18px; max-width: 360px; width: 100%; text-align: center; display: grid; gap: 10px; }
 .modal .px-btn { min-height: 44px; font: 10px/1.4 var(--font-num); color: var(--text); }
 .modal .px-btn.danger { background: var(--red); color: var(--text); }
@@ -221,7 +221,7 @@ button { font: inherit; color: inherit; }
 .modal.help .box { max-height: 100%; min-height: 0; overflow: hidden; text-align: left; grid-template-rows: auto minmax(0, 1fr) auto; }
 .modal.help .name { text-align: center; }
 .help-body { overflow-y: auto; padding-right: 4px; }
-.help-body h3 { font: 9px/1.6 var(--font-num); color: #ffa95a; margin: 12px 0 4px; }
+.help-body h3 { font: 9px/1.6 var(--font-num); color: #f0c870; margin: 12px 0 4px; }
 .help-body h3:first-child { margin-top: 0; }
 .help-body p { margin: 0 0 6px; color: var(--text); font-size: 19px; line-height: 1.05; }
 
@@ -243,7 +243,7 @@ button { font: inherit; color: inherit; }
 
 /* Field notes that fill in: what is missing, and the ? button when there is something new */
 .help-body .locked { color: var(--muted); margin-top: 10px; }
-.help-btn.alert { color: #2b1206; background: var(--gold); animation: blink 1s steps(2) infinite; }
+.help-btn.alert { color: #1e1404; background: var(--gold); animation: blink 1s steps(2) infinite; }
 .upg[hidden], .routes-more[hidden] { display: none; }
 .routes-more { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }
 .rover-pick { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
@@ -290,13 +290,13 @@ button { font: inherit; color: inherit; }
 
 /* Library view: shelves in place of the map. */
 .library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px;
-  background: repeating-linear-gradient(90deg, #2e1d11 0 22px, #2a1a0f 22px 24px); overflow-y: auto; }
+  background: repeating-linear-gradient(90deg, #16241f 0 22px, #13201c 22px 24px); overflow-y: auto; }
 .library-view[hidden] { display: none; }
 .map-wrap.library-open .zoom-ctl, .map-wrap.library-open .cell-info { display: none; }
 .shelves { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
 .shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
-.plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #7a4f2c;
-  box-shadow: 0 3px 0 #3a2416; background: #1b100a; }
+.plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
+  box-shadow: 0 3px 0 #1a2f2a; background: #0d1613; }
 .vol { flex: 1; min-width: 0; height: var(--tall, 80%); padding: 0; border: 0; position: relative; cursor: pointer;
   background: hsl(var(--h) 45% 38%); box-shadow: inset 2px 0 0 hsl(var(--h) 45% 52%), inset -2px 0 0 hsl(var(--h) 45% 24%); }
 .vol span { position: absolute; inset: 4px 0; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; line-height: 1;
@@ -314,7 +314,7 @@ button { font: inherit; color: inherit; }
 .vol.album::before { content: ''; position: absolute; top: 6px; left: 25%; width: 50%; height: 12px; background: hsl(calc(var(--h) + 40) 50% 70%); }
 .vol.album span { inset: 22px 0 4px; }
 .vol.on { outline: 2px solid var(--gold); outline-offset: 1px; transform: translateY(-6px); }
-.vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #cfae8833; cursor: default; }
+.vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #9fb8ab33; cursor: default; }
 .vol.empty.next { border-color: var(--ok); }
 .lib-caption { font-size: 15px; padding: 7px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A route requirement not met yet (items collected / needed). */
@@ -344,7 +344,7 @@ button { font: inherit; color: inherit; }
 .goals-table .part-row { --cols: minmax(0, 1fr) 30px 34px 66px 46px; }
 .works-table .part-row { --cols: 52px 40px minmax(0, 1fr) 60px 58px; }
 .goals-table, .works-table { margin-bottom: 0; }
-/* Routes: the route in use is a radio square (orange buttons mean something to buy); items still short go on a thin line. */
+/* Routes: the route in use is a radio square (brass buttons mean something to buy); items still short go on a thin line. */
 .routes-table .radio { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .routes-table .radio::before { content: ''; width: 9px; height: 9px; flex: none; border: var(--u) solid var(--muted); }
 .routes-table .radio.on::before { border-color: var(--gold); background: var(--gold); }

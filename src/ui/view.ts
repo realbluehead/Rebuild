@@ -619,7 +619,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     atRow.row.hidden = miner;
     pickRow.row.hidden = miner;
     for (const r of [digRow, atRow, pickRow]) r.btns.forEach((b) => { b.disabled = !built; });
-    // Radio squares, not orange buttons: orange means something can be bought.
+    // Radio squares, not brass buttons: brass means something can be bought.
     const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
     digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
     atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
