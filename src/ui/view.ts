@@ -350,22 +350,26 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   })));
   list.append(orderCard);
   // Rover parts in a grid: everything within thumb reach, no scrolling. Each kind shows only its own parts.
+  // The selected rover's parts as a table: part, level, now → next, gain in bluetreri/s, price.
+  const partTable = h('div', 'part-table px-box');
+  const partHead = h('div', 'part-row head');
+  for (const t of ['Part', 'Lv', 'Now → next', 'Gain', 'Cost']) partHead.append(h('span', '', t));
+  partTable.append(partHead);
+  list.append(partTable);
   const rows = UPGRADES.map((u) => {
-    const card = h('div', 'upg px-box');
-    const head = h('div', 'head');
+    const card = h('div', 'part-row');
     const name = h('span', 'name', u.name);
     const lvl = h('span', 'lvl');
-    head.append(name, lvl);
-    const eff = h('div', 'eff');
+    const eff = h('span', 'eff');
+    // Estimated gain in bluetreri per second from one more level.
+    const gain = h('span', 'gain');
     const btn = h('button', 'px-btn buy');
     const cost = h('span');
     btn.append(h('i', 'coin'), cost);
     btn.addEventListener('click', () => { const s = current; if (s) actions.buy(u.id, roverIndex(s, kind)); });
     card.title = u.desc;
-    // Estimated gain in bluetreri per second from one more level.
-    const gain = h('div', 'gain-line');
-    card.append(head, eff, gain, btn);
-    list.append(card);
+    card.append(name, lvl, eff, gain, btn);
+    partTable.append(card);
     return { def: u, card, lvl, eff, btn, cost, gain };
   });
   // Exploration routes: unlock with bluetreri once enough items are collected (not spent), then pick the one the Scout follows from the next ring.
@@ -790,6 +794,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const bot = sel >= 0 ? s.bots[sel] : undefined;
       const kd = kindById(kind);
       buildCard.hidden = !!bot;
+      partTable.hidden = !bot;
       orderCard.hidden = !bot || bot.kind === 'scout';
       if (bot && bot.kind !== 'scout') {
         const miner = bot.kind === 'miner';
@@ -821,7 +826,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         r.card.hidden = !bot || !hasPart(bot, id);
         if (r.card.hidden || !bot) continue;
         const lvl = levelOn(s, id, bot);
-        set(r.lvl, `lv${lvl}`);
+        set(r.lvl, `${lvl}`);
         const cur = stats(s, bot);
         bot.up[id]++;
         const next = stats(s, bot);
@@ -830,7 +835,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         set(r.cost, fmt(costOf(r.def, lvl)));
         r.btn.classList.toggle('can', canBuy(s, id, 1, sel));
         const g = upgradeGain(s, world, id, sel);
-        set(r.gain, g === null ? (id === 'radar' ? 'finds items' : bot.kind === 'hauler' ? (id === 'speed' ? 'quicker pick-ups' : 'bigger loads') : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}% bluetreri/s`);
+        set(r.gain, g === null ? (id === 'radar' ? 'items' : bot.kind === 'hauler' ? (id === 'speed' ? 'pick-up' : 'loads') : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}%`);
+        r.gain.title = g === null ? '' : 'More bluetreri per second from one more level';
       }
       tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => canBuild(s, world, k.id)));
       const myLevel = levelOf(s, world);

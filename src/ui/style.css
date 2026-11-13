@@ -322,3 +322,19 @@ button { font: inherit; color: inherit; }
 /* A route requirement not met yet (items collected / needed). */
 .buy .part.short { color: var(--red); }
 .px-btn.can .part.short { color: inherit; }
+
+/* Rovers tab: the parts as a thin table (part, level, now → next, gain, price). */
+.list.rover .part-table { grid-column: 1 / -1; padding: 2px 6px; display: grid; }
+.list.rover .part-table[hidden], .part-row[hidden] { display: none; }
+.part-row { display: grid; grid-template-columns: 54px 20px minmax(0, 1fr) 40px 64px; align-items: center; gap: 6px;
+  padding: 3px 0; border-bottom: 1px solid var(--lo); font-size: 15px; line-height: 1; }
+.part-row:last-child { border-bottom: 0; }
+.part-row.head { font-size: 13px; color: var(--muted); padding: 4px 0 2px; }
+.part-row.head span:last-child { text-align: center; }
+.part-row .name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.part-row .lvl { color: var(--muted); }
+.part-row .eff { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.part-row .gain { color: var(--ok); white-space: nowrap; overflow: hidden; }
+.part-row .buy { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 26px; padding: 2px 4px;
+  font: 8px/1 var(--font-num); }
+.part-row .buy .coin { transform: scale(0.75); }
