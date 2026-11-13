@@ -15,7 +15,7 @@ import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MUL
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
 import { workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
-import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
+import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTE_PACE_LEVEL, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 import { GOAL_TIERS, GOALS, goalById, type GoalId, type GoalReward } from '../content/goals';
@@ -53,7 +53,9 @@ export function stats(s: GameState, b: Bot | undefined = s.bots[0]): Stats {
   const kd = kindById(kind);
   const wk = (id: WorkId) => workById(id).bonus ** s.works[id];
   const gb = (r: GoalReward) => goalBonus(s, r);
-  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book') * kd.speed * gb('speed');
+  // The Scout and the Miner (which digs along the Scout's order) drive the route of the ring under way faster the better
+  // (and the more levelled) it is.
+  const speed = BASE_SPEED * SPEED_MULT ** u.speed * wk('book') * kd.speed * gb('speed') * (kind === 'hauler' ? 1 : routePace(...activeSector(s, 0)));
   const loot = wk('cd') * gb('loot');
   const cargo = BASE_CARGO * CARGO_MULT ** u.cargo * wk('album') * kd.cargo * gb('cargo');
   return {
@@ -63,6 +65,9 @@ export function stats(s: GameState, b: Bot | undefined = s.bots[0]): Stats {
     drill: kind === 'miner' ? BASE_DRILL * DRILL_MULT ** u.drill * gb('drill') : 0,
   };
 }
+
+/** Scout speed multiplier of route `id` at level `lv` (legacy routes: 1). */
+export const routePace = (id: RouteId, lv: number): number => (routeById(id)?.pace ?? 1) * ROUTE_PACE_LEVEL ** lv;
 
 /** Multiplier from the claimed tiers of the goals that reward `r`. */
 export function goalBonus(s: GameState, r: GoalReward): number {

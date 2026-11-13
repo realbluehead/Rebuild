@@ -81,6 +81,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `TickEvents` report map cells. Home distance comes from `w.road` (the circular field). Measure efficiency with
   `npx vite-node tools/routes.ts -- <warmHours> <runHours>` (bluetreri and cells per algorithm at levels 0/1/max from the
   same mid-game state) whenever `ALGOS` or prices change; keep prices rising with efficiency (there is a test for prices).
+  **Pace**: each route has `pace` (Scout and Miner speed × `pace × ROUTE_PACE_LEVEL (1.03)^level`, `routePace`, applied
+  in `stats` from `activeSector(s, 0)`, i.e. the ring under way; the Hauler is not affected): Circular 1.03, Trail 1.12,
+  Scavenger 1.06, Prospector 1.24, Survey 1.5. Without it, routes past Circular barely beat it (the Miner digs 60% of
+  every cell whatever the order), so they were a bluetreri sink once items stopped gating them (v19). Bench (6 h warm,
+  2 h run, lv0): Trail 107%, Prospector 116%, Survey 122% of Circular's bluetreri; Scavenger 93% but +35% items.
   Routes steer only the Scout. The Scavenger (`scavenge`) is the item route: cost pulled by `itemPull` (items within
   `ITEM_REACH` cells, a summed-area table): about +40% items for -8% bluetreri vs Circular; the sim unlocks it but keeps
   its route.
@@ -159,10 +164,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
   levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
   further apart each time**. Seed 12345 (with goals claimed): Circular ~7 min, zoom 2 ~11 min, Miner ~38 min, zoom 3 ~1 h 05,
-  Trail ~1 h 40, Hauler ~2 h 50, Prospector ~4 h 35, zoom 4 ~4 h 40, Survey ~10 h 25, library ~16 h 50, full map ~19 h 45,
-  everything dug out ~21 h 30; goal tiers fall in between. (The sim skips the Scavenger on its path and buys it with spare
-  bluetreri.) Since routes stopped spending items (v19) they come earlier and the run got ~3 h slower: past Circular,
-  routes barely beat it on bluetreri (tools/routes.ts), so buying them early is mostly a bluetreri sink.
+  Trail ~1 h 30, Hauler ~2 h 35, Prospector ~4 h 10, Survey ~9 h, library ~13 h 45, full map ~15 h 40, everything dug
+  out ~16 h 50; goal tiers fall in between. (The sim skips the Scavenger on its path and buys it with spare bluetreri.)
   `npm run sim` prints this timeline ("Big advances") with the gap before each one; run it whenever prices or speeds change.
   `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.

@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId } from '../content/goals';
-import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -628,6 +628,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'If its hold fills before it gets there, bad luck: it leaves the item for later and heads to camp.'] },
       { on: s.routes.length > 1, title: 'Routes', lines: [
         'The Routes tab sets how the rovers push into the dark. They start out wandering at random; each new route is more efficient than the last, and only the next one shows until you unlock it.',
+        'Each route is a planned path: the Scout and the Miner drive it faster (the ×N on its card), more the better the route and with every level.',
         'New routes cost bluetreri and ask for pages, notes or photos collected in total (they are not used up); the better ones ask for more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
         'The route you pick (or a new level) shows as Queued and takes over when the rovers finish the ring they are on (the card shows how much of it is done); what is already explored stays as it is.'] },
       { on: levelOf(s, world) >= 2, title: 'Explorer level', lines: [
@@ -869,7 +870,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         if (!owned) {
           const need = routeLevelNeeded(world, id);
           set(c.state, '');
-          set(c.eff, myLevel < need ? `needs explorer Lv ${need}` : c.rd.short);
+          set(c.eff, myLevel < need ? `needs explorer Lv ${need}` : `×${routePace(id, 0).toFixed(2)} · ${c.rd.short}`);
           if (myLevel < need) label(c, 'btnKey', c.btn, `Lv ${need}`);
           else price(c, 'btnKey', c.btn, c.rd.gold, c.rd.items, '', got);
           c.btn.classList.toggle('can', canUnlockRoute(s, world, id));
@@ -880,7 +881,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           const picked = s.bots[0].route === id;
           const pending = picked && !running;
           set(c.state, c.rd.maxLevel ? `lv${lv}` : '');
-          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : c.rd.short);
+          set(c.eff, pending ? `next ring · ${whole(Math.min(0.99, ringDone))} done` : `×${routePace(id, lv).toFixed(2)} · ${c.rd.short}`);
           label(c, 'btnKey', c.btn, running ? 'Active' : pending ? 'Queued' : 'Use');
           c.btn.classList.toggle('can', !picked);
           const next = routeUpgradeCost(s, id);

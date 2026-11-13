@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { D } from './decimal';
 import { fmt } from './format';
 import { applyPlan, createWorld, sectorAt, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
-import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
+import { ROUTE_MAX_LEVEL, ROUTE_PACE_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { WORKS, WORKS_MAX } from '../content/collection';
 
 // Small map so the tests run fast (the real one is MAP_SIZE).
@@ -901,6 +901,20 @@ describe('routes', () => {
       expect(unlockRoute(s, rw, 'trail')).toBe(true);
       expect(s.items).toEqual({ page: 0, note: 0, photo: 0 });
     }
+  });
+
+  it('the route under way speeds up the Scout and the Miner (not the Hauler), more the better and the higher its level', () => {
+    const s = newGame(42);
+    crew(s, 'miner', 'hauler');
+    const base = s.bots.map((b) => stats(s, b).speed);
+    s.plan = [[1, [['survey', 2]]]];
+    const pace = routePace('survey', 2);
+    expect(pace).toBeCloseTo(ROUTES.find((r) => r.id === 'survey')!.pace * ROUTE_PACE_LEVEL ** 2);
+    expect(stats(s, s.bots[0]).speed).toBeCloseTo(base[0] * pace / routePace('circular', 0));
+    expect(stats(s, s.bots[1]).speed).toBeCloseTo(base[1] * pace / routePace('circular', 0));
+    expect(stats(s, s.bots[2]).speed).toBeCloseTo(base[2]);
+    const main = ROUTES.filter((r) => r.id !== 'scavenge'); // (the item route trades pace for items)
+    for (let k = 1; k < main.length; k++) expect(main[k].pace).toBeGreaterThan(main[k - 1].pace);
   });
 
   it('better routes cost more to unlock and to level up', () => {
