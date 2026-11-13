@@ -524,13 +524,53 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const libCaption = h('div', 'lib-caption px-box');
   const shelvesEl = h('div', 'shelves');
   const archiveEl = h('div', 'archive');
-  libView.append(shelvesEl, archiveEl, libCaption);
+  libView.append(shelvesEl, archiveEl);
+  // The library is dark: a torch follows the finger (or wanders on its own when left alone), with dust in the beam.
+  // The caption sits above the dark.
+  const libDark = h('div', 'lib-dark');
+  const motes = Array.from({ length: 12 }, (_, i) => {
+    const m = h('i', 'mote');
+    libDark.append(m);
+    return { m, a: i * 0.52, r: 18 + ((i * 37) % 60) };
+  });
+  const torch = { x: -1, y: -1, last: -1e9 };
+  const aim = (e: PointerEvent) => {
+    const r = mapWrap.getBoundingClientRect();
+    torch.x = e.clientX - r.left;
+    torch.y = e.clientY - r.top;
+    torch.last = performance.now();
+  };
+  libView.addEventListener('pointermove', aim);
+  libView.addEventListener('pointerdown', aim);
+  function lightLibrary(now: number) {
+    const r = mapWrap.getBoundingClientRect();
+    if (now - torch.last > 2500) {
+      torch.x = r.width * (0.5 + 0.38 * Math.sin(now / 1700));
+      torch.y = r.height * (0.45 + 0.3 * Math.sin(now / 1100));
+    }
+    const rad = Math.max(70, Math.min(r.width, r.height) * 0.22);
+    libDark.style.setProperty('--x', `${torch.x}px`);
+    libDark.style.setProperty('--y', `${torch.y}px`);
+    libDark.style.setProperty('--r', `${rad}px`);
+    for (const v of libView.querySelectorAll<HTMLElement>('.vol:not(.empty), .scrap')) {
+      const b = v.getBoundingClientRect();
+      const d = Math.hypot(b.left + b.width / 2 - r.left - torch.x, b.top + b.height / 2 - r.top - torch.y);
+      v.style.setProperty('--lift', Math.max(0, 1 - d / rad).toFixed(2));
+    }
+    for (const o of motes) {
+      o.a += 0.01;
+      o.m.style.transform = `translate(${torch.x + Math.cos(o.a * 1.3) * o.r * rad / 80}px, ${torch.y + Math.sin(o.a) * o.r * rad / 80}px)`;
+      o.m.style.opacity = (0.25 + 0.5 * Math.sin(o.a * 3) ** 2).toFixed(2);
+    }
+  }
   /** Scraps of lore already announced on the map (-1: not counted yet, so loading does not announce them all). */
   let loreSeen = -1;
   let shelfKey = '';
   let picked = '';
   /** A colour for each title, from its letters (same title, same colour). */
   const hue = (t: string) => { let x = 7; for (const ch of t) x = (x * 31 + ch.charCodeAt(0)) % 360; return x; };
+  /** Old velvet bindings for the books: midnight blue, black, brown, purple. */
+  const VELVET = ['#1d2a5c', '#17151c', '#4a2a17', '#3d1d50'];
   function drawShelves(s: GameState) {
     const lore = loreFound(s, world);
     const key = WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
@@ -547,6 +587,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         if (k < n) {
           const v = h('button', `vol ${wd.id}`);
           v.style.setProperty('--h', String(hue(t)));
+          if (wd.id === 'book') v.style.setProperty('--v', VELVET[hue(t) % VELVET.length]);
           v.style.setProperty('--tall', `${wd.id === 'book' ? 70 + ((hue(t) * 7) % 30) : wd.id === 'cd' ? 62 : 84}%`);
           v.append(h('span', '', t));
           v.title = t;
@@ -945,6 +986,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
 
   mapWrap.insertBefore(libView, toast);
+  mapWrap.insertBefore(libDark, toast);
+  mapWrap.insertBefore(libCaption, toast);
   root.append(topbar, mapWrap, panel);
 
   const map = new MapView(canvas, world, initial.zoom);
@@ -1064,7 +1107,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         }
       }
       loreSeen = lore.length;
-      if (!libView.hidden) drawShelves(s);
+      if (!libView.hidden) { drawShelves(s); lightLibrary(now); }
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       fillRD(s);
