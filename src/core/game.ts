@@ -640,9 +640,17 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
       }
     }
     // A full hold (or the Scout done with the map and still loaded, or the Miner done digging): to camp, unless the
-    // Hauler is on its way.
+    // Hauler on its way gets there sooner than the rover could drive to camp and back. (Decided when the hold fills;
+    // from then on the Hauler only gets closer, so a rover that waits keeps waiting.)
+    const worthWaiting = (j: number) => {
+      if (!coming(j)) return false;
+      const h = s.bots[hj];
+      const eta = (h.travelLen - h.travel) / sts[hj].travelSpeed;
+      const d = homeDistance(s, w, rankOf(j));
+      return eta <= d / homeSpeed(sts[j], sts[j].cargo) + d / sts[j].travelSpeed;
+    };
     s.bots.forEach((b, j) => {
-      if (b.trip !== 'explore' || coming(j)) return;
+      if (b.trip !== 'explore' || worthWaiting(j)) return;
       if (b.kind === 'scout') {
         const a = arcs[j];
         const done = !a || b.prog >= a.len - EPS;
@@ -655,6 +663,18 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
         changed = true;
       }
     });
+    // The Hauler's rover drove to camp itself: the Hauler turns back.
+    if (hj >= 0) {
+      const h = s.bots[hj];
+      const t = h.trip === 'out' ? s.bots[h.target] : undefined;
+      if (t && t.trip !== 'explore' && t.trip !== 'detour') {
+        const went = h.travel;
+        h.trip = 'home';
+        h.target = -1;
+        h.travel = Math.max(0, h.travelLen - went);
+        changed = true;
+      }
+    }
     if (changed) continue;
 
     // The Miner digs up to the Scout's frontier. Once it catches up it waits (`walked` = 1) until the Scout is

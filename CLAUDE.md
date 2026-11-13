@@ -22,11 +22,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   hopping between cells (`RICH_HOP` × their steps); it waits for the ring under way to end (ring done is already an event).
   The Miner digs one ring at a time (`DigPath`: `digPath`/`richPath`, cached per world version and ring, with running sums
   of value and steps); in 'rich', `s.dug` is the position along the ring's sequence, so use `isDug`/`dugCells`/`digCell`,
-  never `r < s.dug`. A new pick (`s.digPick`) takes over when the Miner starts a ring. **Hauler** (20000, Lv 26, after the Miner): ×1.5 speed, ×8 hold, no drill; parked at
+  never `r < s.dug`. A new pick (`s.digPick`) takes over when the Miner starts a ring. **Hauler** (20000, Lv 26, after the Miner): ×0.3 speed (slow on purpose, so its trips show on the map), ×12 hold, no drill; parked at
   camp (`trip` 'idle') until a working rover is `s.haulAt` full (0.3/0.5/0.8, `HAUL_LEVELS`; I+D tab › Pick-ups, `setHaul`) —
   the fullest one, or `s.haulPick` (Scout/Miner) first when it is over the threshold — then drives out (`target` = rover index, `from` = the
   rank where they meet), takes its load and items, and drives them home. A full rover the Hauler is driving to waits instead
-  of going home. Reaching the threshold while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
+  of going home only if the Hauler gets there sooner than its own round trip to camp (`worthWaiting`, decided when the
+  hold fills); otherwise it drives home and the Hauler turns back. Reaching the threshold while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
   `roverLevelNeeded`, price, order) give the new rover the Scout's levels of the parts they share; the Rovers tab picker
   (Scout/Miner/Hauler) shows a Build card for a kind not built yet. Map: Miner orange, Hauler green (`robotFrames(kind)`);
   revealed cells keep their colour (and deposits) until dug out, then drain (`dugTo` in `MapView.render`).
@@ -164,8 +165,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
   levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
   further apart each time**. Seed 12345 (with goals claimed): Circular ~7 min, zoom 2 ~11 min, Miner ~38 min, zoom 3 ~1 h 05,
-  Trail ~1 h 30, Hauler ~2 h 35, Prospector ~4 h 10, Survey ~9 h, library ~13 h 45, full map ~15 h 40, everything dug
-  out ~16 h 50; goal tiers fall in between. (The sim skips the Scavenger on its path and buys it with spare bluetreri.)
+  Trail ~1 h 30, Hauler ~2 h 35, Prospector ~4 h 25, Survey ~10 h 10, library ~15 h 05, full map ~17 h 15, everything dug
+  out ~18 h 35 (the slow Hauler since v0.8 added ~1.5 h); goal tiers fall in between. (The sim skips the Scavenger on its path and buys it with spare bluetreri.)
   **Rate at the top** (`core/rate.ts`, `RateMeter`, fed in boot.ts after every tick): measured, not estimated — what
   reaches camp plus what the holds gained, averaged over `RATE_TAU` (120 s of game time); it starts from the offline
   average (≥10 min away) or from `goldPerSec`. `goldPerSec`/`plannedRate` stay as the model behind the upgrade gains; it

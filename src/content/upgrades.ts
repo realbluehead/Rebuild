@@ -62,7 +62,7 @@ export interface RoverKindDef {
 export const ROVER_KINDS: readonly RoverKindDef[] = [
   { id: 'scout', name: 'Scout', desc: 'Fast, tiny hold. Explores the dark and scratches a little bluetreri from each cell.', speed: 3, cargo: 0.6, parts: ['speed', 'tyres', 'body', 'cargo', 'radar'], gold: 0, level: 0 },
   { id: 'miner', name: 'Miner', desc: 'Slow, medium hold. Digs out the bluetreri the Scout left behind in every cell it revealed.', speed: 2, cargo: 2, parts: ['speed', 'drill', 'tyres', 'cargo'], gold: 1000, level: 14 },
-  { id: 'hauler', name: 'Hauler', desc: 'Slow, huge hold, no drill. Drives out to the other rovers and brings their load to camp, so they keep working.', speed: 1.5, cargo: 8, parts: ['speed', 'cargo'], gold: 20000, level: 26 },
+  { id: 'hauler', name: 'Hauler', desc: 'Very slow, huge hold, no drill. Drives out to the other rovers and brings their load to camp, so they keep working.', speed: 0.3, cargo: 12, parts: ['speed', 'cargo'], gold: 20000, level: 26 },
 ];
 export const kindById = (id: RoverKind): RoverKindDef => ROVER_KINDS.find((k) => k.id === id)!;
 /** Share of each cell's bluetreri the Scout's drill takes as it explores (the Miner digs out the rest). */

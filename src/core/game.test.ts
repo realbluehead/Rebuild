@@ -266,18 +266,24 @@ describe('game', () => {
     expect(s.haulAt).toBe(0.3);
     setHaul(s, 0.42, 'scout');
     expect(s.haulAt).toBe(0.3); // not one of the levels
+    // Each time it leaves camp: to a rover over the threshold, and to the one put first whenever that one is over it
+    // (a hold can still gain a little in the rest of the tick, hence the margin).
     const runs = (pick: HaulPick) => {
       const t = newGame(42);
       Object.assign(t.upgrades, { speed: 12, cargo: 2 });
       crew(t, 'miner', 'hauler');
       setHaul(t, 0.3, pick);
+      const first = pick === 'scout' ? 0 : pick === 'miner' ? 1 : -1;
+      const frac = (j: number) => t.bots[j].cargo / stats(t, t.bots[j]).cargo;
       const to = [0, 0];
       for (let k = 0; k < 4000; k++) {
         const was = t.bots[2].trip;
         tick(t, world, 0.2);
         const h = t.bots[2];
         if (was === 'idle' && h.trip === 'out') {
-          expect(t.bots[h.target].cargo / stats(t, t.bots[h.target]).cargo).toBeGreaterThanOrEqual(0.3 - 1e-6);
+          expect(frac(h.target)).toBeGreaterThanOrEqual(0.3 - 1e-6);
+          const working = first >= 0 && (t.bots[first].trip === 'explore' || t.bots[first].trip === 'detour');
+          if (working && h.target !== first) expect(frac(first)).toBeLessThan(0.3 + 0.05);
           to[h.target]++;
         }
       }
@@ -285,8 +291,8 @@ describe('game', () => {
     };
     const scout = runs('scout');
     const miner = runs('miner');
-    expect(scout[0] + scout[1]).toBeGreaterThan(2);
-    expect(scout[0] / (scout[0] + scout[1])).toBeGreaterThan(miner[0] / (miner[0] + miner[1]));
+    expect(scout[0]).toBeGreaterThan(2);
+    expect(miner[1]).toBeGreaterThan(2);
   });
 
   it('rovers are built one of each, in order, to the Scout\'s standard; parts are per rover and stay exact', () => {
