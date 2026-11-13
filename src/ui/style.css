@@ -298,7 +298,7 @@ button { font: inherit; color: inherit; }
   background: radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), #ffe9a014, transparent 70%),
     radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), transparent 0, #0008 55%, #000c 100%); }
 .lib-dark .mote { position: absolute; left: 0; top: 0; width: 2px; height: 2px; background: #ffe9a0; opacity: 0; }
-.shelves { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
+.shelves { display: flex; flex-direction: column; gap: 10px; flex: 1; }
 .shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
 .plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
   box-shadow: 0 3px 0 #1a2f2a; background: #0d1613; }
@@ -318,35 +318,47 @@ button { font: inherit; color: inherit; }
   background: linear-gradient(#d9a441 0 1px, transparent 1px 3px, #d9a441 3px 4px); opacity: .8; }
 .vol.book::before { top: 4px; }
 .vol.book::after { bottom: 4px; }
-/* Records: a classic jukebox in walnut and brass, amber lights and bubble tubes, velvet-coloured title cards. */
-.lib-lower { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
-.lib-alcove { align-self: stretch; min-height: 120px; border: 1px dashed #9fb8ab22; background: #0d161380; }
-.jukebox { position: relative; width: 100%; margin: 0 auto; padding: 0 12px 6px;
-  background: linear-gradient(90deg, #2e1410, #5a2a1c 18%, #6e3524 50%, #5a2a1c 82%, #2e1410);
-  border: 2px solid var(--edge); border-radius: 110px 110px 6px 6px / 60px 60px 6px 6px;
-  box-shadow: inset 0 0 0 3px #d9a441, inset 0 0 0 5px #3a1a12, inset 0 0 22px #ffb05a33; animation: jb-glow 3s ease-in-out infinite alternate; }
-.jukebox::before, .jukebox::after { content: ''; position: absolute; top: 34px; bottom: 26px; width: 4px; border-radius: 2px; opacity: .85;
-  background: repeating-linear-gradient(#ffcf7a 0 3px, #b8562a 3px 8px); animation: jb-bubble 1.4s linear infinite; }
-.jukebox::before { left: 5px; }
-.jukebox::after { right: 5px; }
-.jb-arch { display: flex; justify-content: center; padding: 10px 0 5px; }
-.jb-glass { position: relative; width: 92px; height: 38px; overflow: hidden; border: 2px solid #d9a441; border-bottom-width: 1px; border-radius: 46px 46px 0 0;
-  background: radial-gradient(ellipse at 50% 100%, #3d1d50, #120a14 75%); box-shadow: inset 0 0 10px #ffb05a55; }
-.jb-lp { position: absolute; left: 50%; bottom: -28px; width: 58px; height: 58px; margin-left: -29px; border-radius: 50%;
+/* Records: a wide, square jukebox of walnut and brushed metal, with chrome trim, an amber light bar, the record under a
+   chrome window and velvet-striped title cards. */
+.lib-lower { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.lib-alcove { flex: 1; min-height: 40px; }
+.jukebox { position: relative; padding: 5px 12px 6px; border: 2px solid var(--edge); border-radius: 4px;
+  background: repeating-linear-gradient(90deg, #00000022 0 1px, transparent 1px 5px, #ffffff0a 5px 6px, transparent 6px 9px),
+    linear-gradient(90deg, #2e1610, #5a2c1a 10%, #4a2414 30%, #5e2e1c 55%, #4a2414 80%, #2e1610);
+  box-shadow: inset 0 0 0 1px #c8d0d4aa, 0 3px 0 #0008; }
+/* Chrome rivets in the corners. */
+.jukebox::before, .jukebox::after { content: ''; position: absolute; top: 4px; width: 4px; height: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, #8a969c 60%, #3a4448); }
+.jukebox::before { left: 4px; }
+.jukebox::after { right: 4px; }
+.jb-lights { height: 6px; margin: 0 4px 5px; border: 1px solid #6c7a84; border-radius: 3px;
+  background: repeating-linear-gradient(90deg, #ffcf7a 0 5px, #b8562a 5px 10px); background-size: 20px 100%;
+  box-shadow: 0 0 8px #ffb05a88; animation: jb-run 1.6s linear infinite, jb-glow 2.4s ease-in-out infinite alternate; }
+.jb-face { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px; padding: 5px; border-radius: 2px;
+  background: repeating-linear-gradient(0deg, #ffffff0c 0 1px, transparent 1px 2px), linear-gradient(#9aa6ac, #c8d0d4 40%, #7c888e);
+  box-shadow: inset 0 1px 0 #fff8, inset 0 -1px 0 #0006; }
+.jb-glass { position: relative; height: 74px; overflow: hidden; border-radius: 3px; background: radial-gradient(#2a1830, #0a0810 75%);
+  box-shadow: inset 0 0 0 2px #e8eef2, inset 0 0 0 3px #4a5458, inset 0 0 12px #ffb05a55; }
+.jb-lp { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px; border-radius: 50%;
   background: radial-gradient(circle, #050a08 0 5%, color-mix(in srgb, var(--c, #3d1d50) 75%, #fff) 6% 27%, transparent 28%),
-    conic-gradient(#ffffff10, transparent 15%, #ffffff10 50%, transparent 65%), repeating-radial-gradient(circle, #121014 0 1px, #1f1b22 1px 3px); }
+    conic-gradient(#ffffff12, transparent 15%, #ffffff12 50%, transparent 65%), repeating-radial-gradient(circle, #121014 0 1px, #1f1b22 1px 3px); }
 .jb-lp.play { animation: jb-spin 1.8s linear infinite; }
-.jb-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; padding: 3px; background: #1a0c0a; border: 2px solid #d9a441; }
-.jb-card { height: 14px; padding: 0 3px; border: 0; border-left: 4px solid var(--v); background: #efe4c6; color: #2a1810; cursor: pointer;
-  font: 13px/14px var(--font-text); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* Tone arm: a chrome bar from the corner onto the record. */
+.jb-arm { position: absolute; right: 7px; top: 6px; width: 3px; height: 34px; border-radius: 2px; transform-origin: top; transform: rotate(28deg);
+  background: linear-gradient(90deg, #8a969c, #f4f8fa, #8a969c); }
+.jb-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; background: #1a0e0a; border-radius: 2px;
+  box-shadow: inset 0 0 0 1px #4a5458; align-content: center; }
+.jb-card { height: 12px; padding: 0 3px; border: 0; border-left: 4px solid var(--v); background: #efe4c6; color: #2a1810; cursor: pointer;
+  font: 12px/12px var(--font-text); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transform: scale(calc(1 + var(--lift, 0) * 0.08)); transition: transform .12s; }
 .jb-card.on { background: #fff4d0; box-shadow: 0 0 6px #ffc46a; position: relative; z-index: 1; }
 .jb-card.empty { background: #efe4c614; border-left-color: transparent; color: #efe4c640; cursor: default; }
 .jb-card.empty.next { outline: 1px dashed var(--ok); outline-offset: -1px; }
-.jb-grille { height: 12px; margin-top: 5px; border: 1px solid #7a5418; background: repeating-linear-gradient(90deg, #d9a441 0 2px, #2a1410 2px 6px); }
+.jb-grille { height: 10px; margin: 5px 4px 0; border-radius: 2px; border: 1px solid #4a5458;
+  background: repeating-linear-gradient(90deg, #c8d0d4 0 2px, #1a0e0a 2px 5px); }
 @keyframes jb-spin { to { transform: rotate(360deg); } }
-@keyframes jb-bubble { to { background-position: 0 -16px; } }
-@keyframes jb-glow { to { box-shadow: inset 0 0 0 3px #d9a441, inset 0 0 0 5px #3a1a12, inset 0 0 30px #ffb05a66; } }
+@keyframes jb-run { to { background-position: 20px 0; } }
+@keyframes jb-glow { to { box-shadow: 0 0 14px #ffb05acc; } }
 /* Albums: thick, padded covers with a photo corner. */
 .vol.album { background: hsl(var(--h) 30% 30%); box-shadow: inset 3px 0 0 hsl(var(--h) 30% 44%), inset -3px 0 0 hsl(var(--h) 30% 18%); }
 .vol.album::before { content: ''; position: absolute; top: 6px; left: 25%; width: 50%; height: 12px; background: hsl(calc(var(--h) + 40) 50% 70%); }

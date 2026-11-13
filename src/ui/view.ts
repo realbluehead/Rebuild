@@ -585,8 +585,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const hue = (t: string) => { let x = 7; for (const ch of t) x = (x * 31 + ch.charCodeAt(0)) % 360; return x; };
   /** Old velvet bindings for the books: midnight blue, black, brown, purple. */
   const VELVET = ['#1d2a5c', '#17151c', '#4a2a17', '#3d1d50'];
-  /** Records live in a classic jukebox: an arch with the record under the glass (spinning the one picked) and a title
-   *  card per record, A1 to H1 in two columns. */
+  /** Records live in a wide, square jukebox of wood and metal: a light bar on top, the record turning under a chrome
+   *  window (the picked one spins), a title card per record (A1 to E3) and a speaker grille below. */
   function jukebox(wd: WorkDef, n: number): HTMLElement {
     const box = h('div', 'jukebox');
     const glass = h('div', 'jb-glass');
@@ -596,12 +596,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       lp.style.setProperty('--c', VELVET[hue(workTitle(wd, Number(pk))) % VELVET.length]);
       lp.classList.add('play');
     }
-    glass.append(lp);
-    const arch = h('div', 'jb-arch');
-    arch.append(glass);
+    glass.append(lp, h('i', 'jb-arm'));
     const cards = h('div', 'jb-cards');
     for (let k = 0; k < WORKS_MAX; k++) {
-      const code = `${'ABCDEFGH'[k >> 1]}${(k % 2) + 1}`;
+      const code = `${'ABCDE'[Math.floor(k / 3)]}${(k % 3) + 1}`;
       if (k >= n) {
         cards.append(h('div', `jb-card empty${k === n ? ' next' : ''}`, code));
         continue;
@@ -614,7 +612,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       c.addEventListener('click', () => { picked = picked === `cd:${k}` ? '' : `cd:${k}`; shelfKey = ''; });
       cards.append(c);
     }
-    box.append(arch, cards, h('div', 'jb-grille'));
+    const face = h('div', 'jb-face');
+    face.append(glass, cards);
+    box.append(h('div', 'jb-lights'), face, h('div', 'jb-grille'));
     return box;
   }
   function drawShelves(s: GameState) {
@@ -623,7 +623,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
-    // The books shelf across the top; below, the jukebox on one side and an empty alcove on the other.
+    // The books shelf across the top; below, the jukebox across the whole width, and room for more under it.
     const lower = h('div', 'lib-lower');
     for (const wd of SHOWN) {
       const n = s.works[wd.id];
