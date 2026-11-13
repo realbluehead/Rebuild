@@ -249,15 +249,48 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const tabLibrary = h('button', 'px-btn tab', 'Library');
   const tabGoals = h('button', 'px-btn tab', 'Goals');
   tabs.append(tabUpg, tabRoutes, tabLibrary, tabGoals);
+  /** Ends a fold or unfold under way (the panel back to its natural height). */
+  let endFold = () => {};
   const showTab = (k: number) => {
+    endFold();
     [tabUpg, tabRoutes, tabLibrary, tabGoals].forEach((t, q) => t.classList.toggle('on', q === k));
-    // The Library tab folds the panel down to the tabs, so the shelves take the whole screen.
-    [list, routesList, null, goalsList].forEach((l, q) => { if (l) l.hidden = q !== k; });
+    const from = panel.offsetHeight;
+    const wasOpen = mapWrap.classList.contains('library-open');
+    const lists = [list, routesList, null, goalsList];
     // The Library tab swaps the map for the shelves.
     libView.hidden = k !== 2;
     mapWrap.classList.toggle('library-open', k === 2);
     if (k === 2) shelfKey = '';
+    if (k === 2 && !wasOpen) {
+      // Folding down to the tabs, so the shelves take the whole screen: the old tab stays in view while the panel
+      // slides down, and goes once it is folded.
+      const to = tabs.offsetHeight + (from - (lists.find((l) => l && !l.hidden)?.offsetHeight ?? 0));
+      fold(from, to, () => lists.forEach((l) => { if (l) l.hidden = true; }));
+      return;
+    }
+    lists.forEach((l, q) => { if (l) l.hidden = q !== k; });
+    // Unfolding from the library: the panel slides up to its height.
+    if (wasOpen && k !== 2) fold(from, panel.offsetHeight, () => {});
   };
+  /** Slides the panel's height from `from` to `to` (the map above follows), then calls `done`. */
+  function fold(from: number, to: number, done: () => void) {
+    if (from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
+    panel.style.overflow = 'hidden';
+    panel.style.height = `${from}px`;
+    void panel.offsetHeight;
+    panel.style.transition = 'height .32s cubic-bezier(.3, 0, .2, 1)';
+    panel.style.height = `${to}px`;
+    const timer = window.setTimeout(() => endFold(), 400);
+    const onEnd = (e: TransitionEvent) => { if (e.target === panel) endFold(); };
+    endFold = () => {
+      clearTimeout(timer);
+      panel.removeEventListener('transitionend', onEnd);
+      endFold = () => {};
+      panel.style.transition = panel.style.height = panel.style.overflow = '';
+      done();
+    };
+    panel.addEventListener('transitionend', onEnd);
+  }
   tabUpg.addEventListener('click', () => showTab(0));
   tabRoutes.addEventListener('click', () => showTab(1));
   tabLibrary.addEventListener('click', () => showTab(2));
