@@ -97,7 +97,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (`BotLog`: since, cells, steps, gold, best, items, trips, detours, gaveUp; `since` −1 for rovers from before save v12).
   Each Rover card also shows the estimated gain of one more level in bluetreri/s (`upgradeGain`: storms averaged).
 - Items (`content/collection.ts`): pages, notes and photos hidden in ~1/90 cells (`world.item`, `itemRanks`). Picked up on
-  arrival into the rover's `bag` and added to `s.items` only when it unloads at camp (like the bluetreri; save v13); the Library tab turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, `WORKS_MAX`
+  arrival into the rover's `bag` and added to `s.items` only when it unloads at camp (like the bluetreri; save v13); the Goals tab (work cards after the goals, a pip per work) turns them into books (speed), records (bluetreri) and albums (hold): ×1.1 bonus per work, `WORKS_MAX`
   (15) per collection; the tab shows each collection's and the whole library's % complete. **Prices are per map**
   (`workCost(w, id, k)` in `core/game.ts`): each work ×`costGrowth`, a whole collection = `LIBRARY_SHARE` (0.8) of that kind
   on the map (`itemsOnMap`) minus what every route and level costs (`routeItems`), so the library can always be finished.
@@ -137,7 +137,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   (cost per terrain + noise) walked by rings and angle: the explored area is always one connected patch (there is a test).
   Offline progress is exact. If generation changes, saves will see a different map.
 - Format: **always a portrait phone**. On mobile it fills the screen; on desktop it is a centred 9:19.5 phone frame (`#app` in `style.css`).
-  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rover/Routes/Library tabs at the bottom. Dialogs open inside the phone.
+  Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rovers/Routes/Library/Goals tabs at the bottom. The Library tab swaps the map for a shelf view (`library-view` over `map-wrap`, `drawShelves`: a shelf per collection, a spine per work, tap for its title; the map is not drawn meanwhile) and the panel sums up each collection. Dialogs open inside the phone.
 - Start-up: `main.ts` only puts the title screen up and then imports `boot.ts` (its own chunk). `boot` reads the save and
   runs `loadWorld` (`load.ts`: `createWorld`, `applyPlan` per entry, `fromLegacy`, `recountItems`, `applyOffline`) in
   `load.worker.ts`, which posts progress and hands back the serialised state, the world (buffers transferred) and the

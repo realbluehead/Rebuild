@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId } from '../content/goals';
-import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, workCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, canUpgradeRoute, libraryShare, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -144,6 +144,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     showSpeed();
   });
   mapWrap.append(canvas, zoomCtl, cellBox, speedBtn, toast);
+  // (the library view is added once it exists, below)
 
   // View controls: drag (mouse or finger) to move, wheel or pinch to zoom.
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (Math.abs(e.deltaY) > 4) actions.zoom(e.deltaY > 0 ? 1 : -1); }, { passive: false });
@@ -247,6 +248,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const showTab = (k: number) => {
     [tabUpg, tabRoutes, tabLibrary, tabGoals].forEach((t, q) => t.classList.toggle('on', q === k));
     [list, routesList, worksList, goalsList].forEach((l, q) => { l.hidden = q !== k; });
+    // The Library tab swaps the map for the shelves.
+    libView.hidden = k !== 2;
+    mapWrap.classList.toggle('library-open', k === 2);
+    if (k === 2) shelfKey = '';
   };
   tabUpg.addEventListener('click', () => showTab(0));
   tabRoutes.addEventListener('click', () => showTab(1));
@@ -390,30 +395,85 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Only the next locked route is shown; the rest stay a mystery.
   const routesMore = h('p', 'info routes-more');
   routesList.append(routesMore);
-  const worksList = h('div', 'list');
+  // Library tab: the shelves replace the map; the panel sums up each collection. Works are made on the Goals tab.
+  const worksList = h('div', 'list goals library-sum');
   worksList.hidden = true;
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
-  const works = WORKS.map((wd) => {
+  const sums = WORKS.map((wd) => {
     const card = h('div', 'upg px-box');
     const head = h('div', 'head');
-    const lvl = h('span', 'lvl');
-    head.append(h('span', 'name', wd.name), lvl);
+    head.append(h('span', 'name', wd.name));
+    const count = h('div', 'eff');
+    const bonus = h('div', 'gain-line');
+    card.append(head, count, bonus);
+    worksList.append(card);
+    return { wd, count, bonus };
+  });
+  const libInfo = h('p', 'info lib-info');
+  worksList.append(libInfo);
+  // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
+  const works = WORKS.map((wd) => {
+    const card = h('div', 'upg px-box work-card');
+    const head = h('div', 'head');
+    head.append(h('span', 'name', wd.name));
+    const pips = h('div', 'goal-pips works');
+    const pipEls = Array.from({ length: WORKS_MAX }, () => pips.appendChild(h('i')));
     const next = h('div', 'eff');
+    const gain = h('div', 'gain-line');
     const btn = h('button', 'px-btn buy');
     const cost = h('span');
     btn.append(itemIcon(ITEMS.findIndex((it) => it.id === wd.item)), cost);
     btn.addEventListener('click', () => actions.craft(wd.id));
     card.title = `Each one: ${wd.effect} ×${wd.bonus}`;
-    card.append(head, next, btn);
-    worksList.append(card);
-    return { wd, lvl, next, btn, cost };
+    card.append(head, pips, next, gain, btn);
+    goalsList.append(card);
+    return { wd, pipEls, next, gain, btn, cost };
   });
-  const shelfCard = h('div', 'upg px-box shelf');
-  const shelfInfo = h('div', 'eff');
-  const shelfBtn = h('button', 'px-btn buy', 'Shelf');
-  shelfBtn.addEventListener('click', () => openShelf());
-  shelfCard.append(h('div', 'head'), shelfInfo, shelfBtn);
-  shelfCard.firstElementChild!.append(h('span', 'name', 'Collection'));
+
+  // The library view: three shelves (books, records, albums), WORKS_MAX slots each. Tap a volume to read its title.
+  const libView = h('div', 'library-view');
+  libView.hidden = true;
+  const libCaption = h('div', 'lib-caption px-box');
+  const shelvesEl = h('div', 'shelves');
+  libView.append(shelvesEl, libCaption);
+  let shelfKey = '';
+  let picked = '';
+  /** A colour for each title, from its letters (same title, same colour). */
+  const hue = (t: string) => { let x = 7; for (const ch of t) x = (x * 31 + ch.charCodeAt(0)) % 360; return x; };
+  function drawShelves(s: GameState) {
+    const key = WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}`;
+    if (key === shelfKey) return;
+    shelfKey = key;
+    shelvesEl.replaceChildren();
+    for (const wd of WORKS) {
+      const n = s.works[wd.id];
+      const row = h('div', `shelf-row ${wd.id}`);
+      const label = h('div', 'shelf-label', `${wd.name} ${n}/${WORKS_MAX}`);
+      const plank = h('div', 'plank');
+      for (let k = 0; k < WORKS_MAX; k++) {
+        const t = workTitle(wd, k);
+        if (k < n) {
+          const v = h('button', `vol ${wd.id}`);
+          v.style.setProperty('--h', String(hue(t)));
+          v.style.setProperty('--tall', `${wd.id === 'book' ? 70 + ((hue(t) * 7) % 30) : wd.id === 'cd' ? 62 : 84}%`);
+          v.append(h('span', '', t));
+          v.title = t;
+          v.classList.toggle('on', picked === `${wd.id}:${k}`);
+          v.addEventListener('click', () => { picked = picked === `${wd.id}:${k}` ? '' : `${wd.id}:${k}`; shelfKey = ''; });
+          plank.append(v);
+        } else {
+          const gap = h('div', `vol empty${k === n ? ' next' : ''}`);
+          plank.append(gap);
+        }
+      }
+      row.append(label, plank);
+      shelvesEl.append(row);
+    }
+    const [pid, pk] = picked.split(':');
+    const wd = WORKS.find((w) => w.id === pid);
+    if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
+    else set(libCaption, `Library ${whole(libraryShare(s))} complete · tap a volume`);
+  }
   /** Button content for a price (bluetreri + item icons), rebuilt only when it changes. */
   type Keyed = { btnKey: string; upKey: string };
   function price(c: Keyed, key: keyof Keyed, btn: HTMLElement, gold: number, items: Partial<Record<ItemId, number>>, prefix = '') {
@@ -432,7 +492,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     c[key] = text;
     btn.replaceChildren(h('span', '', text));
   }
-  worksList.append(shelfCard);
   panel.append(tabs, list, routesList, worksList, goalsList);
 
   /** Where a rover is on its detour, for the map: 0 -> 0.5 out to the item (by cells walked: rough cells take longer)
@@ -505,26 +564,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     if (s.bots.some((b) => b.log.since < 0)) body.append(h('p', 'info', 'Records started with this version: older rovers count from now.'));
   }
 
-  /** Shelf: every work made and the bonus it gives. */
-  function openShelf() {
-    const s = current;
-    if (!s) return;
-    const m = modal('help');
-    m.box.append(h('div', 'name', `Shelf · ${whole(libraryShare(s))}`));
-    const body = h('div', 'help-body');
-    for (const wd of WORKS) {
-      const n = s.works[wd.id];
-      body.append(h('h3', '', `${wd.name} ${n}/${WORKS_MAX}: ${wd.effect} ×${fmt(wd.bonus ** n)}`));
-      if (!n) body.append(h('p', 'info', 'None yet.'));
-      for (let k = 0; k < n; k++) body.append(h('p', '', `${k + 1}. ${workTitle(wd, k)}`));
-      if (n < WORKS_MAX) {
-        const need = workLevelNeeded(world, n);
-        body.append(h('p', 'info', levelOf(s, world) < need ? `Next: ??? (explorer Lv ${need})` : `Next: ${workTitle(wd, n)} (${workCost(world, wd.id, n)} ${ITEMS.find((it) => it.id === wd.item)!.plural})`));
-      }
-    }
-    m.box.append(body);
-    m.addClose('Close');
-  }
 
   // What the player has discovered (to fill in the field notes). New cells are scanned a few per frame.
   const seenTerrain = new Set<number>();
@@ -574,10 +613,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
         'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them, but like the bluetreri they only count once the rover unloads at camp.',
-        'On the Library tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
+        'On the Goals tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
       { on: crafted, title: 'Library', lines: [
-        'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Shelf lists everything you have made.',
-        `Each collection has ${WORKS_MAX} works and the tab shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
+        'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
+        `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around the Scout, reaching as many cells as its range. It detects pages, notes and photos in the dark around it: they light up as the needle passes.',
         'When it spots an item the Scout leaves its exploring and goes for it (the one it is after is framed), as slowly as if it were exploring, and mines the bluetreri of every cell on its way. Then it comes back the same way.',
@@ -665,6 +704,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     m.addClose('Close');
   }
 
+  mapWrap.insertBefore(libView, toast);
   root.append(topbar, mapWrap, panel);
 
   const map = new MapView(canvas, world, initial.zoom);
@@ -710,7 +750,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       if (selected >= 0 && selected >= totalCells(world)) selected = -1;
       const sel = roverIndex(s, kind);
       map.focus = sel >= 0 ? sel : 0;
-      map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected, dugCells(s, world));
+      if (libView.hidden) map.render(prog, s.zoom, now, dt, trips, { ranges: s.bots.map((b) => stats(s, b).radar), fetched: s.fetched }, s.scouted, s.mined, s.weather.storms, selected, dugCells(s, world));
       const shown = s.bots[sel >= 0 ? sel : 0];
       showCell(s, st, shown);
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
@@ -792,13 +832,25 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         const n = s.works[x.wd.id];
         const need = workLevelNeeded(world, n);
         const early = n < WORKS_MAX && myLevel < need;
-        set(x.lvl, `${n}/${WORKS_MAX} · ${whole(libraryShare(s, x.wd.id))}`);
-        set(x.next, n >= WORKS_MAX ? 'Complete!' : early ? `??? · needs explorer Lv ${need}` : workTitle(x.wd, n));
-        set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${s.items[x.wd.item]}/${nextWorkCost(s, world, x.wd.id)}`);
+        const have = s.items[x.wd.item];
+        const price = n < WORKS_MAX ? nextWorkCost(s, world, x.wd.id) : 0;
+        x.pipEls.forEach((p, k) => {
+          p.className = k < n ? 'on' : k === n && !early && have >= price ? 'ready' : k === n ? 'next' : '';
+          if (k === n) p.style.setProperty('--p', `${Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
+        });
+        set(x.next, n >= WORKS_MAX ? 'Complete!' : early ? `??? · Lv ${need}` : workTitle(x.wd, n));
+        set(x.gain, `${x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
+        set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${have}/${price}`);
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
-      tabLibrary.classList.toggle('alert', ready);
+      for (const x of sums) {
+        const n = s.works[x.wd.id];
+        set(x.count, `${n}/${WORKS_MAX} · ${whole(libraryShare(s, x.wd.id))}`);
+        set(x.bonus, `${x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
+      }
+      set(libInfo, `Library ${whole(libraryShare(s))} complete. New works are made on the Goals tab.`);
+      if (!libView.hidden) drawShelves(s);
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
       set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
@@ -835,7 +887,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         }
       }
       tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
-      set(shelfInfo, `Library ${whole(libraryShare(s))} complete`);
       for (const c of goalCards) {
         const id = c.g.id;
         const got = s.goals[id];
@@ -854,7 +905,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         set(c.btn, canClaim(s, world, id) ? `Claim ×${c.g.mult}` : got >= GOAL_TIERS ? 'Complete' : `next ×${c.g.mult}`);
         c.btn.classList.toggle('can', canClaim(s, world, id));
       }
-      tabGoals.classList.toggle('alert', GOALS.some((g) => canClaim(s, world, g.id)));
+      tabGoals.classList.toggle('alert', ready || GOALS.some((g) => canClaim(s, world, g.id)));
     },
     /** Bluetreri from a revealed deposit, floating over the map. */
     specialFound(cell: number, amount: string, now: number) {

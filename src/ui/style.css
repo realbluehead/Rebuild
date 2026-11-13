@@ -283,3 +283,39 @@ button { font: inherit; color: inherit; }
 .goal-pips i.ready { background: var(--ok); opacity: 1; animation: blink 1s steps(2) infinite; }
 .list.goals .upg .head .lvl { display: none; } /* (the pips show the tier) */
 .list.goals .upg .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Works on the Goals tab: a pip per work. */
+.goal-pips.works { gap: 1px; }
+.goal-pips.works i { height: 5px; }
+.list.goals .work-card .gain-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list.library-sum .lib-info { grid-column: 1 / -1; margin: 0; }
+
+/* Library view: shelves in place of the map. */
+.library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px;
+  background: repeating-linear-gradient(90deg, #2e1d11 0 22px, #2a1a0f 22px 24px); overflow-y: auto; }
+.library-view[hidden] { display: none; }
+.map-wrap.library-open .zoom-ctl, .map-wrap.library-open .cell-info { display: none; }
+.shelves { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
+.shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
+.plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #7a4f2c;
+  box-shadow: 0 3px 0 #3a2416; background: #1b100a; }
+.vol { flex: 1; min-width: 0; height: var(--tall, 80%); padding: 0; border: 0; position: relative; cursor: pointer;
+  background: hsl(var(--h) 45% 38%); box-shadow: inset 2px 0 0 hsl(var(--h) 45% 52%), inset -2px 0 0 hsl(var(--h) 45% 24%); }
+.vol span { position: absolute; inset: 4px 0; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; line-height: 1;
+  color: hsl(var(--h) 60% 88%); white-space: nowrap; overflow: hidden; text-overflow: clip; display: flex; align-items: center; }
+/* Books: bands at top and bottom of the spine. */
+.vol.book::before, .vol.book::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; background: #e9c46a99; }
+.vol.book::before { top: 4px; }
+.vol.book::after { bottom: 4px; }
+/* Records: thin jewel cases with a coloured stripe. */
+.vol.cd { background: #b8c4cc; box-shadow: inset 2px 0 0 #e8eef2, inset -2px 0 0 #6c7a84; }
+.vol.cd::before { content: ''; position: absolute; top: 0; bottom: 0; left: 30%; width: 40%; background: hsl(var(--h) 55% 45%); }
+.vol.cd span { color: #1b100a; z-index: 1; }
+/* Albums: thick, padded covers with a photo corner. */
+.vol.album { background: hsl(var(--h) 30% 30%); box-shadow: inset 3px 0 0 hsl(var(--h) 30% 44%), inset -3px 0 0 hsl(var(--h) 30% 18%); }
+.vol.album::before { content: ''; position: absolute; top: 6px; left: 25%; width: 50%; height: 12px; background: hsl(calc(var(--h) + 40) 50% 70%); }
+.vol.album span { inset: 22px 0 4px; }
+.vol.on { outline: 2px solid var(--gold); outline-offset: 1px; transform: translateY(-6px); }
+.vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #cfae8833; cursor: default; }
+.vol.empty.next { border-color: var(--ok); }
+.lib-caption { font-size: 15px; padding: 6px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
