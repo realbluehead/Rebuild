@@ -473,22 +473,43 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const pipEls = Array.from({ length: WORKS_MAX }, () => pips.appendChild(h('i')));
     const next = h('span', 'eff');
     const gain = h('span', 'gain');
-    // Cost: a bar of the items gathered for the next work; hovering it (or a tap while it cannot be made) shows X/Y.
+    // Cost: a bar of the items gathered for the next work; hovering it (or a tap while it cannot be made) shows X/Y in
+    // a bubble over it, so the numbers are never cut.
     const btn = h('button', 'px-btn buy work-cost');
     const cost = h('span', 'num');
     const bar = h('span', 'wbar');
-    btn.append(itemIcon(ITEMS.findIndex((it) => it.id === wd.item)), bar, cost);
-    const row = { wd, pipEls, next, gain, btn, cost, bar, peek: 0 };
+    btn.append(bar, cost);
+    const row = { wd, pipEls, next, gain, btn, cost, bar, tip: '' };
+    btn.addEventListener('mouseenter', () => showTip(btn, row.tip));
+    btn.addEventListener('mouseleave', hideTip);
     btn.addEventListener('click', () => {
       const s = current;
       if (s && canCraft(s, world, wd.id)) actions.craft(wd.id);
-      else { row.peek = performance.now() + 2000; btn.classList.add('peek'); }
+      else showTip(btn, row.tip, 2000);
     });
     card.title = `${wd.name}: each one ${wd.effect} ×${wd.bonus}`;
     card.append(h('span', 'name', wd.name), pips, next, gain, btn);
     worksTable.append(card);
     return row;
   });
+
+  // A small bubble over a button (the X/Y of a work's items), outside the table so it is never cut.
+  const tipEl = h('div', 'tip-bubble');
+  tipEl.hidden = true;
+  document.body.append(tipEl);
+  let tipTimer = 0;
+  function showTip(el: HTMLElement, text: string, ms = 0) {
+    if (!text) return;
+    tipEl.textContent = text;
+    tipEl.hidden = false;
+    const r = el.getBoundingClientRect();
+    const half = tipEl.offsetWidth / 2 + 4; // (kept on screen)
+    tipEl.style.left = `${Math.max(half, Math.min(window.innerWidth - half, r.left + r.width / 2))}px`;
+    tipEl.style.top = `${r.top}px`;
+    clearTimeout(tipTimer);
+    if (ms) tipTimer = window.setTimeout(hideTip, ms);
+  }
+  function hideTip() { tipEl.hidden = true; }
 
   // The library view: three shelves (books, records, albums), WORKS_MAX slots each. Tap a volume to read its title.
   const libView = h('div', 'library-view');
@@ -989,9 +1010,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         x.next.title = x.next.textContent ?? '';
         const plain = n >= WORKS_MAX || early;
         set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${have}/${price}`);
-        x.btn.title = plain ? '' : `${have}/${price}`;
+        x.tip = plain ? '' : `${x.wd.item}s ${have}/${price}`;
         x.btn.classList.toggle('plain', plain);
-        if (x.peek && performance.now() > x.peek) { x.peek = 0; x.btn.classList.remove('peek'); }
         x.bar.style.setProperty('--p', `${plain ? 0 : Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
