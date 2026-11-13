@@ -109,9 +109,24 @@ export function createTitle(): TitleScreen {
     return out;
   }
 
-  /** The wasteland's weather: acid clouds with the odd lightning bolt, smoke from burning ruins, and fog along the ground. */
+  /** The wasteland's weather: acid clouds with faint distant lightning, smoke from burning ruins, and fog along the ground. */
   function drawStorm(t: number): void {
     const wrap = (v: number, m: number) => ((v % m) + m) % m;
+    // Distant acid lightning, in the background: a faint short bolt inside the clouds every few seconds, drawn first so
+    // the clouds cover it, and never reaching the ruins.
+    const cyc = t % 6.5;
+    if (cyc < 0.25) {
+      const r = rng(Math.floor(t / 6.5) + 50);
+      R('#d8ff8a0c', 0, 0, W, H * 0.45);
+      let X = W * 0.15 + r() * W * 0.7;
+      let Y = H * 0.08;
+      const end = H * (0.2 + r() * 0.12);
+      while (Y < end) {
+        Y += 2;
+        X += r() * 4 - 2;
+        R(cyc < 0.08 ? '#c8ff7a66' : '#a8d86a40', X, Y, 1, 2);
+      }
+    }
     // Acid clouds drifting along the top.
     const rc = rng(5);
     for (let i = 0; i < 14; i++) {
@@ -146,26 +161,6 @@ export function createTitle(): TitleScreen {
         R(col, X + 6, y - 2, w - 12, 2);
       }
     });
-    // Acid lightning every few seconds: a branching bolt and a green flash (twice).
-    const cyc = t % 4.2;
-    if (cyc < 0.35) {
-      const flash = cyc < 0.08 || (cyc > 0.16 && cyc < 0.24);
-      if (flash) R('#d8ff8a40', 0, 0, W, H);
-      const r = rng(Math.floor(t / 4.2) + 50);
-      let X = W * 0.2 + r() * W * 0.6;
-      let Y = H * 0.12;
-      const end = HZ - r() * H * 0.25;
-      while (Y < end) {
-        Y += 2;
-        X += r() * 4 - 2;
-        R(flash ? '#ffffff' : '#c8ff7a', X, Y, 1, 2);
-        if (r() < 0.1) {
-          let bx = X;
-          let by = Y;
-          for (let k = 0; k < 8; k++) { by += 2; bx += r() < 0.5 ? -1 : 1; R('#c8ff7aaa', bx, by, 1, 2); }
-        }
-      }
-    }
   }
 
   /** The rebuilt city at night: tall towers, flickering neon signs, flying cars, rain and wet streets. */
