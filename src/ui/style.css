@@ -373,9 +373,8 @@ button { font: inherit; color: inherit; }
 .mc-body::before { left: 4px; }
 .mc-body::after { right: 4px; }
 .mc-in { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; }
-.mc-funnel { width: 54px; height: 24px; padding: 0; border: 0; cursor: pointer; clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
+.mc-funnel { width: 54px; height: 24px; clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
   background: linear-gradient(90deg, #6c7a84, #e8eef2 45%, #8a969c 60%, #4a5458); }
-.mc-funnel:hover { filter: brightness(1.2); }
 .mc-drop { position: absolute; left: 50%; top: -14px; width: 12px; height: 12px; margin-left: -6px; line-height: 0; opacity: 0; pointer-events: none; }
 .mc-drop .item-icon { width: 12px; height: 12px; }
 .machine[data-stage=drop] .mc-drop { animation: mc-drop .7s ease-in forwards; }
@@ -412,13 +411,27 @@ button { font: inherit; color: inherit; }
 .mc-text { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font: 13px/1 var(--font-text); color: #8dff9a;
   text-shadow: 0 0 4px #8dff9a; white-space: nowrap; }
 .machine[data-stage=idle] .mc-text { bottom: 50%; transform: translateY(50%); animation: mc-blink 1.2s steps(2) infinite; }
+/* Switched off: the screen is dark grey, the text barely there. */
+.machine:not(.powered) .mc-screen { background: #0c100e; box-shadow: inset 0 0 10px #000; }
+.machine:not(.powered) .mc-text { color: #3a5a40; text-shadow: none; animation: none; }
+/* The on/off switch: a small plate with a lever and a lamp, above the tubes. */
+.mc-switch { position: absolute; left: 50%; top: 0; transform: translateX(-50%); display: flex; align-items: center; gap: 3px; padding: 3px 4px;
+  border: 1px solid var(--edge); border-radius: 2px; background: linear-gradient(#8a969c, #4a5458); cursor: pointer; font: 6px/1 var(--font-num); color: #1a1410; }
+.mc-switch .lever { position: relative; width: 16px; height: 8px; border-radius: 4px; background: #1a1410; box-shadow: inset 0 1px 2px #000; }
+.mc-switch .lever::after { content: ''; position: absolute; top: 1px; left: 1px; width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, #8a969c 60%, #3a4448); transition: left .15s; }
+.mc-switch.is-on .lever { background: #2a6a3a; box-shadow: inset 0 1px 2px #000, 0 0 6px #8dff9a; }
+.mc-switch.is-on .lever::after { left: 9px; }
+.mc-switch .on, .mc-switch .off { opacity: .5; }
+.mc-switch.is-on .on, .mc-switch:not(.is-on) .off { opacity: 1; }
+.mc-switch:disabled { cursor: default; filter: grayscale(1) brightness(.6); }
 .mc-printer { position: relative; height: 62px; border-radius: 3px; border: 2px solid var(--edge);
   background: linear-gradient(#d8d0bc, #a89e88); box-shadow: inset 0 1px 0 #fff8; }
 .mc-slot { position: absolute; left: 8px; right: 8px; top: 12px; height: 3px; background: #1a1410; }
 .mc-sheet { position: absolute; left: 11px; right: 11px; top: 13px; height: 0; background: repeating-linear-gradient(#efe4c6 0 3px, #8a7a5a 3px 4px, #efe4c6 4px 6px);
   box-shadow: 0 1px 2px #0006; }
 .machine[data-stage=print] .mc-sheet { animation: mc-print 1.1s steps(8) forwards; }
-.mc-tray { position: absolute; left: 6px; right: 6px; bottom: 4px; height: calc(3px + var(--n, 0) * 2px); border-radius: 1px;
+.mc-tray { padding: 0; cursor: pointer; position: absolute; left: 6px; right: 6px; bottom: 4px; height: calc(3px + var(--n, 0) * 2px); border-radius: 1px;
   background: repeating-linear-gradient(0deg, #efe4c6 0 1px, #b8ac90 1px 2px); border: 1px solid #5a4a30; }
 @keyframes mc-drop { from { opacity: 1; transform: translateY(-8px) rotate(-20deg); } 70% { opacity: 1; } to { opacity: 0; transform: translateY(26px) scale(.4) rotate(40deg); } }
 @keyframes mc-rise { to { background-position: 0 -26px; } }
@@ -427,8 +440,6 @@ button { font: inherit; color: inherit; }
 @keyframes mc-helix { 50% { transform: scaleX(-1); } }
 @keyframes mc-blink { 50% { opacity: .4; } }
 @keyframes mc-print { to { height: 30px; } }
-.archive .scrap:not(.printed) { filter: drop-shadow(0 0 2px #8dff9a); }
-.archive .scrap.printed { opacity: .7; }
 @keyframes jb-spin { to { transform: rotate(360deg); } }
 @keyframes jb-run { to { background-position: 20px 0; } }
 @keyframes jb-glow { to { box-shadow: 0 0 14px #ffb05acc; } }
@@ -487,10 +498,3 @@ button { font: inherit; color: inherit; }
 .part-row .goal-pips { display: flex; gap: 2px; }
 .part-row .goal-pips.works { gap: 1px; }
 .part-row .goal-pips i { height: 6px; }
-/* Archive: the scraps of lore found, under the shelves. */
-.archive { flex: none; }
-.archive .drawer { display: flex; flex-wrap: wrap; gap: 3px; max-height: 64px; overflow-y: auto; padding: 4px; background: #0d1613; border: 2px solid var(--edge); }
-.archive .scrap { padding: 1px; background: none; border: 1px solid transparent; cursor: pointer; line-height: 0; }
-.archive .scrap.on { border-color: var(--gold); }
-.archive .scrap .item-icon { width: 12px; height: 12px; }
-.archive .info { font-size: 14px; }

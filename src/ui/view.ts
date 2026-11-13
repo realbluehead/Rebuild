@@ -539,21 +539,22 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   libView.hidden = true;
   const libCaption = h('div', 'lib-caption px-box');
   const shelvesEl = h('div', 'shelves');
-  const archiveEl = h('div', 'archive');
-  // The decoder, under the jukebox: a scrap of lore dropped in the funnel goes down to a flask, its DNA runs through the
-  // tubes to a monitor that reads it, and a printer gives out a sheet with its piece of the planet's history.
+  // The decoder, under the jukebox: switched on, it takes the scraps of lore found one by one. Each drops in the funnel
+  // down to a flask, its DNA runs through the tubes to a monitor that reads it, and a printer gives out a sheet with its
+  // piece of the planet's history (tap the tray to read the sheets).
   const machineEl = h('div', 'machine');
   machineEl.dataset.stage = 'idle';
   const mcLabel = h('div', 'shelf-label');
-  const mcFunnel = h('button', 'mc-funnel');
-  mcFunnel.title = 'Feed the next scrap';
+  const mcFunnel = h('div', 'mc-funnel');
+  const mcSwitch = h('button', 'mc-switch');
+  mcSwitch.append(h('span', 'off', 'OFF'), h('i', 'lever'), h('span', 'on', 'ON'));
   const mcDrop = h('i', 'mc-drop');
   const mcFlask = h('div', 'mc-flask');
   mcFlask.append(h('i', 'mc-liquid'), h('i', 'mc-bubbles'));
   const mcIn = h('div', 'mc-in');
   mcIn.append(mcFunnel, mcDrop, mcFlask);
   const mcTubes = h('div', 'mc-tubes');
-  mcTubes.append(h('i', 'mc-pipe a'), h('i', 'mc-coil'), h('i', 'mc-pipe b'));
+  mcTubes.append(mcSwitch, h('i', 'mc-pipe a'), h('i', 'mc-coil'), h('i', 'mc-pipe b'));
   const mcHelix = h('div', 'mc-helix');
   for (let k = 0; k < 9; k++) {
     const r = h('i', 'mc-rung');
@@ -565,18 +566,52 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   mcScreen.append(mcHelix, mcText);
   const mcCrt = h('div', 'mc-crt');
   mcCrt.append(mcScreen);
-  const mcTray = h('div', 'mc-tray');
+  const mcTray = h('button', 'mc-tray');
+  mcTray.title = 'Read the printed sheets';
   const mcPrinter = h('div', 'mc-printer');
   mcPrinter.append(h('i', 'mc-slot'), h('i', 'mc-sheet'), mcTray);
   const mcBody = h('div', 'mc-body');
   mcBody.append(mcIn, mcTubes, mcCrt, mcPrinter);
   machineEl.append(mcLabel, mcBody);
-  libView.append(shelvesEl, machineEl, archiveEl);
+  libView.append(shelvesEl, machineEl);
   /** The scrap going through the decoder (one at a time), if any. */
   let decoding = -1;
-  const MC_TEXT: Record<string, string> = { idle: 'FEED A SCRAP_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
+  /** The switch: while on, the decoder takes the next scrap as soon as it is free, until none is left. */
+  let running = false;
+  const MC_TEXT: Record<string, string> = { idle: 'STANDBY_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
   const stage = (st: string) => { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); };
   stage('idle');
+  /** The next scrap found and not printed yet, if any. */
+  const nextScrap = (): number | undefined => {
+    const s = current;
+    return s ? loreFound(s, world).find((x) => !s.printed.includes(x) && x !== decoding) : undefined;
+  };
+  /** The switch can be used while there are scraps to decode (or one under way, to switch it off). */
+  function showSwitch() {
+    if (running && decoding < 0 && nextScrap() === undefined) running = false;
+    mcSwitch.disabled = !running && nextScrap() === undefined;
+    mcSwitch.classList.toggle('is-on', running);
+    machineEl.classList.toggle('powered', running || decoding >= 0);
+  }
+  function pump() {
+    if (running && decoding < 0) {
+      const k = nextScrap();
+      if (k !== undefined) feed(k);
+    }
+    showSwitch();
+  }
+  mcSwitch.addEventListener('click', () => {
+    running = !running;
+    pump();
+  });
+  /** Tapping the tray shows the printed sheets one after another. */
+  mcTray.addEventListener('click', () => {
+    const s = current;
+    if (!s || !s.printed.length) return;
+    const at = picked.startsWith('lore:') ? s.printed.indexOf(Number(picked.slice(5))) : -1;
+    picked = `lore:${s.printed[(at + 1) % s.printed.length]}`;
+    shelfKey = '';
+  });
   /** Drops scrap `k` in the funnel; a few seconds later its sheet is printed. */
   function feed(k: number) {
     if (decoding >= 0 || !current || !canPrint(current, world, k)) return;
@@ -592,13 +627,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       decoding = -1;
       stage('idle');
       shelfKey = '';
+      window.setTimeout(pump, 500);
     }, 4400);
   }
-  mcFunnel.addEventListener('click', () => {
-    const s = current;
-    const k = s ? loreFound(s, world).find((x) => !s.printed.includes(x)) : undefined;
-    if (k !== undefined) feed(k);
-  });
   // The library is lit by a few soft candles: dim, warm, flickering a little (all CSS). The caption sits above it.
   const libDark = h('div', 'lib-dark');
   /** Scraps of lore already announced on the map (-1: not counted yet, so loading does not announce them all). */
@@ -680,35 +711,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       shelvesEl.append(row);
     }
     shelvesEl.append(lower);
-    // The archive: a small icon per scrap found, in the order they lie on the map.
+    // The decoder: how many scraps are printed, the pile in the tray, and the switch.
     const printed = lore.filter((k) => s.printed.includes(k)).length;
-    set(mcLabel, `Decoder · printed ${printed}/${lore.length}`);
+    set(mcLabel, `Decoder · printed ${printed}/${lore.length} · found ${lore.length}/${world.loreCells.length}`);
     mcTray.style.setProperty('--n', String(Math.min(6, printed)));
-    archiveEl.replaceChildren(h('div', 'shelf-label', `Archive ${lore.length}/${world.loreCells.length}`));
-    const drawer = h('div', 'drawer');
-    for (const k of lore) {
-      const kind = world.lore[world.loreCells[k]] - 1;
-      const done = s.printed.includes(k);
-      const b = h('button', `scrap${done ? ' printed' : ''}`);
-      b.append(loreIcon(kind));
-      b.title = done ? `${LORE[kind].name} (printed)` : `${LORE[kind].name}: tap to decode`;
-      b.classList.toggle('on', picked === `lore:${k}`);
-      // A printed scrap is read; one not printed yet goes into the decoder.
-      b.addEventListener('click', () => {
-        if (!done) { feed(k); return; }
-        picked = picked === `lore:${k}` ? '' : `lore:${k}`;
-        shelfKey = '';
-      });
-      drawer.append(b);
-    }
-    if (!lore.length) drawer.append(h('span', 'info', 'Scraps of the old world turn up as the Scout explores.'));
-    archiveEl.append(drawer);
+    showSwitch();
     const [pid, pk] = picked.split(':');
     const wd = WORKS.find((w) => w.id === pid);
     if (pid === 'lore') {
       const kind = world.lore[world.loreCells[Number(pk)]] - 1;
       const k = Number(pk);
-      set(libCaption, `${LORE[kind].name} #${k + 1} · ${decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'drop it in the decoder'}`);
+      set(libCaption, `${LORE[kind].name} #${k + 1} · ${decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'not decoded yet'}`);
     } else if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
     // Nothing picked: no caption.
     libCaption.hidden = !wd && pid !== 'lore';
@@ -982,7 +995,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'They are kept in the Archive, at the bottom of the Library tab. Tap one (or the funnel) to drop it in the Decoder: it reads the DNA left on it and prints a sheet of the planet\'s history. Tap a printed scrap to read it again. The Archivist goal counts every scrap found.'] },
+        'On the Library tab, switch the Decoder on: it takes the scraps found one by one, reads the DNA left on them and prints a sheet of the planet\'s history for each. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
