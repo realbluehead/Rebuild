@@ -280,6 +280,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const list = h('div', 'list rover');
   // One rover of each kind: pick which one the cards are for. A kind not built yet shows what it does and its price.
   let kind: RoverKind = 'scout';
+  /** Rovers built and panel width the Rovers tab height was measured for (see `fillRover`). */
+  let sizedKey = '';
   const picker = h('div', 'rover-pick');
   const pickBtns = ROVER_KINDS.map((k) => {
     const b = h('button', 'px-btn pick', k.name);
@@ -503,6 +505,58 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.replaceChildren(h('span', '', text));
   }
   panel.append(tabs, list, routesList, worksList, goalsList);
+
+  /** Fills the Rovers tab for the picked kind. */
+  function fillRover(s: GameState) {
+    const sel = roverIndex(s, kind);
+    const bot = sel >= 0 ? s.bots[sel] : undefined;
+    const kd = kindById(kind);
+    buildCard.hidden = !!bot;
+    partTable.hidden = !bot;
+    orderCard.hidden = !bot || bot.kind === 'scout';
+    if (bot && bot.kind !== 'scout') {
+      const miner = bot.kind === 'miner';
+      set(orderName, miner ? 'Dig order' : 'Pick-ups');
+      set(orderDesc, miner
+        ? (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : '')
+        : `Leaves camp at ${Math.round(s.haulAt * 100)}% full, for ${s.haulPick === 'fullest' ? 'the fullest rover' : `the ${kindById(s.haulPick).name} first`}.`);
+      digRow.row.hidden = !miner;
+      atRow.row.hidden = miner;
+      pickRow.row.hidden = miner;
+      // Radio squares, not orange buttons: orange means something can be bought.
+      const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
+      digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
+      atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
+      pickRow.btns.forEach((b, q) => mark(b, (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
+    }
+    if (!bot) {
+      const need = roverLevelNeeded(world, kind);
+      const prevMissing = ROVER_KINDS.slice(0, ROVER_KINDS.indexOf(kd)).find((k) => roverIndex(s, k.id) < 0);
+      set(buildName, kd.name);
+      set(buildDesc, kd.desc);
+      if (prevMissing) label(buildKey, 'btnKey', buildBtn, `Build the ${prevMissing.name} first`);
+      else if (levelOf(s, world) < need) label(buildKey, 'btnKey', buildBtn, `needs explorer Lv ${need}`);
+      else price(buildKey, 'btnKey', buildBtn, kd.gold, {}, 'Build');
+      buildBtn.classList.toggle('can', canBuild(s, world, kind));
+    }
+    for (const r of rows) {
+      const id = r.def.id;
+      r.card.hidden = !bot || !hasPart(bot, id);
+      if (r.card.hidden || !bot) continue;
+      const lvl = levelOn(s, id, bot);
+      set(r.lvl, `${lvl}`);
+      const cur = stats(s, bot);
+      bot.up[id]++;
+      const next = stats(s, bot);
+      bot.up[id]--;
+      set(r.eff, effectText(r.def.id, cur, next));
+      set(r.cost, fmt(costOf(r.def, lvl)));
+      r.btn.classList.toggle('can', canBuy(s, id, 1, sel));
+      const g = upgradeGain(s, world, id, sel);
+      set(r.gain, g === null ? (id === 'radar' ? 'items' : bot.kind === 'hauler' ? (id === 'speed' ? 'pick-up' : 'loads') : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}%`);
+      r.gain.title = g === null ? '' : 'More bluetreri per second from one more level';
+    }
+  }
 
   /** Where a rover is on its detour, for the map: 0 -> 0.5 out to the item (by cells walked: rough cells take longer)
    *  and 0.5 -> 1 back. */
@@ -793,54 +847,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       // How much of the current ring is done: new rovers, and a queued route or level, start with the next ring.
       const ringNow = progress(s, world);
       const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
+      // The Rovers tab keeps the height of its tallest rover, so the map above does not jump when another is picked.
+      // Measured in one go (every kind drawn, then the picked one) whenever the rovers built or the width change.
+      const sizeKey = `${s.bots.map((b) => b.kind).join()}|${list.clientWidth}`;
+      if (!list.hidden && sizeKey !== sizedKey) {
+        sizedKey = sizeKey;
+        const keep = kind;
+        list.style.minHeight = '';
+        let tallest = 0;
+        for (const k of ROVER_KINDS) {
+          kind = k.id;
+          fillRover(s);
+          tallest = Math.max(tallest, list.offsetHeight);
+        }
+        kind = keep;
+        list.style.minHeight = `${tallest}px`;
+      }
       fillPicker(s);
-      const bot = sel >= 0 ? s.bots[sel] : undefined;
-      const kd = kindById(kind);
-      buildCard.hidden = !!bot;
-      partTable.hidden = !bot;
-      orderCard.hidden = !bot || bot.kind === 'scout';
-      if (bot && bot.kind !== 'scout') {
-        const miner = bot.kind === 'miner';
-        set(orderName, miner ? 'Dig order' : 'Pick-ups');
-        set(orderDesc, miner
-          ? (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : '')
-          : `Leaves camp at ${Math.round(s.haulAt * 100)}% full, for ${s.haulPick === 'fullest' ? 'the fullest rover' : `the ${kindById(s.haulPick).name} first`}.`);
-        digRow.row.hidden = !miner;
-        atRow.row.hidden = miner;
-        pickRow.row.hidden = miner;
-        // Radio squares, not orange buttons: orange means something can be bought.
-        const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
-        digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
-        atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
-        pickRow.btns.forEach((b, q) => mark(b, (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
-      }
-      if (!bot) {
-        const need = roverLevelNeeded(world, kind);
-        const prevMissing = ROVER_KINDS.slice(0, ROVER_KINDS.indexOf(kd)).find((k) => roverIndex(s, k.id) < 0);
-        set(buildName, kd.name);
-        set(buildDesc, kd.desc);
-        if (prevMissing) label(buildKey, 'btnKey', buildBtn, `Build the ${prevMissing.name} first`);
-        else if (levelOf(s, world) < need) label(buildKey, 'btnKey', buildBtn, `needs explorer Lv ${need}`);
-        else price(buildKey, 'btnKey', buildBtn, kd.gold, {}, 'Build');
-        buildBtn.classList.toggle('can', canBuild(s, world, kind));
-      }
-      for (const r of rows) {
-        const id = r.def.id;
-        r.card.hidden = !bot || !hasPart(bot, id);
-        if (r.card.hidden || !bot) continue;
-        const lvl = levelOn(s, id, bot);
-        set(r.lvl, `${lvl}`);
-        const cur = stats(s, bot);
-        bot.up[id]++;
-        const next = stats(s, bot);
-        bot.up[id]--;
-        set(r.eff, effectText(r.def.id, cur, next));
-        set(r.cost, fmt(costOf(r.def, lvl)));
-        r.btn.classList.toggle('can', canBuy(s, id, 1, sel));
-        const g = upgradeGain(s, world, id, sel);
-        set(r.gain, g === null ? (id === 'radar' ? 'items' : bot.kind === 'hauler' ? (id === 'speed' ? 'pick-up' : 'loads') : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}%`);
-        r.gain.title = g === null ? '' : 'More bluetreri per second from one more level';
-      }
+      fillRover(s);
       tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => canBuild(s, world, k.id)));
       const myLevel = levelOf(s, world);
       for (const x of works) {

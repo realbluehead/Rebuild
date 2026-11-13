@@ -183,7 +183,7 @@ button { font: inherit; color: inherit; }
 .upg .lvl { font: 8px/1 var(--font-num); color: var(--muted); }
 .upg .eff { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Rover tab: six parts in a 3x2 grid, a little more compact */
-.list.rover { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.list.rover { grid-template-columns: 1fr 1fr 1fr; gap: 6px; align-content: start; } /* (a fixed min-height: rows stay at the top) */
 .list.rover .upg { padding: 6px; gap: 2px; }
 .list.rover .upg .eff { font-size: 16px; }
 .level-bar { height: 4px; margin-top: 2px; }
