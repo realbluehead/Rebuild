@@ -1,5 +1,5 @@
 // Title screen, shown full screen while the world is built. The story in one picture: a scan line rises from the street
-// and, as the expedition's data comes in, turns the ruined wasteland into a neon city. When loading is done it waits for
+// and, as the expedition's data comes in, turns the ruined wasteland (acid storm, smoke, fog) into a neon city. When loading is done it waits for
 // a tap. The scene is pixel art drawn on a small canvas (about 112 pixels wide) and scaled up.
 
 /** Small seeded generator (mulberry32): the scene looks the same on every frame and every launch. */
@@ -22,7 +22,7 @@ export interface TitleScreen {
 }
 
 /** Share of the screen the scan line climbs per second at most (the whole climb takes at least 1 / SCAN_SPEED s). */
-const SCAN_SPEED = 0.45;
+const SCAN_SPEED = 0.3;
 /** Width of the scene in canvas pixels (its height follows the screen). */
 const SCENE_W = 112;
 /** The scene redraws this often (a low rate keeps the pixel-art feel and costs little). */
@@ -55,6 +55,8 @@ export function createTitle(): TitleScreen {
   let H = 240;
   let HZ = 200;
   let waste: HTMLCanvasElement | null = null;
+  /** Burning ruins the smoke rises from: the tallest one in each third of the screen. */
+  let fires: [number, number][] = [];
 
   const R = (c: string, X: number, Y: number, w = 1, h = 1) => { x.fillStyle = c; x.fillRect(X | 0, Y | 0, Math.max(1, w | 0), Math.max(1, h | 0)); };
   const bands = (cols: string[], y0: number, y1: number) => {
@@ -84,9 +86,12 @@ export function createTitle(): TitleScreen {
     for (let i = -7; i <= 7; i++) for (let j = -7; j <= 7; j++) if (i * i + j * j < 44) R(i * i + j * j < 22 ? '#f6cf8a' : '#eaa35e', sx + i, sy + j);
     for (let i = 0; i < W / 2; i++) R('#e9a76b55', r() * W, r() * HZ);
     for (let X = 0; X < W;) { const w = 4 + r() * 6; const h = 6 + r() * 12; R('#7a4434', X, HZ - h, w, h); X += w + r() * 3; }
+    const tallest: [number, number, number][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     for (let X = -2; X < W;) {
       const w = 7 + r() * 11;
       const h = 16 + r() * H * 0.27;
+      const third = Math.min(2, Math.max(0, Math.floor(((X + w / 2) / W) * 3)));
+      if (h > tallest[third][2]) tallest[third] = [X + w * 0.3, HZ - h + 4, h];
       for (let i = 0; i < w; i++) {
         const top = HZ - h + (r() < 0.5 ? r() * 7 : r() * 2) + (i > w * 0.55 ? r() * h * 0.45 : 0);
         R('#2e201e', X + i, top, 1, HZ - top);
@@ -94,6 +99,7 @@ export function createTitle(): TitleScreen {
       for (let wy = HZ - h + 6; wy < HZ - 3; wy += 4) for (let wx = X + 1; wx < X + w - 2; wx += 3) if (r() < 0.45) R('#170f10', wx, wy, 2, 2);
       X += w + 1 + r() * 5;
     }
+    fires = tallest.filter((f) => f[2] > 0).map(([fx, fy]) => [fx, fy]);
     R('#3a281f', 0, HZ, W, H - HZ);
     for (let i = 0; i < W * 1.5; i++) R(r() < 0.5 ? '#4e3628' : '#2a1d17', r() * W, HZ + r() * (H - HZ), 1 + r() * 2, 1);
     const out = document.createElement('canvas');
@@ -101,6 +107,65 @@ export function createTitle(): TitleScreen {
     out.height = H;
     out.getContext('2d')!.drawImage(canvas, 0, 0);
     return out;
+  }
+
+  /** The wasteland's weather: acid clouds with the odd lightning bolt, smoke from burning ruins, and fog along the ground. */
+  function drawStorm(t: number): void {
+    const wrap = (v: number, m: number) => ((v % m) + m) % m;
+    // Acid clouds drifting along the top.
+    const rc = rng(5);
+    for (let i = 0; i < 14; i++) {
+      const w = 20 + rc() * 30;
+      const X = wrap(rc() * W * 1.5 + t * 4, W * 1.5) - w;
+      const Y = rc() * H * 0.17;
+      R('#1e2a14', X, Y, w, 10 + rc() * 10);
+      R('#2c3a1a', X + 4, Y + 8, w - 8, 6);
+    }
+    // Smoke from the burning ruins: puffs grow, drift with the wind and fade.
+    fires.forEach(([fx, fy], s) => {
+      const r = rng(90 + s);
+      for (let i = 0; i < 34; i++) {
+        const life = 6 + r() * 3;
+        const k = wrap(r() * life + t, life) / life;
+        const size = Math.floor(1 + k * 6);
+        const X = fx + k * k * 30 + Math.sin(t + i) * 2 * k;
+        R(k < 0.2 ? '#4a3a34cc' : `rgba(70,58,52,${(0.55 - k * 0.5).toFixed(2)})`, X - size / 2, fy - k * H * 0.5, size, size);
+      }
+      R(Math.sin(t * 10 + s) > 0 ? '#ff7a2a' : '#c8401a', fx - 1, fy, 3, 2);
+    });
+    // Fog: four layers drifting at different speeds along the ground.
+    const fog = ['#d8a68a1c', '#c89a8226', '#b88c7a30', '#a07a6c3a'];
+    fog.forEach((col, L) => {
+      const r = rng(30 + L);
+      const sp = (L + 1) * 3 * (L % 2 ? -1 : 1);
+      for (let i = 0; i < 9; i++) {
+        const w = 30 + r() * 40;
+        const X = wrap(r() * W * 2 + t * sp, W * 2) - w;
+        const y = HZ - 30 + L * 12 + r() * 10;
+        R(col, X, y, w, 5 + r() * 6);
+        R(col, X + 6, y - 2, w - 12, 2);
+      }
+    });
+    // Acid lightning every few seconds: a branching bolt and a green flash (twice).
+    const cyc = t % 4.2;
+    if (cyc < 0.35) {
+      const flash = cyc < 0.08 || (cyc > 0.16 && cyc < 0.24);
+      if (flash) R('#d8ff8a40', 0, 0, W, H);
+      const r = rng(Math.floor(t / 4.2) + 50);
+      let X = W * 0.2 + r() * W * 0.6;
+      let Y = H * 0.12;
+      const end = HZ - r() * H * 0.25;
+      while (Y < end) {
+        Y += 2;
+        X += r() * 4 - 2;
+        R(flash ? '#ffffff' : '#c8ff7a', X, Y, 1, 2);
+        if (r() < 0.1) {
+          let bx = X;
+          let by = Y;
+          for (let k = 0; k < 8; k++) { by += 2; bx += r() < 0.5 ? -1 : 1; R('#c8ff7aaa', bx, by, 1, 2); }
+        }
+      }
+    }
   }
 
   /** The rebuilt city at night: tall towers, flickering neon signs, flying cars, rain and wet streets. */
@@ -179,7 +244,15 @@ export function createTitle(): TitleScreen {
       const t = now / 1000;
       drawCity(t);
       const ly = Math.round(H - shown * H);
-      if (ly > 0) x.drawImage(waste!, 0, 0, W, ly, 0, 0, W, ly);
+      if (ly > 0) {
+        x.drawImage(waste!, 0, 0, W, ly, 0, 0, W, ly);
+        x.save();
+        x.beginPath();
+        x.rect(0, 0, W, ly);
+        x.clip();
+        drawStorm(t);
+        x.restore();
+      }
       if (!loaded()) {
         R('#ffffff', 0, ly, W, 1);
         R('#9ff6ffaa', 0, ly - 1, W, 1);
