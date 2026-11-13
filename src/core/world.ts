@@ -245,8 +245,8 @@ export function planEntry(ring: number, sectors: readonly Sector[]): PlanEntry {
   return sectors.every(([r2, l2]) => r2 === r && l2 === l) ? [ring, r, l] : [ring, sectors.map(([r2, l2]) => [r2, l2] as Sector)];
 }
 
-/** Rebuilds a world's order from a game's route history (see `GameState.plan`). */
-export function applyPlan(w: World, plan: readonly PlanEntry[]): void {
+/** Rebuilds a world's order from a game's route history (see `GameState.plan`); `onEntry(k, n)` after each entry. */
+export function applyPlan(w: World, plan: readonly PlanEntry[], onEntry?: (k: number, n: number) => void): void {
   let from = Infinity;
   plan.forEach((e, k) => {
     const ring = e[0];
@@ -259,6 +259,7 @@ export function applyPlan(w: World, plan: readonly PlanEntry[]): void {
     const sectors = planSectors(e);
     if (sectors) reorder(w, ring, sectors, undefined, upto, lazy);
     else reorder(w, ring, e[1] as RouteId, undefined, upto, lazy);
+    onEntry?.(k, plan.length);
   });
   if (from < Infinity) derive(w, from);
 }

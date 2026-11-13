@@ -115,8 +115,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   Offline progress is exact. If generation changes, saves will see a different map.
 - Format: **always a portrait phone**. On mobile it fills the screen; on desktop it is a centred 9:19.5 phone frame (`#app` in `style.css`).
   Top bar (bluetreri, rate, ≡ menu with export/import/restart), map in the middle, Rover/Routes/Library tabs at the bottom. Dialogs open inside the phone.
-- Title screen (`ui/title.ts`): full screen over `#app` while `boot` loads (load save → `createWorld` → `applyPlan` etc. →
-  view → offline), with a frame painted between the blocking steps (`title.progress`). Pixel-art canvas ~112 px wide: a scan
+- Start-up: `main.ts` only puts the title screen up and then imports `boot.ts` (its own chunk). `boot` reads the save and
+  runs `loadWorld` (`load.ts`: `createWorld`, `applyPlan` per entry, `fromLegacy`, `recountItems`, `applyOffline`) in
+  `load.worker.ts`, which posts progress and hands back the serialised state, the world (buffers transferred) and the
+  offline report; if the worker fails it runs inline. Testing a production build locally: a service worker caches the
+  old chunks, so unregister it first.
+- Title screen (`ui/title.ts`): full screen over `#app` while that runs (`title.progress`). Pixel-art canvas ~112 px wide: a scan
   line rises from the street turning the wasteland into a neon city (it chases the progress at most `SCAN_SPEED`, so it
   takes ≥ ~3.3 s); above the line the wasteland has acid clouds with faint distant lightning, smoke from the three tallest ruins and ground fog (`drawStorm`), "RECEIVING DATA…" + bar, then "TAP TO START". Title "REBUILD" in Monoton (`@fontsource/monoton`), dull
   above the line and neon below it. The game loop already runs behind it; help, offline report and end message wait for the tap.

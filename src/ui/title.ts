@@ -291,7 +291,10 @@ export function createTitle(): TitleScreen {
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') start(); };
   window.addEventListener('keydown', onKey);
   window.addEventListener('resize', () => { waste = null; });
-  void document.fonts?.ready.then(() => { waste = null; }); // refit the title once the font is in
+  // The title stays hidden until its font is in (no flash of a fallback font), then is fitted again.
+  el.classList.add('font-wait');
+  const fontIn = () => { el.classList.remove('font-wait'); waste = null; };
+  Promise.race([document.fonts?.load('40px Monoton'), new Promise((r) => setTimeout(r, 1500))]).then(fontIn, fontIn);
   raf = requestAnimationFrame(frame);
 
   return {
