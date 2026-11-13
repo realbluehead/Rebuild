@@ -293,17 +293,24 @@ button { font: inherit; color: inherit; }
 .library-view[hidden] { display: none; }
 .map-wrap.library-open .zoom-ctl, .map-wrap.library-open .cell-info { display: none; }
 .map-wrap:not(.library-open) .lib-dark, .map-wrap:not(.library-open) .lib-caption, .lib-caption[hidden] { display: none; }
-/* The torch: dark everywhere but a warm circle around (--x, --y), with dust motes in the beam. */
+/* Candlelight: the room is dim, darker at the edges, with a few warm pools of light that flicker softly, each on
+   its own beat. */
 .lib-dark { position: absolute; inset: 0; z-index: 6; pointer-events: none;
-  background: radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), #ffe9a014, transparent 70%),
-    radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), transparent 0, #0008 55%, #000c 100%); }
-.lib-dark .mote { position: absolute; left: 0; top: 0; width: 2px; height: 2px; background: #ffe9a0; opacity: 0; }
+  background: linear-gradient(#2a140820, #2a140820), radial-gradient(ellipse 80% 70% at 50% 45%, transparent 30%, #0006 75%, #000a 100%); }
+.lib-dark::before, .lib-dark::after { content: ''; position: absolute; inset: 0; }
+.lib-dark::before { background: radial-gradient(circle at 10% 16%, #ffb45a26, transparent 42%), radial-gradient(circle at 90% 58%, #ffb45a20, transparent 40%);
+  animation: candle-a 3.7s ease-in-out infinite; }
+.lib-dark::after { background: radial-gradient(circle at 72% 10%, #ffc46a1e, transparent 38%), radial-gradient(circle at 22% 86%, #ff9a4a1c, transparent 44%);
+  animation: candle-b 2.9s ease-in-out infinite; }
+@keyframes candle-a { 0%, 100% { opacity: 1; } 18% { opacity: .82; } 31% { opacity: .95; } 52% { opacity: .78; } 70% { opacity: .92; } 83% { opacity: .86; } }
+@keyframes candle-b { 0%, 100% { opacity: .9; } 22% { opacity: 1; } 40% { opacity: .8; } 61% { opacity: .96; } 79% { opacity: .84; } }
+@media (prefers-reduced-motion: reduce) { .lib-dark::before, .lib-dark::after { animation: none; } }
 .shelves { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
 .plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
   box-shadow: 0 3px 0 #1a2f2a; background: #0d1613; }
 .vol { flex: 1; min-width: 0; height: var(--tall, 80%); padding: 0; border: 0; position: relative; cursor: pointer;
-  transform: translateY(calc(var(--lift, 0) * -8px)) scale(calc(1 + var(--lift, 0) * 0.1)); transform-origin: bottom; transition: transform .12s;
+  transform-origin: bottom; transition: transform .12s;
   background: hsl(var(--h) 45% 38%); box-shadow: inset 2px 0 0 hsl(var(--h) 45% 52%), inset -2px 0 0 hsl(var(--h) 45% 24%); }
 .vol span { position: absolute; inset: 4px 0; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; line-height: 1;
   color: hsl(var(--h) 60% 88%); white-space: nowrap; overflow: hidden; text-overflow: clip; display: flex; align-items: center; }
@@ -348,8 +355,7 @@ button { font: inherit; color: inherit; }
 .jb-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; background: #1a0e0a; border-radius: 2px;
   box-shadow: inset 0 0 0 1px #4a5458; align-content: center; }
 .jb-card { height: 12px; padding: 0 3px; border: 0; border-left: 4px solid var(--v); background: #efe4c6; color: #2a1810; cursor: pointer;
-  font: 12px/12px var(--font-text); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  transform: scale(calc(1 + var(--lift, 0) * 0.08)); transition: transform .12s; }
+  font: 12px/12px var(--font-text); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jb-card.on { background: #fff4d0; box-shadow: 0 0 6px #ffc46a; position: relative; z-index: 1; }
 .jb-card.empty { background: #efe4c614; border-left-color: transparent; color: #efe4c640; cursor: default; }
 .jb-card.empty.next { outline: 1px dashed var(--ok); outline-offset: -1px; }
@@ -484,8 +490,7 @@ button { font: inherit; color: inherit; }
 /* Archive: the scraps of lore found, under the shelves. */
 .archive { flex: none; }
 .archive .drawer { display: flex; flex-wrap: wrap; gap: 3px; max-height: 64px; overflow-y: auto; padding: 4px; background: #0d1613; border: 2px solid var(--edge); }
-.archive .scrap { padding: 1px; background: none; border: 1px solid transparent; cursor: pointer; line-height: 0;
-  transform: scale(calc(1 + var(--lift, 0) * 0.4)); transition: transform .12s; }
+.archive .scrap { padding: 1px; background: none; border: 1px solid transparent; cursor: pointer; line-height: 0; }
 .archive .scrap.on { border-color: var(--gold); }
 .archive .scrap .item-icon { width: 12px; height: 12px; }
 .archive .info { font-size: 14px; }

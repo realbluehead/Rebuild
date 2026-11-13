@@ -585,13 +585,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     shelfKey = '';
     mcDrop.replaceChildren(loreIcon(world.lore[world.loreCells[k]] - 1));
     stage('drop');
-    torch.focus = true;
     window.setTimeout(() => stage('flow'), 700);
     window.setTimeout(() => stage('print'), 3200);
     window.setTimeout(() => {
       actions.printLore(k);
       decoding = -1;
-      torch.focus = false;
       stage('idle');
       shelfKey = '';
     }, 4400);
@@ -601,49 +599,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const k = s ? loreFound(s, world).find((x) => !s.printed.includes(x)) : undefined;
     if (k !== undefined) feed(k);
   });
-  // The library is dark: a torch follows the finger (or wanders on its own when left alone), with dust in the beam.
-  // The caption sits above the dark.
+  // The library is lit by a few soft candles: dim, warm, flickering a little (all CSS). The caption sits above it.
   const libDark = h('div', 'lib-dark');
-  const motes = Array.from({ length: 12 }, (_, i) => {
-    const m = h('i', 'mote');
-    libDark.append(m);
-    return { m, a: i * 0.52, r: 18 + ((i * 37) % 60) };
-  });
-  /** `focus`: the decoder is at work, and the torch turns to it while the player leaves it alone. */
-  const torch = { x: -1, y: -1, last: -1e9, focus: false };
-  const aim = (e: PointerEvent) => {
-    const r = mapWrap.getBoundingClientRect();
-    torch.x = e.clientX - r.left;
-    torch.y = e.clientY - r.top;
-    torch.last = performance.now();
-  };
-  libView.addEventListener('pointermove', aim);
-  libView.addEventListener('pointerdown', aim);
-  function lightLibrary(now: number) {
-    const r = mapWrap.getBoundingClientRect();
-    if (torch.focus && now - torch.last > 600) {
-      const m = mcBody.getBoundingClientRect();
-      torch.x += (m.left + m.width / 2 - r.left - torch.x) * 0.1;
-      torch.y += (m.top + m.height / 2 - r.top - torch.y) * 0.1;
-    } else if (now - torch.last > 2500) {
-      torch.x = r.width * (0.5 + 0.38 * Math.sin(now / 1700));
-      torch.y = r.height * (0.45 + 0.3 * Math.sin(now / 1100));
-    }
-    const rad = Math.max(70, Math.min(r.width, r.height) * 0.22);
-    libDark.style.setProperty('--x', `${torch.x}px`);
-    libDark.style.setProperty('--y', `${torch.y}px`);
-    libDark.style.setProperty('--r', `${rad}px`);
-    for (const v of libView.querySelectorAll<HTMLElement>('.vol:not(.empty), .scrap, .jb-card:not(.empty)')) {
-      const b = v.getBoundingClientRect();
-      const d = Math.hypot(b.left + b.width / 2 - r.left - torch.x, b.top + b.height / 2 - r.top - torch.y);
-      v.style.setProperty('--lift', Math.max(0, 1 - d / rad).toFixed(2));
-    }
-    for (const o of motes) {
-      o.a += 0.01;
-      o.m.style.transform = `translate(${torch.x + Math.cos(o.a * 1.3) * o.r * rad / 80}px, ${torch.y + Math.sin(o.a) * o.r * rad / 80}px)`;
-      o.m.style.opacity = (0.25 + 0.5 * Math.sin(o.a * 3) ** 2).toFixed(2);
-    }
-  }
   /** Scraps of lore already announced on the map (-1: not counted yet, so loading does not announce them all). */
   let loreSeen = -1;
   let shelfKey = '';
@@ -1232,7 +1189,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         }
       }
       loreSeen = lore.length;
-      if (!libView.hidden) { drawShelves(s); lightLibrary(now); }
+      if (!libView.hidden) drawShelves(s);
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       fillRD(s);
