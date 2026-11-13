@@ -129,6 +129,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   cellBox.addEventListener('click', () => { if (selected < 0) openFleet(); selected = -1; });
 
   const toast = h('div', 'toast px-box');
+  let rateNow: (() => number) | null = null;
 
   // Game speed multiplier, for testing (remembered in this browser).
   const SPEEDS = [1, 2, 5, 10, 50, 100, 1000];
@@ -735,6 +736,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
 
   return {
+    /** Where the measured bluetreri per second comes from (see core/rate.ts); without it, the estimate is shown. */
+    setRate(get: () => number) { rateNow = get; },
     render(s: GameState, now: number) {
       const dt = Math.min(0.1, (now - lastFrame) / 1000);
       lastFrame = now;
@@ -766,7 +769,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
       set(gold, fmt(s.gold));
-      set(rate, `+${fmt(goldPerSec(s, world))}/s`);
+      set(rate, `+${fmt(rateNow ? rateNow() : goldPerSec(s, world))}/s`);
       // The hold bar shows the rover picked in the Rovers tab (the Scout when that kind is not built yet).
       const cap = stats(s, shown).cargo;
       const load = shown.cargo;

@@ -8,6 +8,7 @@ import { WORKS_MAX } from '../src/content/collection';
 import { carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
+import { RateMeter } from '../src/core/rate';
 import { createWorld, totalCells } from '../src/core/world';
 
 const hours = Number(process.argv[2] ?? 24);
@@ -31,7 +32,8 @@ const DT = 1; // seconds per step: fine enough for purchases
  *  arrived at camp ("arrived") and what the rovers dug, carried or not ("mined"). */
 const rateCheck = !!process.env.RATECHECK;
 const RC_WINDOW = 1800;
-const rc = { est: 0, gold0: 0, carried0: 0, estS: 0, estM: 0, ex0: 0, dug0: 0, doing: {} as Record<string, number> };
+const meter = new RateMeter(0, 0);
+const rc = { meter: 0, est: 0, gold0: 0, carried0: 0, estS: 0, estM: 0, ex0: 0, dug0: 0, doing: {} as Record<string, number> };
 let zoom = 1;
 
 // Value of an upgrade: how much it raises the bluetreri/s reaching camp (and, a little, the exploring
@@ -120,6 +122,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
   if (rateCheck) {
     const p = rateParts(s, w);
     rc.est += (p.scout + p.miner) * DT;
+    rc.meter += meter.rate * DT;
     rc.estS += p.scout * DT;
     rc.estM += p.miner * DT;
     // What each rover is doing this second.
@@ -133,6 +136,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
   }
   for (let k = 0; k < DT / TICK_SEC; k++) {
     const ev = tick(s, w, TICK_SEC);
+    if (rateCheck) meter.feed(TICK_SEC, ev.deposited, carried(s));
     if (ev.zoomUnlocked && ev.zoomUnlocked > zoom) {
       zoom = ev.zoomUnlocked;
       mark(t, `ZOOM ${zoom} (${ZOOMS[zoom - 1].name})`);
@@ -153,8 +157,9 @@ for (let t = 0; t < hours * 3600; t += DT) {
     const minerMade = (1 - SCOUT_SHARE) * loot * (w.goldPrefix[Math.floor(s.dug)] - w.goldPrefix[Math.floor(rc.dug0)]) / RC_WINDOW;
     console.log(`  parts  scout model ${fmt(rc.estS / RC_WINDOW)} real ${fmt(scoutMade)} · miner model ${fmt(rc.estM / RC_WINDOW)} real ${fmt(minerMade)} · gap scout-dug ${fmt(ex - s.dug)} cells · ${Object.entries(rc.doing).map(([k, v]) => `${k} ${(100 * v / RC_WINDOW).toFixed(0)}%`).join(' ')}`);
     rc.estS = 0; rc.estM = 0; rc.doing = {}; rc.ex0 = ex; rc.dug0 = s.dug;
-    console.log(`RATE ${fmtTime(t + DT).padStart(10)}  shown ${fmt(est).padStart(8)}/s  arrived ${fmt(got / RC_WINDOW).padStart(8)}/s (${(got / RC_WINDOW / est * 100).toFixed(0).padStart(4)}%)  mined ${fmt(made / RC_WINDOW).padStart(8)}/s (${(made / RC_WINDOW / est * 100).toFixed(0).padStart(4)}%)  rovers ${s.bots.map((b) => b.kind[0]).join('')} storms ${storms}`);
+    console.log(`RATE ${fmtTime(t + DT).padStart(10)}  meter ${fmt(rc.meter / RC_WINDOW).padStart(8)}/s (${(got / RC_WINDOW / (rc.meter / RC_WINDOW) * 100).toFixed(0).padStart(4)}%)  estimate ${fmt(est).padStart(8)}/s  arrived ${fmt(got / RC_WINDOW).padStart(8)}/s (${(got / RC_WINDOW / est * 100).toFixed(0).padStart(4)}%)  mined ${fmt(made / RC_WINDOW).padStart(8)}/s (${(made / RC_WINDOW / est * 100).toFixed(0).padStart(4)}%)  rovers ${s.bots.map((b) => b.kind[0]).join('')} storms ${storms}`);
     rc.est = 0;
+    rc.meter = 0;
     rc.gold0 = s.totalGold.toNumber();
     rc.carried0 = carried(s);
   }

@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -9,6 +9,7 @@ import { routeById } from './content/routes';
 import { kindById } from './content/upgrades';
 import { goalById } from './content/goals';
 import { applyOffline, type OfflineReport } from './save/offline';
+import { RateMeter } from './core/rate';
 import { loadGame, saveGame, wipeGame } from './save/persist';
 import { deserialize, exportSave, importSave, serialize, type SaveData } from './save/save';
 import { cancelReminders, onBackground, scheduleReminder } from './platform';
@@ -141,6 +142,10 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   });
   await cancelReminders();
 
+  // The rate at the top is measured as the rovers produce. Until there is something to measure it starts from the
+  // average while away (long enough to cover a few unloads) or, failing that, from the estimate.
+  const meter = new RateMeter(report && report.seconds >= 600 ? report.gold.toNumber() / report.seconds : goldPerSec(state, world), carried(state));
+  view.setRate(() => meter.rate);
   const handle = (ev: ReturnType<typeof tick>, now: number) => {
     const loot = stats(state).loot;
     for (const i of ev.specials) view.specialFound(i, fmt(world.value[i] * loot), now);
@@ -162,14 +167,17 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     last = now;
     if (dt > MAX_FRAME_SEC) {
       // The tab was frozen: simulate it in chunks, like offline time.
-      applyOffline(state, world, Date.now() - dt * 1000, Date.now());
+      const r = applyOffline(state, world, Date.now() - dt * 1000, Date.now());
+      meter.reset(r && r.seconds >= 600 ? r.gold.toNumber() / r.seconds : meter.rate, carried(state));
     } else {
       // Test multiplier: game time runs faster (with longer ticks if needed, since the simulation is exact
       // per chunk and there is no need for thousands of ticks per frame).
       acc += dt * view.gameSpeed();
       const step = Math.max(TICK_SEC, acc / 20);
       while (acc >= step) {
-        handle(tick(state, world, step), now);
+        const ev = tick(state, world, step);
+        meter.feed(step, ev.deposited, carried(state));
+        handle(ev, now);
         acc -= step;
       }
     }

@@ -166,6 +166,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   further apart each time**. Seed 12345 (with goals claimed): Circular ~7 min, zoom 2 ~11 min, Miner ~38 min, zoom 3 ~1 h 05,
   Trail ~1 h 30, Hauler ~2 h 35, Prospector ~4 h 10, Survey ~9 h, library ~13 h 45, full map ~15 h 40, everything dug
   out ~16 h 50; goal tiers fall in between. (The sim skips the Scavenger on its path and buys it with spare bluetreri.)
+  **Rate at the top** (`core/rate.ts`, `RateMeter`, fed in boot.ts after every tick): measured, not estimated — what
+  reaches camp plus what the holds gained, averaged over `RATE_TAU` (120 s of game time); it starts from the offline
+  average (≥10 min away) or from `goldPerSec`. `goldPerSec`/`plannedRate` stay as the model behind the upgrade gains; it
+  assumes nobody drives home once there is a Hauler, which overestimates up to ~3× mid-game (the Hauler cannot keep up).
+  `RATECHECK=1 npm run sim` compares the meter and the estimate with what really arrives every 30 min.
   `npm run sim` prints this timeline ("Big advances") with the gap before each one; run it whenever prices or speeds change.
   `NOROUTES=1` keeps Random all game (much slower).
 - **Everything is in English**: game text (UI, notes, names of terrain/upgrades/items/zooms, manifest), code comments, test names and this file.
