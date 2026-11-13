@@ -1,6 +1,6 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { HAUL_LEVELS, ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type HaulPick, type RoverKind, type StatId } from '../content/upgrades';
-import { ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkId } from '../content/collection';
+import { ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
@@ -552,7 +552,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     libDark.style.setProperty('--x', `${torch.x}px`);
     libDark.style.setProperty('--y', `${torch.y}px`);
     libDark.style.setProperty('--r', `${rad}px`);
-    for (const v of libView.querySelectorAll<HTMLElement>('.vol:not(.empty), .scrap')) {
+    for (const v of libView.querySelectorAll<HTMLElement>('.vol:not(.empty), .scrap, .jb-card:not(.empty)')) {
       const b = v.getBoundingClientRect();
       const d = Math.hypot(b.left + b.width / 2 - r.left - torch.x, b.top + b.height / 2 - r.top - torch.y);
       v.style.setProperty('--lift', Math.max(0, 1 - d / rad).toFixed(2));
@@ -571,6 +571,38 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const hue = (t: string) => { let x = 7; for (const ch of t) x = (x * 31 + ch.charCodeAt(0)) % 360; return x; };
   /** Old velvet bindings for the books: midnight blue, black, brown, purple. */
   const VELVET = ['#1d2a5c', '#17151c', '#4a2a17', '#3d1d50'];
+  /** Records live in a classic jukebox: an arch with the record under the glass (spinning the one picked) and a title
+   *  card per record, A1 to E3. */
+  function jukebox(wd: WorkDef, n: number): HTMLElement {
+    const box = h('div', 'jukebox');
+    const glass = h('div', 'jb-glass');
+    const lp = h('i', 'jb-lp');
+    const [pid, pk] = picked.split(':');
+    if (pid === 'cd') {
+      lp.style.setProperty('--c', VELVET[hue(workTitle(wd, Number(pk))) % VELVET.length]);
+      lp.classList.add('play');
+    }
+    glass.append(lp);
+    const arch = h('div', 'jb-arch');
+    arch.append(glass);
+    const cards = h('div', 'jb-cards');
+    for (let k = 0; k < WORKS_MAX; k++) {
+      const code = `${'ABCDE'[Math.floor(k / 3)]}${(k % 3) + 1}`;
+      if (k >= n) {
+        cards.append(h('div', `jb-card empty${k === n ? ' next' : ''}`, code));
+        continue;
+      }
+      const t = workTitle(wd, k);
+      const c = h('button', 'jb-card', `${code} ${t}`);
+      c.style.setProperty('--v', VELVET[hue(t) % VELVET.length]);
+      c.title = t;
+      c.classList.toggle('on', picked === `cd:${k}`);
+      c.addEventListener('click', () => { picked = picked === `cd:${k}` ? '' : `cd:${k}`; shelfKey = ''; });
+      cards.append(c);
+    }
+    box.append(arch, cards, h('div', 'jb-grille'));
+    return box;
+  }
   function drawShelves(s: GameState) {
     const lore = loreFound(s, world);
     const key = WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
@@ -581,6 +613,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const n = s.works[wd.id];
       const row = h('div', `shelf-row ${wd.id}`);
       const label = h('div', 'shelf-label', `${wd.name} ${n}/${WORKS_MAX}`);
+      if (wd.id === 'cd') {
+        row.append(label, jukebox(wd, n));
+        shelvesEl.append(row);
+        continue;
+      }
       const plank = h('div', 'plank');
       for (let k = 0; k < WORKS_MAX; k++) {
         const t = workTitle(wd, k);
@@ -588,7 +625,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
           const v = h('button', `vol ${wd.id}`);
           v.style.setProperty('--h', String(hue(t)));
           if (wd.id === 'book') v.style.setProperty('--v', VELVET[hue(t) % VELVET.length]);
-          v.style.setProperty('--tall', `${wd.id === 'book' ? 70 + ((hue(t) * 7) % 30) : wd.id === 'cd' ? 62 : 84}%`);
+          v.style.setProperty('--tall', `${wd.id === 'book' ? 70 + ((hue(t) * 7) % 30) : 84}%`);
           v.append(h('span', '', t));
           v.title = t;
           v.classList.toggle('on', picked === `${wd.id}:${k}`);
