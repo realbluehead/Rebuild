@@ -81,14 +81,15 @@ button { font: inherit; color: inherit; }
 .title-name.lit { color: #ff4fae; text-shadow: 3px 3px 0 #2a0f45, -2px 0 0 #3ff0ff; }
 @keyframes blink { 50% { opacity: .4; } }
 
-/* Metal plates with a rivet in each corner, and sheet-metal buttons */
+/* Metal plates with a rivet in each corner, and sheet-metal buttons. The rivets sit in the corners (2px in, 3px wide,
+   so they end 5px in): every plate keeps at least 7px of padding so no text runs over them. */
 .px-box {
   --r: linear-gradient(var(--rivet), var(--rivet));
   background:
-    var(--r) 5px 5px / 3px 3px no-repeat,
-    var(--r) calc(100% - 5px) 5px / 3px 3px no-repeat,
-    var(--r) 5px calc(100% - 5px) / 3px 3px no-repeat,
-    var(--r) calc(100% - 5px) calc(100% - 5px) / 3px 3px no-repeat,
+    var(--r) 2px 2px / 3px 3px no-repeat,
+    var(--r) calc(100% - 2px) 2px / 3px 3px no-repeat,
+    var(--r) 2px calc(100% - 2px) / 3px 3px no-repeat,
+    var(--r) calc(100% - 2px) calc(100% - 2px) / 3px 3px no-repeat,
     var(--panel);
   border: var(--u) solid var(--edge);
   box-shadow: inset var(--u) var(--u) 0 var(--hi), inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 var(--lo);
@@ -148,7 +149,7 @@ button { font: inherit; color: inherit; }
 .pips i.on { background: var(--gold); }
 .pips i.locked { background: transparent; border-color: #4a3020; }
 
-.cell-info { position: absolute; left: 8px; bottom: 8px; padding: 6px 10px; width: min(220px, calc(100% - 130px)); cursor: pointer; }
+.cell-info { position: absolute; left: 8px; bottom: 8px; padding: 7px 10px; width: min(220px, calc(100% - 130px)); cursor: pointer; }
 .cell-title { font: 9px/1.6 var(--font-num); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell-line { color: var(--text); font-size: 17px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell-line.sky { color: var(--muted); }
@@ -184,7 +185,7 @@ button { font: inherit; color: inherit; }
 .upg .eff { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Rover tab: six parts in a 3x2 grid, a little more compact */
 .list.rover { grid-template-columns: 1fr 1fr 1fr; gap: 6px; align-content: start; } /* (a fixed min-height: rows stay at the top) */
-.list.rover .upg { padding: 6px; gap: 2px; }
+.list.rover .upg { padding: 7px; gap: 2px; }
 .list.rover .upg .eff { font-size: 16px; }
 .level-bar { height: 4px; margin-top: 2px; }
 .fleet h3 { margin-top: 10px; }
@@ -265,7 +266,7 @@ button { font: inherit; color: inherit; }
 .list.rover .build-card .buy .part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 /* Goals: five pips per goal (claimed lit, reached but unclaimed blinking). */
 .list.goals { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-.list.goals .upg { padding: 6px; gap: 2px; }
+.list.goals .upg { padding: 7px; gap: 2px; }
 .list.goals .upg .name { font-size: 8px; }
 .list.goals .upg .eff { font-size: 15px; }
 .list.goals .upg .buy { min-height: 30px; font-size: 7px; padding: 2px; }
@@ -312,13 +313,13 @@ button { font: inherit; color: inherit; }
 .vol.on { outline: 2px solid var(--gold); outline-offset: 1px; transform: translateY(-6px); }
 .vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #cfae8833; cursor: default; }
 .vol.empty.next { border-color: var(--ok); }
-.lib-caption { font-size: 15px; padding: 6px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-caption { font-size: 15px; padding: 7px 8px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A route requirement not met yet (items collected / needed). */
 .buy .part.short { color: var(--red); }
 .px-btn.can .part.short { color: inherit; }
 
 /* Rovers tab: the parts as a thin table (part, level, now → next, gain, price). */
-.list.rover .part-table { grid-column: 1 / -1; padding: 8px 10px 2px; display: grid; } /* (clear of the corner rivets) */
+.list.rover .part-table { grid-column: 1 / -1; padding: 7px 10px 3px; display: grid; } /* (clear of the corner rivets) */
 .list.rover .part-table[hidden], .part-row[hidden] { display: none; }
 .part-row { display: grid; grid-template-columns: 50px 18px minmax(0, 1fr) 36px 74px; align-items: center; gap: 6px;
   padding: 3px 0; border-bottom: 1px solid var(--lo); font-size: 15px; line-height: 1; }
