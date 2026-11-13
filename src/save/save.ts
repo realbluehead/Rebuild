@@ -22,6 +22,7 @@
 //      the Scout; the other rovers, their parts and the Rovers upgrade are refunded, and their load goes to camp.
 // v17: goals (`goals`: tiers claimed of each).
 // v19: routes only ask for items collected and no longer spend them: items spent on routes are given back (recount).
+// v20: the Library's machine (`printed`: scraps of lore already printed).
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
@@ -34,7 +35,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 19;
+export const SAVE_VERSION = 20;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -71,6 +72,7 @@ export interface SaveData {
   works: Record<string, number>;
   goals: Record<string, number>;
   fetched: number[];
+  printed: number[];
   routes: RouteId[];
   route: RouteId;
   routeLevels: Partial<Record<RouteId, number>>;
@@ -194,6 +196,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   17: (s) => ({ ...s, v: 18 }),
   // v18 -> v19: give back the items routes took (`recountItems` no longer counts routes as spent; needs the world).
   18: (s) => ({ ...s, v: 19, recount: true }),
+  // v19 -> v20: nothing printed yet.
+  19: (s) => ({ ...s, v: 20, printed: [] }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -217,6 +221,7 @@ export function serialize(s: GameState, now: number): SaveData {
     works: { ...s.works },
     goals: { ...s.goals },
     fetched: [...s.fetched],
+    printed: [...s.printed],
     routes: [...s.routes],
     route: s.route,
     routeLevels: { ...s.routeLevels },
@@ -257,6 +262,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
+  state.printed = Array.isArray(data.printed) ? [...new Set(data.printed.map((x) => Math.floor(num(x))))] : [];
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   if (data.recount) state.recount = true;
   if (data.kinds) state.kinds = true;

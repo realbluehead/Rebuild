@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { printLore, carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -115,6 +115,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       view.crafted(id, state.works[id], before, stats(state));
       void save();
     },
+    printLore: (k) => { if (printLore(state, world, k)) void save(); },
     zoom: (d) => { setZoom(state, state.zoom + d); },
     exportText: () => exportSave(serialize(state, Date.now())),
     importText: (text) => {

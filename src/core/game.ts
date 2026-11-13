@@ -1117,6 +1117,16 @@ export const libraryShare = (s: GameState, id?: WorkId): number =>
   id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
 /** Crafts the next work (book, record or album) from the collected items. */
+/** Whether scrap `k` (index into `world.loreCells`) is found and not printed yet: the Library's machine can take it. */
+export const canPrint = (s: GameState, w: World, k: number): boolean => !s.printed.includes(k) && loreFound(s, w).includes(k);
+
+/** Runs scrap `k` through the Library's machine: its page of history is printed and can be read. */
+export function printLore(s: GameState, w: World, k: number): boolean {
+  if (!canPrint(s, w, k)) return false;
+  s.printed.push(k);
+  return true;
+}
+
 export function craft(s: GameState, w: World, id: WorkId): boolean {
   if (!canCraft(s, w, id)) return false;
   s.items[workById(id).item] -= nextWorkCost(s, w, id);

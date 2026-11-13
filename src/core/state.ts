@@ -153,6 +153,8 @@ export interface GameState {
   zoom: number;
   /** Accumulated play time, in seconds. */
   playTime: number;
+  /** Scraps of lore (index into `world.loreCells`) run through the Library's machine and printed (readable). */
+  printed: number[];
   /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
   doneAt?: number;
   /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
@@ -182,6 +184,7 @@ export function newGame(seed = randomSeed()): GameState {
     works: Object.fromEntries(WORKS.map((x) => [x.id, 0])) as Record<WorkId, number>,
     goals: Object.fromEntries(GOALS.map((g) => [g.id, 0])) as Record<GoalId, number>,
     fetched: [],
+    printed: [],
     weather: { epoch: 0, storms: [], nextId: 0 },
     routes: ['random'],
     route: 'random', // the starting route: it takes over when the first ring after camp starts

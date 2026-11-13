@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { canPrint, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -30,6 +30,8 @@ export interface ViewActions {
   /** Claims the next tier of goal `id`. */
   claimGoal(id: GoalId): void;
   craft(id: WorkId): void;
+  /** The Library's machine has printed scrap `k` (index into `world.loreCells`). */
+  printLore(k: number): void;
   zoom(delta: number): void;
   exportText(): string;
   importText(text: string): void;
@@ -248,7 +250,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const tabRoutes = h('button', 'px-btn tab', 'I+D');
   const tabLibrary = h('button', 'px-btn tab', 'Library');
   const tabGoals = h('button', 'px-btn tab', 'Goals');
-  tabs.append(tabUpg, tabRoutes, tabLibrary, tabGoals);
+  tabs.append(tabUpg, tabRoutes, tabGoals, tabLibrary);
   /** Ends a fold or unfold under way (the panel back to its natural height). */
   let endFold = () => {};
   const showTab = (k: number) => {
@@ -538,7 +540,67 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const libCaption = h('div', 'lib-caption px-box');
   const shelvesEl = h('div', 'shelves');
   const archiveEl = h('div', 'archive');
-  libView.append(shelvesEl, archiveEl);
+  // The decoder, under the jukebox: a scrap of lore dropped in the funnel goes down to a flask, its DNA runs through the
+  // tubes to a monitor that reads it, and a printer gives out a sheet with its piece of the planet's history.
+  const machineEl = h('div', 'machine');
+  machineEl.dataset.stage = 'idle';
+  const mcLabel = h('div', 'shelf-label');
+  const mcFunnel = h('button', 'mc-funnel');
+  mcFunnel.title = 'Feed the next scrap';
+  const mcDrop = h('i', 'mc-drop');
+  const mcFlask = h('div', 'mc-flask');
+  mcFlask.append(h('i', 'mc-liquid'), h('i', 'mc-bubbles'));
+  const mcIn = h('div', 'mc-in');
+  mcIn.append(mcFunnel, mcDrop, mcFlask);
+  const mcTubes = h('div', 'mc-tubes');
+  mcTubes.append(h('i', 'mc-pipe a'), h('i', 'mc-coil'), h('i', 'mc-pipe b'));
+  const mcHelix = h('div', 'mc-helix');
+  for (let k = 0; k < 9; k++) {
+    const r = h('i', 'mc-rung');
+    r.style.animationDelay = `${-k * 0.17}s`;
+    mcHelix.append(r);
+  }
+  const mcText = h('div', 'mc-text');
+  const mcScreen = h('div', 'mc-screen');
+  mcScreen.append(mcHelix, mcText);
+  const mcCrt = h('div', 'mc-crt');
+  mcCrt.append(mcScreen);
+  const mcTray = h('div', 'mc-tray');
+  const mcPrinter = h('div', 'mc-printer');
+  mcPrinter.append(h('i', 'mc-slot'), h('i', 'mc-sheet'), mcTray);
+  const mcBody = h('div', 'mc-body');
+  mcBody.append(mcIn, mcTubes, mcCrt, mcPrinter);
+  machineEl.append(mcLabel, mcBody);
+  libView.append(shelvesEl, machineEl, archiveEl);
+  /** The scrap going through the decoder (one at a time), if any. */
+  let decoding = -1;
+  const MC_TEXT: Record<string, string> = { idle: 'FEED A SCRAP_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
+  const stage = (st: string) => { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); };
+  stage('idle');
+  /** Drops scrap `k` in the funnel; a few seconds later its sheet is printed. */
+  function feed(k: number) {
+    if (decoding >= 0 || !current || !canPrint(current, world, k)) return;
+    decoding = k;
+    picked = `lore:${k}`;
+    shelfKey = '';
+    mcDrop.replaceChildren(loreIcon(world.lore[world.loreCells[k]] - 1));
+    stage('drop');
+    torch.focus = true;
+    window.setTimeout(() => stage('flow'), 700);
+    window.setTimeout(() => stage('print'), 3200);
+    window.setTimeout(() => {
+      actions.printLore(k);
+      decoding = -1;
+      torch.focus = false;
+      stage('idle');
+      shelfKey = '';
+    }, 4400);
+  }
+  mcFunnel.addEventListener('click', () => {
+    const s = current;
+    const k = s ? loreFound(s, world).find((x) => !s.printed.includes(x)) : undefined;
+    if (k !== undefined) feed(k);
+  });
   // The library is dark: a torch follows the finger (or wanders on its own when left alone), with dust in the beam.
   // The caption sits above the dark.
   const libDark = h('div', 'lib-dark');
@@ -547,7 +609,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     libDark.append(m);
     return { m, a: i * 0.52, r: 18 + ((i * 37) % 60) };
   });
-  const torch = { x: -1, y: -1, last: -1e9 };
+  /** `focus`: the decoder is at work, and the torch turns to it while the player leaves it alone. */
+  const torch = { x: -1, y: -1, last: -1e9, focus: false };
   const aim = (e: PointerEvent) => {
     const r = mapWrap.getBoundingClientRect();
     torch.x = e.clientX - r.left;
@@ -558,7 +621,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   libView.addEventListener('pointerdown', aim);
   function lightLibrary(now: number) {
     const r = mapWrap.getBoundingClientRect();
-    if (now - torch.last > 2500) {
+    if (torch.focus && now - torch.last > 600) {
+      const m = mcBody.getBoundingClientRect();
+      torch.x += (m.left + m.width / 2 - r.left - torch.x) * 0.1;
+      torch.y += (m.top + m.height / 2 - r.top - torch.y) * 0.1;
+    } else if (now - torch.last > 2500) {
       torch.x = r.width * (0.5 + 0.38 * Math.sin(now / 1700));
       torch.y = r.height * (0.45 + 0.3 * Math.sin(now / 1100));
     }
@@ -619,11 +686,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   function drawShelves(s: GameState) {
     const lore = loreFound(s, world);
-    const key = WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
+    const key = `${s.printed.length}|${decoding}|` + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
-    // The books shelf across the top; below, the jukebox across the whole width, and room for more under it.
+    // The books shelf across the top; below, the jukebox across the whole width (the decoder comes after the shelves).
     const lower = h('div', 'lib-lower');
     for (const wd of SHOWN) {
       const n = s.works[wd.id];
@@ -631,7 +698,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const label = h('div', 'shelf-label', `${wd.name} ${n}/${WORKS_MAX}`);
       if (wd.id === 'cd') {
         row.append(label, jukebox(wd, n));
-        lower.append(row, h('div', 'lib-alcove'));
+        lower.append(row);
         continue;
       }
       const plank = h('div', 'plank');
@@ -657,15 +724,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
     shelvesEl.append(lower);
     // The archive: a small icon per scrap found, in the order they lie on the map.
+    const printed = lore.filter((k) => s.printed.includes(k)).length;
+    set(mcLabel, `Decoder · printed ${printed}/${lore.length}`);
+    mcTray.style.setProperty('--n', String(Math.min(6, printed)));
     archiveEl.replaceChildren(h('div', 'shelf-label', `Archive ${lore.length}/${world.loreCells.length}`));
     const drawer = h('div', 'drawer');
     for (const k of lore) {
       const kind = world.lore[world.loreCells[k]] - 1;
-      const b = h('button', 'scrap');
+      const done = s.printed.includes(k);
+      const b = h('button', `scrap${done ? ' printed' : ''}`);
       b.append(loreIcon(kind));
-      b.title = LORE[kind].name;
+      b.title = done ? `${LORE[kind].name} (printed)` : `${LORE[kind].name}: tap to decode`;
       b.classList.toggle('on', picked === `lore:${k}`);
-      b.addEventListener('click', () => { picked = picked === `lore:${k}` ? '' : `lore:${k}`; shelfKey = ''; });
+      // A printed scrap is read; one not printed yet goes into the decoder.
+      b.addEventListener('click', () => {
+        if (!done) { feed(k); return; }
+        picked = picked === `lore:${k}` ? '' : `lore:${k}`;
+        shelfKey = '';
+      });
       drawer.append(b);
     }
     if (!lore.length) drawer.append(h('span', 'info', 'Scraps of the old world turn up as the Scout explores.'));
@@ -674,7 +750,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const wd = WORKS.find((w) => w.id === pid);
     if (pid === 'lore') {
       const kind = world.lore[world.loreCells[Number(pk)]] - 1;
-      set(libCaption, `${LORE[kind].name} #${Number(pk) + 1} · ${loreText(LORE[kind].id, Number(pk))}`);
+      const k = Number(pk);
+      set(libCaption, `${LORE[kind].name} #${k + 1} · ${decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'drop it in the decoder'}`);
     } else if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
     // Nothing picked: no caption.
     libCaption.hidden = !wd && pid !== 'lore';
@@ -948,7 +1025,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'They are kept in the Archive, under the shelves on the Library tab: tap one to read it. The Archivist goal counts them.'] },
+        'They are kept in the Archive, at the bottom of the Library tab. Tap one (or the funnel) to drop it in the Decoder: it reads the DNA left on it and prints a sheet of the planet\'s history. Tap a printed scrap to read it again. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },

@@ -95,6 +95,15 @@ describe('save', () => {
     expect(back.scouted).toEqual([1, 9, 12]);
   });
 
+  it('keeps the scraps printed, and a v19 save starts with none', () => {
+    const s = newGame(5);
+    s.printed = [3, 0, 3];
+    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state.printed).toEqual([3, 0]);
+    const { printed, ...v19 } = { ...serialize(newGame(5), 0), v: 19 };
+    void printed;
+    expect(deserialize(v19).state.printed).toEqual([]);
+  });
+
   it('migrates a v7 save: the four directions are refunded and withdrawn, the plan still replays', () => {
     const v7 = {
       v: 7, savedAt: 9, seed: 3, ring: 30, ringRobots: 1, bots: [{ trip: 'explore', prog: 0, cargo: 0, travel: 0, travelLen: 0, target: -1 }],

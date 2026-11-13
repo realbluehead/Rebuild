@@ -298,7 +298,7 @@ button { font: inherit; color: inherit; }
   background: radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), #ffe9a014, transparent 70%),
     radial-gradient(circle var(--r, 80px) at var(--x, 50%) var(--y, 40%), transparent 0, #0008 55%, #000c 100%); }
 .lib-dark .mote { position: absolute; left: 0; top: 0; width: 2px; height: 2px; background: #ffe9a0; opacity: 0; }
-.shelves { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.shelves { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
 .plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
   box-shadow: 0 3px 0 #1a2f2a; background: #0d1613; }
@@ -320,8 +320,7 @@ button { font: inherit; color: inherit; }
 .vol.book::after { bottom: 4px; }
 /* Records: a wide, square jukebox of walnut and brushed metal, with chrome trim, an amber light bar, the record under a
    chrome window and velvet-striped title cards. */
-.lib-lower { display: flex; flex-direction: column; gap: 10px; flex: 1; }
-.lib-alcove { flex: 1; min-height: 40px; }
+.lib-lower { display: flex; flex-direction: column; gap: 10px; }
 .jukebox { position: relative; padding: 5px 12px 6px; border: 2px solid var(--edge); border-radius: 4px;
   background: repeating-linear-gradient(90deg, #00000022 0 1px, transparent 1px 5px, #ffffff0a 5px 6px, transparent 6px 9px),
     linear-gradient(90deg, #2e1610, #5a2c1a 10%, #4a2414 30%, #5e2e1c 55%, #4a2414 80%, #2e1610);
@@ -356,6 +355,74 @@ button { font: inherit; color: inherit; }
 .jb-card.empty.next { outline: 1px dashed var(--ok); outline-offset: -1px; }
 .jb-grille { height: 10px; margin: 5px 4px 0; border-radius: 2px; border: 1px solid #4a5458;
   background: repeating-linear-gradient(90deg, #c8d0d4 0 2px, #1a0e0a 2px 5px); }
+/* The decoder: funnel and flask, copper tubes, a green CRT reading the DNA, a printer giving out sheets. Its stage
+   (idle, drop, flow, print) is in data-stage. */
+.machine { flex: none; }
+.mc-body { position: relative; display: grid; grid-template-columns: 62px minmax(0, 1fr) 96px 62px; align-items: end; gap: 0; height: 100px;
+  padding: 6px 8px 8px; border: 2px solid var(--edge); border-radius: 4px;
+  background: repeating-linear-gradient(0deg, #ffffff08 0 1px, transparent 1px 3px), linear-gradient(#5c666a, #3a4246 60%, #2a3034);
+  box-shadow: inset 0 1px 0 #ffffff33, 0 3px 0 #0008; }
+.mc-body::before, .mc-body::after { content: ''; position: absolute; top: 4px; width: 4px; height: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, #8a969c 60%, #3a4448); }
+.mc-body::before { left: 4px; }
+.mc-body::after { right: 4px; }
+.mc-in { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; }
+.mc-funnel { width: 54px; height: 24px; padding: 0; border: 0; cursor: pointer; clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
+  background: linear-gradient(90deg, #6c7a84, #e8eef2 45%, #8a969c 60%, #4a5458); }
+.mc-funnel:hover { filter: brightness(1.2); }
+.mc-drop { position: absolute; left: 50%; top: -14px; width: 12px; height: 12px; margin-left: -6px; line-height: 0; opacity: 0; pointer-events: none; }
+.mc-drop .item-icon { width: 12px; height: 12px; }
+.machine[data-stage=drop] .mc-drop { animation: mc-drop .7s ease-in forwards; }
+.mc-flask { position: relative; width: 40px; height: 52px; margin-top: 4px; overflow: hidden; border: 2px solid #c8d0d4aa;
+  border-radius: 6px 6px 18px 18px; background: #0a1418cc; box-shadow: inset 0 0 6px #000; }
+.mc-liquid { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(#8dff9a, #2a8a5a); opacity: .75;
+  transition: height .8s; }
+.machine:not([data-stage=idle]) .mc-liquid { height: 70%; box-shadow: 0 0 10px #8dff9a; }
+.mc-bubbles { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle at 30% 80%, #fff8 0 2px, transparent 3px),
+  radial-gradient(circle at 65% 90%, #fff8 0 1.5px, transparent 2.5px), radial-gradient(circle at 50% 70%, #fff6 0 1px, transparent 2px);
+  background-size: 100% 26px; }
+.machine[data-stage=flow] .mc-bubbles, .machine[data-stage=print] .mc-bubbles { opacity: 1; animation: mc-rise .9s linear infinite; }
+.mc-tubes { position: relative; height: 100%; }
+.mc-pipe { position: absolute; height: 6px; border-radius: 3px; border: 1px solid #3a1a0c;
+  background: repeating-linear-gradient(90deg, #8a4a24 0 4px, #c87a3a 4px 6px); }
+.mc-pipe.a { left: -4px; right: 40%; bottom: 22px; }
+.mc-pipe.b { left: 55%; right: -4px; bottom: 46px; }
+.mc-coil { position: absolute; left: 52%; bottom: 18px; width: 14px; height: 38px; margin-left: -9px; border-radius: 4px; border: 1px solid #3a1a0c;
+  background: repeating-linear-gradient(0deg, #c87a3a 0 3px, #5a2a14 3px 5px); }
+.machine[data-stage=flow] .mc-pipe, .machine[data-stage=print] .mc-pipe {
+  background: repeating-linear-gradient(90deg, #8a4a24 0 4px, #8dff9a 4px 6px); background-size: 12px 100%; animation: mc-flow .5s linear infinite; }
+.machine[data-stage=flow] .mc-coil { background: repeating-linear-gradient(0deg, #8dff9a 0 3px, #5a2a14 3px 5px); background-size: 100% 10px;
+  animation: mc-up .4s linear infinite; }
+.mc-crt { height: 84px; padding: 6px; border-radius: 8px; background: linear-gradient(#b8b0a0, #8a8274); border: 2px solid var(--edge);
+  box-shadow: inset 0 1px 0 #fff6; }
+.mc-screen { position: relative; height: 100%; overflow: hidden; border-radius: 10px / 14px; background: #06140a;
+  box-shadow: inset 0 0 10px #000, 0 0 8px #8dff9a44; }
+.mc-screen::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, #0004 0 1px, transparent 1px 3px); pointer-events: none; }
+.mc-helix { position: absolute; left: 50%; top: 4px; width: 34px; margin-left: -17px; display: flex; flex-direction: column; gap: 3px; opacity: 0;
+  transition: opacity .3s; }
+.mc-rung { height: 2px; background: linear-gradient(90deg, #ff6a8a 0 4px, #8dff9a66 4px calc(100% - 4px), #6ad0ff calc(100% - 4px));
+  animation: mc-helix 1.5s ease-in-out infinite; }
+.machine[data-stage=flow] .mc-helix, .machine[data-stage=print] .mc-helix { opacity: 1; }
+.mc-text { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font: 13px/1 var(--font-text); color: #8dff9a;
+  text-shadow: 0 0 4px #8dff9a; white-space: nowrap; }
+.machine[data-stage=idle] .mc-text { bottom: 50%; transform: translateY(50%); animation: mc-blink 1.2s steps(2) infinite; }
+.mc-printer { position: relative; height: 62px; border-radius: 3px; border: 2px solid var(--edge);
+  background: linear-gradient(#d8d0bc, #a89e88); box-shadow: inset 0 1px 0 #fff8; }
+.mc-slot { position: absolute; left: 8px; right: 8px; top: 12px; height: 3px; background: #1a1410; }
+.mc-sheet { position: absolute; left: 11px; right: 11px; top: 13px; height: 0; background: repeating-linear-gradient(#efe4c6 0 3px, #8a7a5a 3px 4px, #efe4c6 4px 6px);
+  box-shadow: 0 1px 2px #0006; }
+.machine[data-stage=print] .mc-sheet { animation: mc-print 1.1s steps(8) forwards; }
+.mc-tray { position: absolute; left: 6px; right: 6px; bottom: 4px; height: calc(3px + var(--n, 0) * 2px); border-radius: 1px;
+  background: repeating-linear-gradient(0deg, #efe4c6 0 1px, #b8ac90 1px 2px); border: 1px solid #5a4a30; }
+@keyframes mc-drop { from { opacity: 1; transform: translateY(-8px) rotate(-20deg); } 70% { opacity: 1; } to { opacity: 0; transform: translateY(26px) scale(.4) rotate(40deg); } }
+@keyframes mc-rise { to { background-position: 0 -26px; } }
+@keyframes mc-flow { to { background-position: 12px 0; } }
+@keyframes mc-up { to { background-position: 0 -10px; } }
+@keyframes mc-helix { 50% { transform: scaleX(-1); } }
+@keyframes mc-blink { 50% { opacity: .4; } }
+@keyframes mc-print { to { height: 30px; } }
+.archive .scrap:not(.printed) { filter: drop-shadow(0 0 2px #8dff9a); }
+.archive .scrap.printed { opacity: .7; }
 @keyframes jb-spin { to { transform: rotate(360deg); } }
 @keyframes jb-run { to { background-position: 20px 0; } }
 @keyframes jb-glow { to { box-shadow: 0 0 14px #ffb05acc; } }
