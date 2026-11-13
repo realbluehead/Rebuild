@@ -14,7 +14,7 @@ export interface UpgradeDef {
 
 export const UPGRADES: readonly UpgradeDef[] = [
   { id: 'speed', name: 'Engine', desc: 'Rovers travel and explore faster', baseCost: 1.5, costGrowth: 1.9 },
-  { id: 'tyres', name: 'Tyres', desc: 'Grip on rough ground: rubble, jungle, ruins and towers slow rovers down less', baseCost: 7.5, costGrowth: 2.1 },
+  { id: 'tyres', name: 'Tires', desc: 'Grip on rough ground: rubble, jungle, ruins and towers slow rovers down less', baseCost: 7.5, costGrowth: 2.1 },
   { id: 'body', name: 'Body', desc: 'Armour against acid storms, snow and lightning: storms slow rovers down less', baseCost: 15, costGrowth: 2.3 },
   { id: 'cargo', name: 'Hold', desc: 'Each rover carries more bluetreri before returning to camp', baseCost: 6, costGrowth: 2.2 },
   { id: 'radar', name: 'Radar', desc: 'Each rover detects pages, notes and photos around it in the dark and goes to fetch them', baseCost: 10, costGrowth: 3 },

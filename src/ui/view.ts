@@ -458,7 +458,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const libInfo = h('p', 'info lib-info');
   worksList.append(libInfo);
   // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
-  const worksTable = table('works-table', ['Work', 'Made', 'Next', 'Bonus', 'Cost']);
+  const worksTable = table('works-table', ['Work', 'Made', 'Next', 'Bonus', 'Progress']);
   goalsList.append(worksTable);
   const works = WORKS.map((wd) => {
     const card = h('div', 'part-row');
@@ -805,7 +805,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       { on: u.speed > 0, title: 'Engine', lines: ['The rover explores and travels faster. Every upgrade costs more at each level; the button lights up when you can afford it.',
         'Upgrades are fitted to one rover at a time: pick which one at the top of the Rovers tab (a green chevron marks it on the map). A new rover is built to the Scout\'s standard. Each card shows how much more bluetreri per second its next level would bring.'] },
       { on: u.cargo > 0, title: 'Hold', lines: ['The rover can carry more bluetreri, so it returns to camp less often. A loaded rover drives home slowly: the fuller, the slower.'] },
-      { on: u.tyres > 0, title: 'Tyres', lines: ['Better grip on rough ground: rubble, jungle, ruins and towers slow the rovers down less.'] },
+      { on: u.tyres > 0, title: 'Tires', lines: ['Better grip on rough ground: rubble, jungle, ruins and towers slow the rovers down less.'] },
       { on: s.weather.storms.length > 0 || u.body > 0, title: 'Weather', lines: [
         'Storms drift over the city with the wind and slow down any rover working under them. They form and die out one at a time; now and then a severe one hits much harder.',
         ...STORMS.map((d) => `${d.name}: ${d.desc}`),

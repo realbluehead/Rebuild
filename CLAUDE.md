@@ -32,7 +32,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   revealed cells keep their colour (and deposits) until dug out, then drain (`dugTo` in `MapView.render`).
 - **Upgrades are per rover** (save v14): `Bot.up` holds each rover's own levels; `GameState.upgrades` holds a fleet base
   level (levels bought before v14) added to every rover. Each kind only has its own parts (`parts`; `hasPart`): Scout Engine,
-  Tyres, Body, Hold, Radar; Miner Engine, Drill, Tyres, Hold; Hauler Engine, Hold. `stats(s, b)` (default: the Scout) applies
+  Tires, Body, Hold, Radar; Miner Engine, Drill, Tires, Hold; Hauler Engine, Hold. `stats(s, b)` (default: the Scout) applies
   the kind's multipliers (`share`, `drill`, radar only on the Scout). `upgradeGain` returns null for the Hauler and Radar.
   `goldPerSec` estimates Scout + Miner (capped by what the Scout reveals once caught up; no trips home with a Hauler).
   The sim buys the best (upgrade, rover) pair, builds each rover as soon as it can and saves up for it and the next route.
@@ -42,7 +42,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   change on a tap and `tick` stays exact) and multiplies one stat for good (`goalBonus` in `stats()`: speed, loot, cargo,
   drill, travel). The sim claims each tier at once.
 - Stats (`content/upgrades.ts`, effect in `core/game.ts` `stats()`), on the **Rovers** tab: Engine (speed),
-  Tyres (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
+  Tires (id `tyres`) (`grip`: share of terrain roughness still felt), Body (`armour`: share of storm slowdown still felt), Hold (cargo),
   Radar (range in cells around the Scout), Drill (Miner). Bluetreri comes from every cell (terrain × distance) and from
   deposits. Buying or crafting announces the effect (before→after) in a toast.
 - **Rovers on their own** (`state.bots[]`, each with `trip`, `cargo`, travel; the Scout's `prog` along the ring, which is a
@@ -181,7 +181,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - `npm run sim -- <hours>`: balance simulator (greedy player), prints when each milestone is reached. Run it whenever numbers in `src/content/` change.
 - `npm run android:apk`: debug APK in `android/app/build/outputs/apk/debug/`. Needs `JAVA_HOME` from Android Studio's JDK:
   `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` (the system Java does not work with Gradle).
-- **Versioning**: every pushed change that is not a game-rules change bumps the minor version (`npm version minor --no-git-tag-version`, in the same commit; no tag, so no APK). Rule changes are decided with the user.
+- **Versioning** (semver, `npm version <part> --no-git-tag-version` in the same commit; no tag, so no APK): a bug fix bumps the patch, any other change that is not a game-rules change bumps the minor. Rule changes are decided with the user.
 - `npm run release -- patch|minor|major`: bumps the version, tags `vX.Y.Z` and pushes → CI publishes the APK to Releases.
 
 ## Architecture
