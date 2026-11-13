@@ -10,7 +10,7 @@ import { applyOffline, type OfflineReport } from './save/offline';
 import { loadGame, saveGame, wipeGame } from './save/persist';
 import { deserialize, exportSave, importSave, serialize, type SaveData } from './save/save';
 import { cancelReminders, onBackground, scheduleReminder } from './platform';
-import { checkForUpdate } from './platform/update';
+import { checkForUpdate, checkWebUpdate, hardReload } from './platform/update';
 import { createView } from './ui/view';
 import type { TitleScreen } from './ui/title';
 import { loadWorld, type Loaded } from './load';
@@ -158,6 +158,15 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     // Opening the APK URL outside the WebView makes Android download it and offer to install it.
     if (u) view.showUpdate(u.version, u.notes, () => { location.href = u.apkUrl; });
   });
+  // A newer web build: offer a hard reload, on opening (after the tap) and on coming back to the game. Each build is
+  // offered once per session.
+  let offered = '';
+  const checkWeb = () => void checkWebUpdate().then((u) => {
+    if (!u || u.build === offered) return;
+    offered = u.build;
+    view.showReload(u.version, u.build, () => { locked = true; void saveGame(state).then(() => hardReload(u.build)); });
+  });
+  void title.ready().then(checkWeb);
   setInterval(() => void save(), AUTOSAVE_MS);
 
   onBackground((hidden) => {
@@ -167,6 +176,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       if (goldPerSec(state, world) > 0) void scheduleReminder('Your rovers keep going', 'Come back and see what they have uncovered!', 3600);
     } else {
       void cancelReminders();
+      checkWeb();
     }
   });
 }

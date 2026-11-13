@@ -150,6 +150,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   **If `GameState` changes: bump `SAVE_VERSION`, add the migration and a test.** Players' saves must never break.
   Saves from v3 or earlier carry `legacyWalked` (total steps) and `fromLegacy()` turns it into a ring + rovers once the world exists (in `main.ts`).
 - `src/platform/`: everything that differs between web and Android (storage, background, local notifications, APK updates).
+- Web versions: each build has an id (`__APP_BUILD__`: commit on CI, build time locally, 'dev' on the dev server) and
+  writes `version.json` (`version-json` plugin in `vite.config.ts`). After the title tap and whenever the game comes back
+  to the foreground, `checkWebUpdate` fetches it uncached; a different build shows "New version available" (once per build
+  and session), and "Reload now" saves and calls `hardReload` (unregister the service worker, clear caches, reload with
+  `?v=` to skip the HTTP cache; `main.ts` strips it). Native apps use the APK check instead.
 - `src/ui/`: plain DOM; built once, `render()` only updates texts.
 
 ## Deployment

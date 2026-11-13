@@ -573,7 +573,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* no storage */ }
       actions.reset();
     }));
-    m.box.append(h('div', 'info', `Version ${__APP_VERSION__}`));
+    m.box.append(h('div', 'info', `Version ${__APP_VERSION__} · build ${__APP_BUILD__}`));
     m.addClose('Close');
   }
 
@@ -756,6 +756,18 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const m = modal();
       m.box.append(h('div', 'name', `New version: ${version}`), h('div', 'info', notes));
       m.addClose('Download', onInstall);
+      m.addClose('Later');
+    },
+    /** A newer web build is out: reload now (saving first) or later. */
+    showReload(version: string, build: string, onReload: () => void) {
+      const m = modal();
+      m.box.append(
+        h('div', 'name', 'New version available'),
+        h('div', 'info', `Version ${version} · build ${build}`),
+        h('div', 'info', `(you have ${__APP_VERSION__} · build ${__APP_BUILD__})`),
+        h('div', '', 'Reload to get it. Your game is saved first.'),
+      );
+      m.addClose('Reload now', onReload);
       m.addClose('Later');
     },
     /** The whole map explored and every bluetreri at camp. */

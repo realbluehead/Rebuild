@@ -5,6 +5,9 @@ import '@fontsource/monoton/400.css';
 import './ui/style.css';
 import { createTitle } from './ui/title';
 
+// After a hard reload for a new version (platform/update.ts): tidy the address.
+if (new URLSearchParams(location.search).has('v')) history.replaceState(null, '', location.pathname + location.hash);
+
 const app = document.getElementById('app')!;
 const title = createTitle();
 app.replaceChildren(title.el);
