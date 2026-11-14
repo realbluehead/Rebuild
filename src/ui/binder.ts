@@ -110,6 +110,20 @@ function shut(count: number): string {
   return s;
 }
 
+/** Layers drawn for a stack of `k` sheets out of `n` (thick when it holds most of them, at least one if any). */
+const STACK_LAYERS = 10;
+/** A stack of `k` sheets under a page at `x`, its edges showing outwards (`side` -1: left, 1: right) and downwards. */
+function stack(x: number, k: number, n: number, side: number): string {
+  if (k <= 0) return '';
+  const layers = Math.max(1, Math.round((STACK_LAYERS * k) / n));
+  const y = Y0 + 8, w = PW - 2, hh = H - 24;
+  let s = '';
+  for (let j = layers; j >= 1; j--) {
+    s += `<rect x="${f(x + side * j * 0.9)}" y="${f(y + j * 0.6)}" width="${w}" height="${hh}" fill="${j % 2 ? '#d8c48e' : '#c4a66a'}" stroke="#8a6a3a" stroke-width=".35"/>`;
+  }
+  return s;
+}
+
 /** Open at sheet `at`: the sheets before it on the left (or the cover's inside), `at` on the right. A turn draws the
  *  leaf that moves: forward, the old right-hand page folds onto the rings and comes down on the left; back, the old
  *  left-hand page folds up and comes down on the right. */
@@ -119,9 +133,9 @@ function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
   // Inside of the cover, with the title; the spine channel.
   s += `<rect x="${X0 + 8}" y="${Y0 + 8}" width="${LW}" height="${H - 16}" rx="2" fill="${LO}" opacity=".55"/>` + title(X0 + 8, Y0 + 8, LW, H - 16);
   s += `<rect x="${SX - 6}" y="${Y0 + 3}" width="22" height="${H - 6}" fill="${LO}"/><rect x="${SX - 6}" y="${Y0 + 3}" width="22" height="${H - 6}" fill="#000" opacity=".35"/>`;
-  // Edges of the sheets on each side: those read on the left, those to come on the right.
-  const edges = (x: number, k: number) => { let e = ''; for (let j = 0; j < Math.min(14, k); j++) e += `<rect x="${f(x + 3 + j * 0.25)}" y="${f(Y0 + H - 10 - j * 0.55)}" width="${PW - 4}" height="1.2" fill="${j % 2 ? '#d8c48e' : '#b89a5e'}"/>`; return e; };
-  s += edges(LPX - 2, at - 1) + edges(PX, n - at - 1);
+  // The sheets under each open page, as a stack that grows with them like a real book: those read pile up on the
+  // left, those to come on the right (each layer shows a little further out and lower).
+  s += stack(LPX, at - 1, n, -1) + stack(PX, n - at - 1, n, 1);
   // Left: the sheet before (coming down there after a forward turn); right: this one (coming down after a back turn).
   if (at > 0) s += sheet(pages[at - 1], at - 1, n, LPX, turn === 'fwd' ? 'bd-in-l' : '');
   s += sheet(pages[at], at, n, PX, turn === 'back' ? 'bd-in-r' : '');
