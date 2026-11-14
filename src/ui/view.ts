@@ -13,6 +13,7 @@ import { totalCells, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
+import { showVoyage } from './voyage';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
@@ -1065,6 +1066,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return entries;
   }
   const HELP_SEEN_KEY = 'rebuild:help-seen';
+  const VOYAGE_KEY = 'rebuild:voyage-seen';
+  let voyageSeen = false;
+  try { voyageSeen = localStorage.getItem(VOYAGE_KEY) === '1'; } catch { /* no storage */ }
   let helpSeen = 0;
   try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* no storage */ }
 
@@ -1196,6 +1200,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       levelBar.style.width = `${(lv.frac * 100).toFixed(1)}%`;
       if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nNext at ${fmt(Math.ceil(lv.to))} cells`);
       shownLevel = lv.level;
+      // Phase II starts at the top level: "The voyage" splash, once.
+      if (lv.level >= lv.max && !voyageSeen) {
+        voyageSeen = true;
+        try { localStorage.setItem(VOYAGE_KEY, '1'); } catch { /* no storage */ }
+        void showVoyage(root);
+      }
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });
       zin.disabled = s.zoom <= 0;

@@ -528,3 +528,19 @@ button { font: inherit; color: inherit; }
 .part-row .goal-pips { display: flex; gap: 2px; }
 .part-row .goal-pips.works { gap: 1px; }
 .part-row .goal-pips i { height: 6px; }
+
+/* "The voyage" splash (ui/voyage.ts): full screen over the game, fades in and out; under the title screen. */
+.voyage { position: absolute; inset: 0; z-index: 90; background: #030305; cursor: pointer; opacity: 0; transition: opacity .6s; }
+.voyage.in { opacity: 1; }
+.voyage.out { opacity: 0; pointer-events: none; }
+.voyage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.voyage .vy-title { font: 17px var(--font-num); fill: #ff6a74; letter-spacing: 2px; }
+.voyage .vy-sub { font: 7px var(--font-num); fill: #ff6a74; opacity: .7; letter-spacing: 4px; }
+.voyage .vy-rule { stroke: #ff6a74; stroke-opacity: .5; }
+.voyage .vy-bob { animation: vy-bob 4s ease-in-out infinite; }
+.voyage .vy-pulse, .voyage .vy-blink { animation: vy-pulse 2.4s ease-in-out infinite; }
+.voyage .vy-beacon { animation: vy-beacon 1.6s steps(1) infinite; }
+.voyage-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a5058; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
+@keyframes vy-bob { 50% { transform: translateY(-5px); } }
+@keyframes vy-pulse { 50% { opacity: .3; } }
+@keyframes vy-beacon { 0%, 80% { opacity: 1; } 90% { opacity: .1; } }
