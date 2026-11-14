@@ -42,7 +42,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `DETECTOR_LEVEL` 35 for `DETECTOR_GOLD` 400k (`canBuyDetector`, `buyDetector`). Then the Scout picks up the scraps it
   reveals (ranks ≥ `s.detectFrom`, the end of the ring under way at purchase) and the Miner the ones in ground revealed
   before, as it digs them; `metalCollected` counts them (derived, cached; `s.metalBase` = those already revealed and dug
-  at purchase, not counted). Picked up on the spot (no hold, no trip). No use yet: only counted (Detector card).
+  at purchase, not counted). Picked up on the spot (no hold, no trip). No use yet: only counted (Detector card; its Buy button is hidden once bought, `.upg .buy[hidden]`).
 - **Goals** (`content/goals.ts`, Goals tab, save v17 `s.goals`): Cartographer (cells explored), Tycoon (bluetreri earned),
   Collector (items found), Excavator (cells dug out), Engineer (part levels fitted), Archivist (lore found), Historian (sheets printed by the Decoder; rover speed ×1.03), 5 tiers each (`per` cells/items: shares of
   the map, so small test maps scale). A reached tier is **claimed** by the player (`claimGoal`; never automatic, so stats only
@@ -179,7 +179,9 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   PHASE I" in Press Start 2P over it (sizes in container units). A tap closes it (ignored for the first second).
 - `title.ready()` returns one shared promise (boot waits on it twice: messages and the web update check).
 - Phase II: phase I is exploring the planet (bluetreri, items, metal scraps); it ends at the top explorer level (the whole map).
-  Reaching it (or loading a game already there) puts up "The voyage" splash for good (`ui/voyage.ts`, `showVoyage`; it
+  Reaching it shows the congratulations message (`showComplete`, once per device: what was achieved — cells, bluetreri,
+  items, works, printed pages, metal scraps, rovers, time — and that phase II will build a fleet of ships to carry the
+  resources to a new planet); its Continue (or loading a game already over whose message was seen, `view.showVoyage`) puts up "The voyage" splash for good (`ui/voyage.ts`, `showVoyage`; it
   cannot be closed, the game waits there for phase II; nothing saved): an SVG robot jellyfish ship, the Black siphon (obsidian plated bell with seams, rivets, red
   windows, a beacon mast and engine ports on a ribbed rim; 12 jointed tentacles redrawn every frame so each joint follows the
   one above, with glowing probe tips) over stars, "THE VOYAGE · PHASE II", "phase II is on its way". A ≡ button on it opens the game menu (export, import, restart);

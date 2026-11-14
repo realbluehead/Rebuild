@@ -201,6 +201,7 @@ button { font: inherit; color: inherit; }
 .routes .upg .buy .part { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
 .routes .upg .buy .item-icon { width: 12px; height: 12px; }
 .routes .upg .buy .coin { transform: scale(0.8); }
+.upg .buy[hidden] { display: none; } /* (a bought one-off, like the Metal detector) */
 .upg .buy {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px; padding: 4px; font: 10px/1 var(--font-num);
@@ -571,3 +572,8 @@ button { font: inherit; color: inherit; }
 @keyframes bd-unfold { from { transform: scaleX(0) skewY(-3deg); filter: brightness(.6); } }
 @keyframes bd-ready { 50% { fill: #e0e4e6; } }
 @media (prefers-reduced-motion: reduce) { .binder .bd-in-l, .binder .bd-in-r, .binder .bd-ready { animation: none; } .binder .bd-out-r, .binder .bd-out-l { display: none; } }
+
+/* End of phase I: what the expedition achieved. */
+.complete-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; text-align: left; }
+.complete-list li { padding-left: 1.2em; text-indent: -1.2em; }
+.complete-list li::before { content: '▸ '; color: var(--gold); }

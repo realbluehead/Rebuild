@@ -1074,6 +1074,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   const HELP_SEEN_KEY = 'rebuild:help-seen';
   let voyageShown = false;
+  /** Phase I is over: "The voyage" splash covers the game for good until phase II exists. */
+  function voyage() {
+    if (voyageShown) return;
+    voyageShown = true;
+    showVoyage(root, openMenu);
+  }
   let helpSeen = 0;
   try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* no storage */ }
 
@@ -1205,11 +1211,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       levelBar.style.width = `${(lv.frac * 100).toFixed(1)}%`;
       if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nNext at ${fmt(Math.ceil(lv.to))} cells`);
       shownLevel = lv.level;
-      // Phase I ends at the top level: "The voyage" splash covers the game for good until phase II exists.
-      if (lv.level >= lv.max && !voyageShown) {
-        voyageShown = true;
-        showVoyage(root, openMenu);
-      }
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });
       zin.disabled = s.zoom <= 0;
@@ -1375,19 +1376,34 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       m.addClose('Reload now', onReload);
       m.addClose('Later');
     },
-    /** The whole map explored and every bluetreri at camp. */
+    /** The end of phase I (the whole map explored and every bluetreri at camp): what the expedition achieved, then,
+     *  on Continue, "The voyage" splash. */
     showComplete(s: GameState) {
-      const m = modal();
+      const m = modal('complete');
+      const got = itemsCollected(s, world);
+      const lines = [
+        `${fmt(exploredCells(s, world))} cells explored`,
+        `${fmt(s.totalGold)} bluetreri gathered`,
+        `${fmt(got.page)} pages, ${fmt(got.note)} notes and ${fmt(got.photo)} photos`,
+        `${WORKS.reduce((a, wd) => a + s.works[wd.id], 0)} works in the library (${whole(libraryShare(s))})`,
+        `${s.printed.length} pages of the planet's history printed`,
+        ...(s.detectFrom >= 0 ? [`${fmt(metalCollected(s, world))} metal scraps`] : []),
+        `${fmtTime(s.doneAt ?? s.playTime)} of play with ${s.bots.length} rovers`,
+      ];
       m.box.append(
         h('div', 'name', 'Congratulations!'),
-        h('div', '', 'The whole world is explored and every resource is back at camp.'),
-        h('div', 'gain', fmtTime(s.doneAt ?? s.playTime)),
-        h('div', 'info', 'of play to rebuild it all.'),
-        h('div', 'gain gold-text', `${fmt(s.totalGold)} bluetreri gathered`),
-        h('div', 'info', `Library ${whole(libraryShare(s))} complete`),
+        h('div', '', 'Phase I is complete: the expedition has explored the whole ruined planet and brought everything back to camp.'),
       );
-      m.addClose('Wonderful');
+      const list = h('ul', 'complete-list');
+      for (const t of lines) list.append(h('li', '', t));
+      m.box.append(
+        list,
+        h('div', 'info', 'Now we are ready for phase II: we will build a fleet of ships to carry all these resources to a new planet.'),
+      );
+      m.addClose('Continue', voyage);
     },
+    /** A game already over whose message was seen: straight to "The voyage". */
+    showVoyage: voyage,
     showOffline(r: OfflineReport) {
       const m = modal();
       m.box.append(
