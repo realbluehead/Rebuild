@@ -139,10 +139,11 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   app.append(title.el); // the view replaced the page: keep the title on top until the player taps
 
   title.progress(1);
-  // Messages wait for the tap (the game already runs behind the title, see below).
-  void title.ready().then(() => {
-    // A new game opens with phase I's splash, then the field notes.
-    if (loaded.fresh) void showArrival(app).then(() => setTimeout(() => view.openHelp(), 300));
+  // The game starts on the player's tap: on the title, and for a new game also on phase I's splash. Until then the
+  // simulation waits (the time away was already simulated while loading).
+  const started = title.ready().then(() => (loaded.fresh ? showArrival(app) : undefined));
+  void started.then(() => {
+    if (loaded.fresh) setTimeout(() => view.openHelp(), 300); // a new game, then the field notes
     // (once the game is over there is nothing to report, unless it ended while away)
     if (report && (state.doneAt === undefined || report.cells > 0)) view.showOffline(report);
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
@@ -198,7 +199,10 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     view.render(state, now);
     requestAnimationFrame(frame);
   };
-  requestAnimationFrame(frame);
+  void started.then(() => {
+    last = performance.now();
+    requestAnimationFrame(frame);
+  });
 
   void checkForUpdate().then((u) => {
     // Opening the APK URL outside the WebView makes Android download it and offer to install it.

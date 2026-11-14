@@ -171,7 +171,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - Title screen (`ui/title.ts`): full screen over `#app` while that runs (`title.progress`). Pixel-art canvas ~112 px wide: a scan
   line rises from the street turning the wasteland into a neon city (it chases the progress at most `SCAN_SPEED`, so it
   takes ≥ ~3.3 s); above the line the wasteland has acid clouds with faint distant lightning, smoke from the three tallest ruins and ground fog (`drawStorm`), "RECEIVING DATA…" + bar, then "TAP TO START". Title "REBUILD" in Monoton (`@fontsource/monoton`), dull
-  above the line and neon below it. The game loop already runs behind it; help, offline report and end message wait for the tap.
+  above the line and neon below it. The game loop starts only on the tap (and on a new game, on the tap that closes "The arrival"); until then the simulation waits, as do help, offline report and end message (the time away is simulated while loading).
 - Phase I splash: a new game opens, after the title tap, with "The arrival" (`ui/arrival.ts`, `showArrival`; then the
   field notes). Pixel art like the title (canvas 96 px wide, height from the screen, redrawn every 100 ms): the ruined
   planet from space, the "Smog giant" (ochre ground from fbm noise turning slowly, bands of yellow smog turning faster,
