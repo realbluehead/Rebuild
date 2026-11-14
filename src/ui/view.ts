@@ -14,6 +14,7 @@ import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
 import { showVoyage } from './voyage';
+import { createBinder } from './binder';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
@@ -601,7 +602,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const mcBody = h('div', 'mc-body');
   mcBody.append(mcIn, mcTubes, mcCrt, mcPrinter);
   machineEl.append(mcLabel, mcBody);
-  libView.append(shelvesEl, machineEl);
+  // The archive binder under it, where the printed sheets go (ui/binder.ts).
+  const binder = createBinder();
+  libView.append(shelvesEl, machineEl, binder.el);
   const MC_TEXT: Record<string, string> = { idle: 'STANDBY_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
   /** The scrap last seen in the Decoder (to show it dropping in and in the caption when a new one starts). */
   let mcLast = -1;
@@ -730,6 +733,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const printed = lore.filter((k) => s.printed.includes(k)).length;
     set(mcLabel, `Decoder · printed ${printed}/${lore.length} · found ${lore.length}/${world.loreCells.length}`);
     mcTray.style.setProperty('--n', String(Math.min(6, printed)));
+    binder.update(s.printed.map((k) => {
+      const kind = LORE[world.lore[world.loreCells[k]] - 1];
+      return { title: `${kind.name} #${k + 1}`, text: loreText(kind.id, k) };
+    }));
     const [pid, pk] = picked.split(':');
     const wd = WORKS.find((w) => w.id === pid);
     if (pid === 'lore') {
