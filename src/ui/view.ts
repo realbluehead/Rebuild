@@ -89,7 +89,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const explored = h('div', 'explored');
   const stats0 = h('div', 'stats');
   const goldLine = h('div', 'gold-line');
-  goldLine.append(h('i', 'coin'), gold, rate);
+  // Metal scraps, next to the bluetreri once the Metal detector is fitted (a steel nut and the count).
+  const metal = h('span', 'metal');
+  const metalNum = h('span');
+  metal.append(h('i', 'nut'), metalNum);
+  metal.title = 'Metal scraps';
+  metal.hidden = true;
+  goldLine.append(h('i', 'coin'), gold, rate, metal);
   // Rovers' load: the bluetreri is not yours until they bring it to camp.
   const cargoLine = h('div', 'cargo-line');
   const cargoBar = h('div', 'bar cargo-bar');
@@ -107,10 +113,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   menuBtn.title = 'Menu';
   menuBtn.append(h('i'), h('i'), h('i'));
   menuBtn.addEventListener('click', () => openMenu());
-  const helpBtn = h('button', 'px-btn menu-btn help-btn', '?');
-  helpBtn.title = 'Field notes';
-  helpBtn.addEventListener('click', () => openHelp());
-  topbar.append(stats0, helpBtn, menuBtn);
+  // The field notes are in the menu (≡), which blinks when there is a new note.
+  topbar.append(stats0, menuBtn);
 
   const mapWrap = h('section', 'map-wrap');
   const canvas = h('canvas', 'map');
@@ -1094,7 +1098,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     if (locked > 0) body.append(h('p', 'locked', `??? ${locked} more ${locked === 1 ? 'thing' : 'things'} to discover. Keep exploring.`));
     helpSeen = unlocked + seenTerrain.size;
     try { localStorage.setItem(HELP_SEEN_KEY, String(helpSeen)); } catch { /* no storage */ }
-    helpBtn.classList.remove('alert');
+    menuBtn.classList.remove('alert');
     m.box.append(body);
     m.addClose('Got it');
   }
@@ -1155,7 +1159,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       if (now - lastHelpCheck > 1000) {
         lastHelpCheck = now;
         const count = helpEntries(s).filter((e) => e.on).length + seenTerrain.size;
-        helpBtn.classList.toggle('alert', count > helpSeen);
+        menuBtn.classList.toggle('alert', count > helpSeen);
       }
       const prog = progress(s, world);
       const trips: TripView[] = s.bots.map((b) => ({
@@ -1175,6 +1179,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const cells = prog.a + prog.reach.reduce((x, y) => x + y, 0);
 
       set(gold, fmt(s.gold));
+      metal.hidden = s.detectFrom < 0;
+      if (!metal.hidden) set(metalNum, fmt(metalCollected(s, world)));
       set(rate, `+${fmt(rateNow ? rateNow() : goldPerSec(s, world))}/s`);
       // The hold bar shows the rover picked in the Rovers tab (the Scout when that kind is not built yet).
       const cap = stats(s, shown).cargo;

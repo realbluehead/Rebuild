@@ -128,6 +128,11 @@ button { font: inherit; color: inherit; }
 .gold-line { display: flex; align-items: center; gap: 8px; }
 .gold { font: 16px/1 var(--font-num); color: var(--blu); }
 .rate { color: var(--ok); font-size: 20px; }
+/* Metal scraps: a steel hex nut and the count. */
+.metal { display: flex; align-items: center; gap: 4px; font: 11px/1 var(--font-num); color: #c8d0d4; }
+.metal[hidden] { display: none; }
+.metal .nut { width: 12px; height: 12px; flex: none; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background: radial-gradient(circle, var(--bg) 0 22%, #2a3034 24% 30%, transparent 32%), linear-gradient(135deg, #f4f8fa, #8a969c 50%, #4a5458); }
 .cargo-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .cargo-bar { flex: 0 0 64px; margin: 0; height: 10px; }
 .cargo-bar i { background: var(--blu); }
@@ -136,7 +141,6 @@ button { font: inherit; color: inherit; }
 .cargo-text { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .explored { color: var(--muted); font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .menu-btn { width: 40px; height: 40px; padding: 0; display: grid; place-content: center; gap: 4px; flex: none; }
-.help-btn { font: 16px/1 var(--font-num); color: var(--text); }
 .menu-btn i { display: block; width: 18px; height: 3px; background: var(--text); }
 
 .zoom-ctl {
@@ -243,7 +247,7 @@ button { font: inherit; color: inherit; }
 
 /* Field notes that fill in: what is missing, and the ? button when there is something new */
 .help-body .locked { color: var(--muted); margin-top: 10px; }
-.help-btn.alert { color: #1e1404; background: var(--gold); animation: blink 1s steps(2) infinite; }
+.menu-btn.alert { background: var(--gold); animation: blink 1s steps(2) infinite; }
 .upg[hidden], .routes-more[hidden] { display: none; }
 .routes-more { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }
 .rover-pick { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
