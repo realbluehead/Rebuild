@@ -193,12 +193,13 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   Reaching it shows the congratulations message (`showComplete`, once per device: what was achieved — cells, bluetreri,
   items, works, printed pages, metal scraps, rovers, time — and that phase II will build a fleet of ships to carry the
   resources to a new planet); its Continue (or loading a game already over whose message was seen, `view.showVoyage`) puts up "The voyage" splash for good (`ui/voyage.ts`, `showVoyage`; it
-  cannot be closed, the game waits there for phase II; nothing saved): an SVG robot jellyfish ship, the Black siphon (obsidian plated bell with seams, rivets, red
+  fades in; nothing saved; "TAP TO ENTER": a tap after the first second fades it out while the phase II screen
+  (`showPhase2`, the mock-up below) fades in over it, both 0.6 s): an SVG robot jellyfish ship, the Black siphon (obsidian plated bell with seams, rivets, red
   windows, a beacon mast and engine ports on a ribbed rim; 12 jointed tentacles redrawn every frame so each joint follows the
   one above, with glowing probe tips) over stars, "THE VOYAGE · PHASE II", "phase II is on its way". A ≡ button on it opens the game menu (export, import, restart);
   dialogs opened after it (`.voyage ~ .modal`) sit above it.
-  Nothing of phase II is playable yet. **Phase II shell** (mock-up, `ui/phase2.ts`, `showPhase2`, shown over the game with
-  `?phase2` in the address, `view.showPhase2`): phase I's layout (top bar with metal scraps as the currency and ≡ menu,
+  Nothing of phase II is playable yet. **Phase II shell** (mock-up, `ui/phase2.ts`, `showPhase2`, entered from the voyage
+  splash, or shown over the game with `?phase2` in the address, `view.showPhase2`; fades in): phase I's layout (top bar with metal scraps as the currency and ≡ menu,
   the Black siphon in dock in the middle via `shipScene` from voyage.ts, tabs Shipyard / Fleet / Cargo / Launch with
   placeholder tables) re-themed by overriding the colour variables on `.p2`: obsidian plates, steel rivets, red for
   lights, bars and the active tab, yellow for buttons you can press and the currency. One panel height for every tab.

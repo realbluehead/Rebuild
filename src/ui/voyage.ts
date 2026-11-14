@@ -5,6 +5,9 @@
 // for export, import or a restart.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+/** Taps are ignored for the first second (so the tap that opened it does not close it), and the fades take FADE_MS. */
+const TAP_DELAY_MS = 1000;
+const FADE_MS = 600;
 const W = 240;
 const H = 400;
 
@@ -158,21 +161,29 @@ export function shipScene(label: string, titled = true): { svg: SVGSVGElement; s
   return { svg, stop: () => { on = false; } };
 }
 
-/** Shows the splash over `root` (the phone). It cannot be closed: the game waits here for phase II. `openMenu` opens
- *  the game's ≡ menu (its dialogs open over the splash). */
-export function showVoyage(root: HTMLElement, openMenu: () => void): void {
+/** Shows the splash over `root` (the phone), fading in. `openMenu` opens the game's ≡ menu (its dialogs open over the
+ *  splash). A tap elsewhere (after the first second) calls `onEnter` (which fades the phase II screen in over it) and
+ *  fades the splash out. */
+export function showVoyage(root: HTMLElement, openMenu: () => void, onEnter: () => void): void {
   const el = document.createElement('div');
   el.className = 'voyage';
-  const { svg } = shipScene('The voyage');
+  const { svg, stop } = shipScene('The voyage');
   const hint = document.createElement('span');
   hint.className = 'voyage-hint';
-  hint.textContent = 'phase II is on its way';
+  hint.textContent = 'TAP TO ENTER';
   const menu = document.createElement('button');
   menu.className = 'px-btn menu-btn voyage-menu';
   menu.title = 'Menu';
   menu.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
-  menu.addEventListener('click', openMenu);
+  menu.addEventListener('click', (e) => { e.stopPropagation(); openMenu(); });
   el.append(svg, hint, menu);
   root.append(el);
   requestAnimationFrame(() => el.classList.add('in'));
+  const shown = performance.now();
+  el.addEventListener('click', () => {
+    if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('out')) return;
+    el.classList.add('out');
+    onEnter();
+    setTimeout(() => { stop(); el.remove(); }, FADE_MS);
+  });
 }

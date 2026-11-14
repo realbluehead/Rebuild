@@ -58,7 +58,7 @@ const TABS: { name: string; picks?: string[]; heads: string[]; rows: Row[] }[] =
   },
 ];
 
-/** Puts the phase II shell over `root` (the phone). `openMenu` opens the game's ≡ menu. */
+/** Puts the phase II shell over `root` (the phone), fading in. `openMenu` opens the game's ≡ menu. */
 export function showPhase2(root: HTMLElement, openMenu: () => void): void {
   const el = h('div', 'p2');
 
@@ -135,6 +135,8 @@ export function showPhase2(root: HTMLElement, openMenu: () => void): void {
 
   el.append(top, scene, panel);
   root.append(el);
+  void el.offsetWidth; // (styles applied at opacity 0 first, so the change below fades)
+  el.classList.add('in'); // fades in (over the voyage splash)
   // One panel height for every tab (the tallest), so the scene never jumps (as in phase I).
   let tallest = 0;
   lists.forEach((_, k) => {

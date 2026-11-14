@@ -1082,7 +1082,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   function voyage() {
     if (voyageShown) return;
     voyageShown = true;
-    showVoyage(root, openMenu);
+    showVoyage(root, openMenu, () => showPhase2(root, openMenu));
   }
   let helpSeen = 0;
   try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* no storage */ }

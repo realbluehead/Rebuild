@@ -536,6 +536,8 @@ button { font: inherit; color: inherit; }
 /* "The voyage" splash (ui/voyage.ts): full screen over the game for good, fades in; under the title screen. */
 .voyage { position: absolute; inset: 0; z-index: 90; background: #030305; opacity: 0; transition: opacity .6s; }
 .voyage.in { opacity: 1; }
+.voyage { cursor: pointer; }
+.voyage.out { opacity: 0; pointer-events: none; }
 .voyage-menu { position: absolute; top: 10px; right: 10px; }
 .voyage ~ .modal { z-index: 91; } /* the menu and its dialogs open over the splash */
 .voyage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -545,7 +547,7 @@ button { font: inherit; color: inherit; }
 .voyage .vy-bob { animation: vy-bob 4s ease-in-out infinite; }
 .voyage .vy-pulse, .voyage .vy-blink { animation: vy-pulse 2.4s ease-in-out infinite; }
 .voyage .vy-beacon { animation: vy-beacon 1.6s steps(1) infinite; }
-.voyage-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a5058; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
+.voyage-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #ff6a74; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
 @keyframes vy-bob { 50% { transform: translateY(-5px); } }
 @keyframes vy-pulse { 50% { opacity: .3; } }
 @keyframes vy-beacon { 0%, 80% { opacity: 1; } 90% { opacity: .1; } }
@@ -599,7 +601,7 @@ button { font: inherit; color: inherit; }
 @keyframes lore-in { from { opacity: 0; transform: scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .lore-reader { animation: none; } }
 
-/* Phase II shell (ui/phase2.ts, a mock-up behind ?phase2): phase I's layout re-themed in the voyage palette — obsidian
+/* Phase II shell (fades in: .in) (ui/phase2.ts, a mock-up behind ?phase2): phase I's layout re-themed in the voyage palette — obsidian
    plates, steel rivets, red lights — with yellow for what you can press and for the currency (metal scraps). */
 .p2 {
   --void: #030305;
@@ -617,11 +619,12 @@ button { font: inherit; color: inherit; }
   --blu: #ffd23a;
   --ok: #ff4a5a;
   --red: #ff2a3a;
-  position: absolute; inset: 0; z-index: 95;
+  position: absolute; inset: 0; z-index: 95; opacity: 0; transition: opacity .6s;
   display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--bg); color: var(--text);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
+.p2.in { opacity: 1; }
 .p2 ~ .modal { z-index: 96; }
 .p2 .topbar { box-shadow: inset 0 var(--u) 0 var(--hi), 0 var(--u) 0 #ff2a3a33; }
 .p2 .px-btn { box-shadow: inset var(--u) var(--u) 0 #2c2f37, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #07080a; }
