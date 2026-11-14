@@ -1,7 +1,7 @@
 // "The voyage" splash: shown once, when the explorer reaches the top level (the whole map explored), as the start of
 // phase II. A robot jellyfish ship (the Black siphon: an obsidian armoured bell with red lights and a dozen jointed
 // tentacles ending in probes) floats over a starfield. Drawn in SVG; the tentacles are redrawn every frame so each
-// joint follows the one above it. A tap closes it.
+// joint follows the one above it. It stays up for good: phase II is not playable yet.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const W = 240;
@@ -31,9 +31,6 @@ const SEG_LEN = 9;
 const THICK = 2.2;
 const SWAY = 1.3;
 const SPREAD = 0.4;
-
-/** Taps are ignored this long after the splash appears, so a tap meant for the game does not close it unseen. */
-const TAP_DELAY_MS = 1200;
 
 const f = (n: number) => n.toFixed(1);
 
@@ -145,8 +142,8 @@ function tentacles(t: number): string {
   return o;
 }
 
-/** Shows the splash over `root` (the phone) until a tap; resolves once it has faded out. */
-export function showVoyage(root: HTMLElement): Promise<void> {
+/** Shows the splash over `root` (the phone). It cannot be closed: the game waits here for phase II. */
+export function showVoyage(root: HTMLElement): void {
   const el = document.createElement('div');
   el.className = 'voyage';
   const svg = document.createElementNS(SVGNS, 'svg');
@@ -157,20 +154,11 @@ export function showVoyage(root: HTMLElement): Promise<void> {
   svg.innerHTML = scene();
   const hint = document.createElement('span');
   hint.className = 'voyage-hint';
-  hint.textContent = 'tap to continue';
+  hint.textContent = 'phase II is on its way';
   el.append(svg, hint);
   root.append(el);
   const tents = svg.querySelector('#vy-tents')!;
-  let raf = 0;
-  const frame = (ms: number) => { tents.innerHTML = tentacles(ms / 1000); raf = requestAnimationFrame(frame); };
-  raf = requestAnimationFrame(frame);
+  const frame = (ms: number) => { tents.innerHTML = tentacles(ms / 1000); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
   requestAnimationFrame(() => el.classList.add('in'));
-  const shown = performance.now();
-  return new Promise((done) => {
-    el.addEventListener('click', () => {
-      if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('out')) return;
-      el.classList.add('out');
-      setTimeout(() => { cancelAnimationFrame(raf); el.remove(); done(); }, 600);
-    });
-  });
 }

@@ -1066,9 +1066,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return entries;
   }
   const HELP_SEEN_KEY = 'rebuild:help-seen';
-  const VOYAGE_KEY = 'rebuild:voyage-seen';
-  let voyageSeen = false;
-  try { voyageSeen = localStorage.getItem(VOYAGE_KEY) === '1'; } catch { /* no storage */ }
+  let voyageShown = false;
   let helpSeen = 0;
   try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* no storage */ }
 
@@ -1200,11 +1198,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       levelBar.style.width = `${(lv.frac * 100).toFixed(1)}%`;
       if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nNext at ${fmt(Math.ceil(lv.to))} cells`);
       shownLevel = lv.level;
-      // Phase II starts at the top level: "The voyage" splash, once.
-      if (lv.level >= lv.max && !voyageSeen) {
-        voyageSeen = true;
-        try { localStorage.setItem(VOYAGE_KEY, '1'); } catch { /* no storage */ }
-        void showVoyage(root);
+      // Phase I ends at the top level: "The voyage" splash covers the game for good until phase II exists.
+      if (lv.level >= lv.max && !voyageShown) {
+        voyageShown = true;
+        showVoyage(root);
       }
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });
