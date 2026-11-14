@@ -14,7 +14,7 @@ import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { DETECTOR_GOLD, WORKS_MAX } from '../src/content/collection';
-import { setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { RateMeter } from '../src/core/rate';
@@ -85,7 +85,7 @@ const useRoutes = !process.env.NOROUTES;
 /** Big advances, for the timeline at the end: route unlocks and levels, new rovers, zooms, finished collections. */
 const big: [number, string][] = [];
 const mark = (t: number, what: string) => {
-  const lv = explorerLevel(explored(s, w), n).level;
+  const lv = levelOf(s, w);
   big.push([t, `${what} (Lv ${lv})`]);
   console.log(`${fmtTime(t).padStart(12)}  * ${what} (Lv ${lv})`);
 };
@@ -119,7 +119,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
   if (!SKIP.has('detector') && canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { spend('detector', DETECTOR_GOLD); buyDetector(s, w); mark(t, 'Metal detector'); }
   for (const id of ['book', 'cd', 'album'] as const) {
     while (!SKIP.has(id) && craft(s, w, id)) {
-      if (process.env.WORKLOG) console.log(`  ${id} #${s.works[id]} at Lv ${explorerLevel(explored(s, w), n).level}`);
+      if (process.env.WORKLOG) console.log(`  ${id} #${s.works[id]} at Lv ${levelOf(s, w)}`);
       if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
     }
   }

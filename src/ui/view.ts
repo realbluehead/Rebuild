@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { partOffered, canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { partOffered, canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -1057,7 +1057,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'New routes cost bluetreri and ask for pages, notes or photos collected in total (they are not used up); the better ones ask for more. Each of them has levels: a higher level means less entropy, so the rovers stray and zig-zag less and waste fewer steps.',
         'The route you pick (or a new level) shows as Queued and takes over when the rovers finish the ring they are on (the card shows how much of it is done); what is already explored stays as it is.'] },
       { on: levelOf(s, world) >= 2, title: 'Explorer level', lines: [
-        'Under the top bar: your explorer level and how far you are to the next. It grows with the cells explored, and each level asks for about a third more ground than the one before, so the first come fast and the last take hours.',
+        'Under the top bar: your explorer level and how far you are to the next. It grows with the ground explored and the bluetreri taken out of it, half and half; each level asks for about a third more than the one before, so the first come fast and the last take hours. The top level comes only with the whole map explored and dug out.',
         'New routes, route levels and library works each need an explorer level; until you reach it, they stay hidden behind ???.'] },
       { on: Object.values(s.goals).some((x) => x > 0), title: 'Goals', lines: [
         'Each goal has 5 tiers. When you reach one, its Claim button lights up on the Goals tab; claiming it multiplies a stat for good (rover speed, bluetreri, holds, the Miner\'s drill or the drive to and from camp).'] },
@@ -1212,11 +1212,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const t = shown.trip;
       const doing = t === 'home' ? '· returning' : t === 'out' ? '· heading out' : t === 'detour' ? '· fetching' : t === 'idle' ? '· at camp' : load >= cap - 1e-6 ? '· full!' : '';
       set(cargoText, `${kindById(shown.kind).name} ${fmt(load)}/${fmt(cap)} ${doing}`);
-      const lv = explorerLevel(cells, n);
+      const lv = explorerLevel(explorerXp(s, world), n);
       const lvText = lv.level >= lv.max ? `Lv ${lv.level} MAX` : `Lv ${lv.level}/${lv.max} · ${Math.floor(lv.frac * 100)}%`;
       set(explored, `${lvText} · ${fmt(fleetSpeed(s))} steps/s · ${s.bots.length}R`);
       levelBar.style.width = `${(lv.frac * 100).toFixed(1)}%`;
-      if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nNext at ${fmt(Math.ceil(lv.to))} cells`);
+      if (shownLevel >= 0 && lv.level > shownLevel) showToast(lv.level >= lv.max ? `Explorer level ${lv.level}: the top!` : `Explorer level ${lv.level}\nexplore and dig for the next`);
       shownLevel = lv.level;
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });

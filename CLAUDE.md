@@ -104,8 +104,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   Routes steer only the Scout. The Scavenger (`scavenge`) is the item route: cost pulled by `itemPull` (items within
   `ITEM_REACH` cells, a summed-area table): about +40% items for -8% bluetreri vs Circular; the sim unlocks it but keeps
   its route.
-- **Explorer level** (`explorerLevel(cells, total)` in `core/game.ts`, `levelOf(s, w)`): XP = cells explored, level 1 at
-  `LEVEL_FIRST` (10) cells and each level ×`LEVEL_GROWTH` (1.3) more; the whole map is the top level (45 on 1024²). Shown
+- **Explorer level** (`explorerLevel(xp, total)` in `core/game.ts`, `levelOf(s, w)`): XP = `explorerXp(s, w)`, in cells:
+  the mean of the share of the map explored and the share of its bluetreri extracted (`extracted`: the Scout's
+  `SCOUT_SHARE` of every revealed cell plus the Miner's share of every dug one), × the map's cells (v0.43; before, cells
+  explored alone). Level 1 at `LEVEL_FIRST` (10) cells and each level ×`LEVEL_GROWTH` (1.3) more; the top level (45 on
+  1024²) needs the whole map explored **and** dug out. Shown
   under the top bar (`Lv N/max · %` + thin bar, toast on level up) instead of "% explored". **Gates**: a route needs
   `RouteDef.minLevel` (Circular 6, Trail 24, Scavenger 28, Prospector 32, Survey 38) and its level k `minLevel + ROUTE_LEVEL_STEP (2) × k`
   (`routeLevelNeeded`); the k-th work of a collection needs `WORK_LEVEL_FIRST` (18) … `WORK_LEVEL_LAST` (42) evenly
@@ -186,7 +189,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   4×4 Bayer dither into four light steps, a hazy rim thicker on the lit side) over twinkling stars; "THE ARRIVAL ·
   PHASE I" in Press Start 2P over it (sizes in container units). A tap closes it (ignored for the first second).
 - `title.ready()` returns one shared promise (boot waits on it twice: messages and the web update check).
-- Phase II: phase I is exploring the planet (bluetreri, items, metal scraps); it ends at the top explorer level (the whole map).
+- Phase II: phase I is exploring the planet (bluetreri, items, metal scraps); it ends at the top explorer level (the whole map explored and dug out).
   Reaching it shows the congratulations message (`showComplete`, once per device: what was achieved — cells, bluetreri,
   items, works, printed pages, metal scraps, rovers, time — and that phase II will build a fleet of ships to carry the
   resources to a new planet); its Continue (or loading a game already over whose message was seen, `view.showVoyage`) puts up "The voyage" splash for good (`ui/voyage.ts`, `showVoyage`; it

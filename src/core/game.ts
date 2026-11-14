@@ -179,7 +179,33 @@ export function explored(s: GameState, w: World): number {
   return p.a + p.reach.reduce((x, y) => x + y, 0);
 }
 
-/** Explorer level: XP = cells explored, each level needs `LEVEL_GROWTH`× the cells of the one before (level 1 at
+/** Share of the map's bluetreri taken out of the ground: the Scout's share of every cell it revealed plus the Miner's
+ *  share of every cell dug out (by rank; detours only count once their ring is reached). */
+export function extracted(s: GameState, w: World): number {
+  const n = totalCells(w);
+  const total = w.goldPrefix[n] || 1;
+  const p = progress(s, w);
+  let seen = w.goldPrefix[p.a];
+  p.reach.forEach((r, k) => { seen += prefixAt(w, p.starts[k] + r) - w.goldPrefix[p.starts[k]]; });
+  let dug = 0;
+  if (roverIndex(s, 'miner') >= 0) {
+    const d = digPath(s, w);
+    dug = d.gold ? w.goldPrefix[d.lo] + along(d.gold, d.lo, s.dug) : prefixAt(w, Math.min(n, s.dug));
+  }
+  return Math.min(1, (SCOUT_SHARE * seen + (1 - SCOUT_SHARE) * dug) / total);
+}
+
+/** Explorer XP, in cells: the mean of the share of the map explored and the share of its bluetreri extracted, times the
+ *  map's cells. The top level needs both at 100% (the map explored and dug out). */
+export function explorerXp(s: GameState, w: World): number {
+  const n = totalCells(w);
+  const cells = Math.min(1, explored(s, w) / n);
+  const gold = extracted(s, w);
+  if (cells >= 1 && gold >= 1 - 1e-9) return n;
+  return Math.min(n - 1e-6, (n * (cells + gold)) / 2);
+}
+
+/** Explorer level: XP (`explorerXp`: cells explored and bluetreri extracted, in cells), each level needs `LEVEL_GROWTH`× the cells of the one before (level 1 at
  * `LEVEL_FIRST` cells). The whole map is the top level, `max`, so early levels come fast and later ones far apart. */
 const LEVEL_FIRST = 10;
 const LEVEL_GROWTH = 1.3;
@@ -1124,7 +1150,7 @@ export const canCraft = (s: GameState, w: World, id: WorkId): boolean =>
   s.works[id] < WORKS_MAX && levelOf(s, w) >= workLevelNeeded(w, s.works[id]) && s.items[workById(id).item] >= nextWorkCost(s, w, id);
 
 /** The player's explorer level right now. */
-export const levelOf = (s: GameState, w: World): number => explorerLevel(explored(s, w), totalCells(w)).level;
+export const levelOf = (s: GameState, w: World): number => explorerLevel(explorerXp(s, w), totalCells(w)).level;
 /** Never above the world's top level (small test maps have fewer levels). */
 const capLevel = (w: World, need: number) => Math.min(need, explorerLevel(0, totalCells(w)).max);
 /** Explorer level needed for the k-th work (0-based) of a collection. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { partOffered, buyDetector, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { partOffered, buyDetector, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -648,10 +648,26 @@ describe('game', () => {
     expect(nextWorkCost(s, big, 'book')).toBeGreaterThan(first);
   });
 
+  it('levels up with the cells explored and the bluetreri extracted, and tops out only with both at 100%', () => {
+    const s = crew(newGame(42), 'miner');
+    const n = totalCells(world);
+    s.ring = ringCount(world);
+    expect(extracted(s, world)).toBeCloseTo(SCOUT_SHARE, 6);
+    expect(levelOf(s, world)).toBeLessThan(explorerLevel(0, n).max);
+    s.dug = n / 2;
+    const half = levelOf(s, world);
+    s.dug = n;
+    expect(extracted(s, world)).toBeCloseTo(1, 6);
+    expect(levelOf(s, world)).toBe(explorerLevel(0, n).max);
+    expect(half).toBeLessThan(explorerLevel(0, n).max);
+  });
+
   it('each collection ends at WORKS_MAX works, and the library share reaches 100%', () => {
     const s = newGame(42);
     s.items = { page: 1e9, note: 1e9, photo: 1e9 };
+    crew(s, 'miner'); // the top level needs the map explored and dug out
     s.ring = ringCount(world);
+    s.dug = totalCells(world);
     for (const wd of WORKS) while (craft(s, world, wd.id));
     for (const wd of WORKS) expect(s.works[wd.id]).toBe(WORKS_MAX);
     expect(libraryShare(s)).toBe(1);
