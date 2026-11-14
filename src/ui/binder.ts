@@ -1,7 +1,9 @@
 // The archive binder, under the Decoder in the Library: where the printed sheets go. An old ring binder in black crushed
 // velvet with a silver clasp and faded silver lettering. It starts shut; once there are sheets a tap opens it on the
-// first one. A tap on the right-hand page turns it over the rings to the left (past the last sheet it shuts); a tap on
-// the left-hand page turns it back, and on the bare inside of the cover it shuts. Drawn in SVG (viewBox 320×200); only
+// first one, on the right with the cover's inside on the left. Pages go two to a spread like a book (1 | 2-3 | 4-5 …;
+// the last spread is n-1 | n when the count is odd, n | blank when even). A tap on the right-hand side turns a leaf
+// over the rings to the left (past the last spread it shuts); a tap on the left-hand page turns it back, and on the
+// bare inside of the cover it shuts. Drawn in SVG (viewBox 320×200); only
 // redrawn when what it shows changes, so each page turn plays once.
 
 /** A printed sheet: its heading and its text. */
@@ -124,9 +126,10 @@ function stack(x: number, k: number, n: number, side: number): string {
   return s;
 }
 
-/** Open at sheet `at`: the sheets before it on the left (or the cover's inside), `at` on the right. A turn draws the
- *  leaf that moves: forward, the old right-hand page folds onto the rings and comes down on the left; back, the old
- *  left-hand page folds up and comes down on the right. */
+/** Open on the spread whose right-hand page is sheet `at` (even; `at` = n means a blank right page): `at - 1` on the
+ *  left (or the cover's inside). A turn draws the leaf that moves: forward, the old right-hand page (`at - 2`) folds onto
+ *  the rings and its back (`at - 1`) comes down on the left; back, the old left-hand page (`at + 1`) folds up and its
+ *  front (`at`) comes down on the right. */
 function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
   const n = pages.length;
   let s = board(X0, Y0, W, H);
@@ -136,12 +139,12 @@ function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
   // The sheets under each open page, as a stack that grows with them like a real book: those read pile up on the
   // left, those to come on the right (each layer shows a little further out and lower).
   s += stack(LPX, at - 1, n, -1) + stack(PX, n - at - 1, n, 1);
-  // Left: the sheet before (coming down there after a forward turn); right: this one (coming down after a back turn).
+  // Left: the sheet before (coming down there after a forward turn); right: this one, if any (after a back turn).
   if (at > 0) s += sheet(pages[at - 1], at - 1, n, LPX, turn === 'fwd' ? 'bd-in-l' : '');
-  s += sheet(pages[at], at, n, PX, turn === 'back' ? 'bd-in-r' : '');
+  if (at < n) s += sheet(pages[at], at, n, PX, turn === 'back' ? 'bd-in-r' : '');
   // The leaf on its way up: forward, the old right page; back, the old left page.
-  if (turn === 'fwd') s += sheet(pages[at - 1], at - 1, n, PX, 'bd-out-r');
-  if (turn === 'back') s += sheet(pages[at], at, n, LPX, 'bd-out-l');
+  if (turn === 'fwd') s += sheet(pages[at - 2], at - 2, n, PX, 'bd-out-r');
+  if (turn === 'back') s += sheet(pages[at + 1], at + 1, n, LPX, 'bd-out-l');
   // Silver rings and the bar that holds them.
   for (let k = 0; k < 3; k++) {
     const cy = Y0 + 30 + k * 48;
@@ -168,12 +171,14 @@ export function createBinder(): Binder {
   el.append(svg);
   let pages: readonly BinderPage[] = [];
   let isOpen = false;
-  /** The sheet on the right-hand page while open (it always opens on the first). */
+  /** The sheet on the right-hand page while open, always even (it opens on the first; `pages.length` = blank). */
   let at = 0;
+  /** The last spread's right-hand sheet: n when the count is even (blank), n - 1 when odd. */
+  const lastAt = () => pages.length - (pages.length % 2);
   let key = '';
   const draw = (turn: Turn = '') => {
     if (isOpen && !pages.length) isOpen = false;
-    at = Math.min(at, Math.max(0, pages.length - 1));
+    at = Math.min(at, lastAt());
     const k = `${isOpen}|${at}|${pages.length}`;
     if (k === key) return;
     key = k;
@@ -185,9 +190,9 @@ export function createBinder(): Binder {
     const x = ((e.clientX - box.left) / box.width) * VB_W;
     if (!isOpen) { isOpen = true; at = 0; draw(); return; }
     if (x < SX - 6) {
-      if (at > 0) { at--; draw('back'); return; }
+      if (at > 0) { at -= 2; draw('back'); return; }
       isOpen = false; // the bare cover: shut
-    } else if (at + 1 < pages.length) { at++; draw('fwd'); return; } else isOpen = false; // past the last sheet: shut
+    } else if (at + 2 <= lastAt()) { at += 2; draw('fwd'); return; } else isOpen = false; // past the last spread: shut
     draw();
   });
   return {
