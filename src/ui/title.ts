@@ -232,7 +232,9 @@ export function createTitle(): TitleScreen {
   let last = performance.now();
   let lastDraw = 0;
   let raf = 0;
-  let resolveReady: (() => void) | null = null;
+  // One promise for every caller of `ready` (boot waits on it in more than one place).
+  let resolveReady: () => void = () => {};
+  const readyP = new Promise<void>((res) => { resolveReady = () => { cancelAnimationFrame(raf); res(); }; });
   const loaded = () => target >= 1 && shown >= 1;
 
   function frame(now: number): void {
@@ -285,7 +287,7 @@ export function createTitle(): TitleScreen {
     window.removeEventListener('keydown', onKey);
     el.classList.add('out');
     setTimeout(() => el.remove(), 450);
-    resolveReady?.();
+    resolveReady();
   }
 
   const start = () => {
@@ -306,10 +308,6 @@ export function createTitle(): TitleScreen {
   return {
     el,
     progress(p) { target = Math.max(target, Math.min(1, p)); },
-    ready() {
-      return new Promise<void>((res) => {
-        resolveReady = () => { cancelAnimationFrame(raf); res(); };
-      });
-    },
+    ready: () => readyP,
   };
 }

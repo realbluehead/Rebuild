@@ -172,6 +172,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   line rises from the street turning the wasteland into a neon city (it chases the progress at most `SCAN_SPEED`, so it
   takes ≥ ~3.3 s); above the line the wasteland has acid clouds with faint distant lightning, smoke from the three tallest ruins and ground fog (`drawStorm`), "RECEIVING DATA…" + bar, then "TAP TO START". Title "REBUILD" in Monoton (`@fontsource/monoton`), dull
   above the line and neon below it. The game loop already runs behind it; help, offline report and end message wait for the tap.
+- Phase I splash: a new game opens, after the title tap, with "The arrival" (`ui/arrival.ts`, `showArrival`; then the
+  field notes). Pixel art like the title (canvas 96 px wide, height from the screen, redrawn every 100 ms): the ruined
+  planet from space, the "Smog giant" (ochre ground from fbm noise turning slowly, bands of yellow smog turning faster,
+  4×4 Bayer dither into four light steps, a hazy rim thicker on the lit side) over twinkling stars; "THE ARRIVAL ·
+  PHASE I" in Press Start 2P over it (sizes in container units). A tap closes it (ignored for the first second).
+- `title.ready()` returns one shared promise (boot waits on it twice: messages and the web update check).
 - Phase II: phase I is exploring the planet (bluetreri, items, metal scraps); it ends at the top explorer level (the whole map).
   Reaching it (or loading a game already there) puts up "The voyage" splash for good (`ui/voyage.ts`, `showVoyage`; it
   cannot be closed, the game waits there for phase II; nothing saved): an SVG robot jellyfish ship, the Black siphon (obsidian plated bell with seams, rivets, red

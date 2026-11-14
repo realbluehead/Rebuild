@@ -543,3 +543,14 @@ button { font: inherit; color: inherit; }
 @keyframes vy-bob { 50% { transform: translateY(-5px); } }
 @keyframes vy-pulse { 50% { opacity: .3; } }
 @keyframes vy-beacon { 0%, 80% { opacity: 1; } 90% { opacity: .1; } }
+
+/* "The arrival" splash (ui/arrival.ts): phase I, over a new game after the title; a tap closes it. */
+.arrival { position: absolute; inset: 0; z-index: 95; background: #07060a; cursor: pointer; opacity: 0; transition: opacity .6s; container-type: size; }
+.arrival.in { opacity: 1; }
+.arrival.out { opacity: 0; pointer-events: none; }
+.arrival canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.arrival-title { position: absolute; left: 0; right: 0; top: 9cqh; text-align: center; color: #e6c97a; font-family: var(--font-num); pointer-events: none; }
+.arrival-title b { display: block; font-weight: 400; font-size: min(7.2cqw, 26px); letter-spacing: .3cqw; }
+.arrival-title i { display: flex; align-items: center; justify-content: center; gap: 3cqw; margin-top: 3cqw; font-style: normal; font-size: min(2.9cqw, 11px); letter-spacing: 1.6cqw; opacity: .75; }
+.arrival-title i::before, .arrival-title i::after { content: ''; width: 11cqw; height: 1px; background: currentColor; opacity: .6; }
+.arrival-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a7a52; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }

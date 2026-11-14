@@ -16,6 +16,7 @@ import { cancelReminders, onBackground, scheduleReminder } from './platform';
 import { checkForUpdate, checkWebUpdate, hardReload } from './platform/update';
 import { createView } from './ui/view';
 import type { TitleScreen } from './ui/title';
+import { showArrival } from './ui/arrival';
 import { loadWorld, type Loaded } from './load';
 
 const AUTOSAVE_MS = 30_000;
@@ -140,7 +141,8 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   title.progress(1);
   // Messages wait for the tap (the game already runs behind the title, see below).
   void title.ready().then(() => {
-    if (loaded.fresh) setTimeout(() => view.openHelp(), 300);
+    // A new game opens with phase I's splash, then the field notes.
+    if (loaded.fresh) void showArrival(app).then(() => setTimeout(() => view.openHelp(), 300));
     if (report) view.showOffline(report);
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
