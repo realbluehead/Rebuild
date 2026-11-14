@@ -181,7 +181,7 @@ button { font: inherit; color: inherit; }
   border-top: var(--u) solid var(--edge);
   padding: 8px;
 }
-.list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; overflow-y: auto; overscroll-behavior: contain; } /* (the panel keeps one height: content at the top; a longer tab scrolls) */
 .upg { display: grid; gap: 4px; padding: 8px; min-width: 0; }
 .upg .head { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
 .upg .name { font: 9px/1.4 var(--font-num); }
@@ -195,7 +195,6 @@ button { font: inherit; color: inherit; }
 .fleet h3 { margin-top: 10px; }
 .fleet .fleet-line { display: flex; justify-content: space-between; gap: 8px; margin: 0; }
 .fleet .fleet-val { color: var(--text); font-family: var(--font-num); font-size: 9px; align-self: center; }
-.upg .gain-line { font-size: 15px; line-height: 1; color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list.rover .upg .buy { min-height: 34px; }
 .routes .upg .buy { flex-wrap: wrap; gap: 2px 6px; font-size: 8px; padding: 3px; }
 .routes .upg .buy .part { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
@@ -236,7 +235,6 @@ button { font: inherit; color: inherit; }
 .tab.on { background: var(--panel); color: var(--text); box-shadow: inset 0 var(--u) 0 var(--hi); }
 .tab.alert:not(.on) { color: var(--gold); animation: blink 1s steps(2) infinite; }
 .list[hidden] { display: none; }
-.list { align-content: start; overflow-y: auto; overscroll-behavior: contain; } /* (the panel keeps one height: content at the top; a longer tab scrolls) */
 .item-icon { width: 16px; height: 16px; image-rendering: pixelated; flex: none; }
 .shelf .buy { font: 10px/1 var(--font-num); color: var(--text); }
 
@@ -252,7 +250,6 @@ button { font: inherit; color: inherit; }
 .upg[hidden], .routes-more[hidden] { display: none; }
 .routes-more { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }
 .rover-pick { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
-.rover-pick .pick-label { color: var(--muted); font-size: 16px; margin-right: 2px; }
 .rover-pick .pick { flex: 1; min-height: 22px; padding: 2px 0; font-family: var(--font-num); font-size: 7px; }
 /* (sub-tabs: smaller than the panel tabs, and picked the same way) */
 .rover-pick .pick.on { background: var(--panel); color: var(--text); box-shadow: inset 0 var(--u) 0 var(--hi); }
@@ -262,9 +259,8 @@ button { font: inherit; color: inherit; }
 .list.rover .build-card { grid-column: 1 / -1; }
 .list.rover .build-card .eff { white-space: normal; }
 .list .order-card .choices[hidden] { display: none; }
-.list .order-card .choices { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.list .order-card .choices { display: flex; align-items: center; gap: 2px 10px; flex-wrap: wrap; }
 .list .order-card .choices .what { color: var(--muted); font-size: 15px; min-width: 64px; }
-.list .order-card .choices { gap: 2px 10px; }
 .list .order-card .radio { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 15px; cursor: pointer; }
 .list .order-card .radio::before { content: ''; width: 9px; height: 9px; flex: none; border: var(--u) solid var(--muted); }
 .list .order-card .radio.on { color: var(--text); }
@@ -275,7 +271,7 @@ button { font: inherit; color: inherit; }
 /* Goals: five pips per goal (claimed lit, reached but unclaimed blinking). */
 .list.goals { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 .list.goals .upg { padding: 7px; gap: 2px; }
-.list.goals .upg .name { font-size: 8px; }
+.list.goals .upg .name { font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list.goals .upg .eff { font-size: 15px; }
 .list.goals .upg .buy { min-height: 30px; font-size: 7px; padding: 2px; }
 /* The next tier's progress fills its own pip. */
@@ -285,12 +281,10 @@ button { font: inherit; color: inherit; }
 .goal-pips i.on { background: var(--gold); opacity: 1; }
 .goal-pips i.ready { background: var(--ok); opacity: 1; animation: blink 1s steps(2) infinite; }
 .list.goals .upg .head .lvl { display: none; } /* (the pips show the tier) */
-.list.goals .upg .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Works on the Goals tab: a pip per work. */
 .goal-pips.works { gap: 1px; }
 .goal-pips.works i { height: 5px; }
-.list.goals .work-card .gain-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Library view: shelves in place of the map. */
 .library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 12px;

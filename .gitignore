@@ -3,7 +3,7 @@ dist
 dev-dist
 *.log
 .DS_Store
-# Android: Capacitor regenera els assets web a cada sync
+# Android: Capacitor regenerates the web assets on every sync
 android/app/src/main/assets/public
 android/.gradle
 android/build

@@ -11,7 +11,7 @@ import { stormReach } from '../core/weather';
 import { buildAtlas, campFrames, FLAT, ITEM_SPRITES, PAL, robotFrames, SPECIAL_BASE, spriteCanvas, TILE, VARIANTS } from './sprites';
 
 /** Logical pixels per cell at each zoom (the canvas's short side is ~256 logical px). */
-export const ZOOM_PX = ZOOMS.map((_, z) => TILE / 4 ** z);
+const ZOOM_PX = ZOOMS.map((_, z) => TILE / 4 ** z);
 const LOGICAL_SHORT_SIDE = 256;
 /** Below this, tiles are no longer drawn and each cell gets one flat colour. */
 const TILE_MIN_PX = 6;
@@ -303,12 +303,14 @@ export class MapView {
       this.scoutCells = new Set();
       for (let q = 0; q < scouted.length; q += 3) for (const i of pathCells(w, scouted[q], scouted[q + 1])) this.scoutCells.add(i);
     }
-    const scout = new Set(this.scoutCells);
-    // Cells mined on detours: revealed, and drained like explored ones.
+    // Cells mined on detours: revealed, and drained like explored ones. (The finished paths are only copied when there
+    // is something to add to them this frame.)
     const dug = new Set(minedCells);
+    const detours = trips.filter((t) => t.kind === 'detour' && t.from !== undefined && t.target !== undefined);
+    const scout = dug.size || detours.length ? new Set(this.scoutCells) : this.scoutCells;
     for (const i of dug) scout.add(i);
-    for (const t of trips) {
-      if (t.kind !== 'detour' || t.from === undefined || t.target === undefined) continue;
+    for (const t of detours) {
+      if (t.from === undefined || t.target === undefined) continue;
       const path = pathCells(w, t.from, t.target);
       const upTo = Math.floor(Math.min(1, t.f * 2) * (path.length - 1) + 1e-9);
       for (let q = 0; q <= upTo; q++) scout.add(path[q]);

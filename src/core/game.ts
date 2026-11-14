@@ -132,7 +132,7 @@ export const fleetSpeed = (s: GameState): number => stats(s).speed;
 export const carried = (s: GameState): number => s.bots.reduce((a, b) => a + b.cargo, 0);
 
 /** Steps from camp to the cell of rank `r` along the roads (by default the start of the current ring). */
-export function homeDistance(s: GameState, w: World, r = s.ring < ringCount(w) ? w.rings[s.ring] : totalCells(w) - 1): number {
+function homeDistance(s: GameState, w: World, r = s.ring < ringCount(w) ? w.rings[s.ring] : totalCells(w) - 1): number {
   return Math.floor(w.road[w.order[Math.min(r, totalCells(w) - 1)]]) + 1;
 }
 
@@ -181,8 +181,8 @@ export function explored(s: GameState, w: World): number {
 
 /** Explorer level: XP = cells explored, each level needs `LEVEL_GROWTH`× the cells of the one before (level 1 at
  * `LEVEL_FIRST` cells). The whole map is the top level, `max`, so early levels come fast and later ones far apart. */
-export const LEVEL_FIRST = 10;
-export const LEVEL_GROWTH = 1.3;
+const LEVEL_FIRST = 10;
+const LEVEL_GROWTH = 1.3;
 export interface ExplorerLevel { level: number; max: number; from: number; to: number; frac: number }
 export function explorerLevel(cells: number, total: number): ExplorerLevel {
   const at = (L: number) => (L <= 0 ? 0 : L >= max ? total : LEVEL_FIRST * LEVEL_GROWTH ** (L - 1));
@@ -218,14 +218,6 @@ export function revealed(s: GameState, w: World, r: number, p = progress(s, w)):
   return r < p.starts[k] + Math.floor(p.reach[k]);
 }
 
-/** Rank of the cell each rover is on (exploring: its arc position; otherwise where it left its arc), or -1. */
-export function botCells(s: GameState, w: World): number[] {
-  const p = progress(s, w);
-  return s.bots.map((_, j) => {
-    const k = p.robotOf.indexOf(j);
-    return k < 0 ? -1 : Math.min(p.starts[k + 1] - 1, p.starts[k] + Math.floor(p.reach[k] + 1e-7));
-  });
-}
 
 /** Map explored, every load at camp and, if there is a Miner, every cell dug out. */
 export const isComplete = (s: GameState, w: World): boolean =>
@@ -309,7 +301,7 @@ const pathSteps = (w: World, d: DigPath, grip: number, p: number): number =>
 export const digCell = (w: World, d: DigPath, p: number): number =>
   (d.seq ? d.seq[Math.max(0, Math.min(d.seq.length - 1, Math.floor(p - d.lo)))] : Math.min(totalCells(w) - 1, Math.floor(p)));
 /** Seconds the Miner takes to dig from position x to y: it crosses the cells and digs out what the Scout left. */
-export const digTime = (w: World, d: DigPath, st: Stats, x: number, y: number): number =>
+const digTime = (w: World, d: DigPath, st: Stats, x: number, y: number): number =>
   (pathSteps(w, d, st.grip, y) - pathSteps(w, d, st.grip, x) + (st.share * (pathGold(w, d, y) - pathGold(w, d, x))) / st.drill) / st.speed;
 /** Bluetreri the Miner digs out between positions x and y. */
 const digGold = (w: World, d: DigPath, st: Stats, x: number, y: number): number => st.share * (pathGold(w, d, y) - pathGold(w, d, x)) * st.loot;
@@ -532,7 +524,7 @@ function nextRing(s: GameState, w: World): void {
 }
 
 /** [route, level] per slice of the map the rovers explore right now (a single one when they all follow the same). */
-export function activeSectors(s: GameState): readonly Sector[] {
+function activeSectors(s: GameState): readonly Sector[] {
   const e = s.plan.at(-1);
   if (!e) return [['circular', 0]]; // the starting order
   return planSectors(e) ?? [[e[1] as RouteId, 0]]; // legacy entries count as level 0
@@ -543,7 +535,7 @@ export function activeSector(s: GameState, j: number): Sector {
   return a.length === 1 ? a[0] : a[j] ?? a[0];
 }
 /** [route, level] the Scout picked (it takes over at the next ring). */
-export const roverSectors = (s: GameState): Sector[] => s.bots.filter((b) => b.kind === 'scout').map((b) => [b.route, routeLevel(s, b.route)]);
+const roverSectors = (s: GameState): Sector[] => s.bots.filter((b) => b.kind === 'scout').map((b) => [b.route, routeLevel(s, b.route)]);
 /** Same key for the same order: one route for all compares equal whatever the rover count. */
 const sectorsKey = (x: readonly Sector[]): string => {
   const keys = x.map(([r, l]) => `${r}:${l}`);
@@ -1003,14 +995,21 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
   return ev;
 }
 
-/** Items collected so far (in finished rings, plus radar finds already brought back), by kind. */
-export function itemsCollected(s: GameState, w: World): Record<ItemId, number> {
-  const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
+/** Items collected so far (in finished rings, plus radar finds already brought back), by kind. It walks every item on
+ *  the map, and the panel asks many times per refresh, so it is cached on what it depends on (shared: do not modify). */
+export function itemsCollected(s: GameState, w: World): Readonly<Record<ItemId, number>> {
   const done = s.ring >= ringCount(w) ? totalCells(w) : w.rings[s.ring];
-  const fetched = new Set(s.fetched.filter((k) => !s.bots.some((b) => b.trip === 'detour' && b.target === k)));
-  w.itemRanks.forEach((r, k) => { if (r < done || fetched.has(k)) out[ITEMS[w.item[w.order[r]] - 1].id]++; });
+  const fetched = s.fetched.filter((k) => !s.bots.some((b) => b.trip === 'detour' && b.target === k));
+  const key = `${w.version}/${w.slices}/${done}/${fetched.join(',')}`;
+  const hit = collectedCache.get(w);
+  if (hit && hit.key === key) return hit.out;
+  const out = Object.fromEntries(ITEMS.map((it) => [it.id, 0])) as Record<ItemId, number>;
+  const got = new Set(fetched);
+  w.itemRanks.forEach((r, k) => { if (r < done || got.has(k)) out[ITEMS[w.item[w.order[r]] - 1].id]++; });
+  collectedCache.set(w, { key, out });
   return out;
 }
+const collectedCache = new WeakMap<World, { key: string; out: Record<ItemId, number> }>();
 
 /** Items spent at today's prices: the works made (routes only ask for items collected, they do not spend them). */
 export function itemsSpent(s: GameState, w: World): Record<ItemId, number> {
@@ -1226,7 +1225,7 @@ export function build(s: GameState, w: World, k: RoverKind): boolean {
 
 /** Items route `def` asks you to have collected (in total: they are not spent) for its level `lv` (0 = to unlock it):
  *  the unlock's items plus `levelItems × k` for each level k up to `lv`. */
-export function routeNeeds(def: RouteDef, lv: number): Partial<Record<ItemId, number>> {
+function routeNeeds(def: RouteDef, lv: number): Partial<Record<ItemId, number>> {
   const out: Partial<Record<ItemId, number>> = { ...def.items };
   for (let k = 1; k <= lv; k++) for (const [id, n] of Object.entries(def.levelItems)) out[id as ItemId] = (out[id as ItemId] ?? 0) + (n ?? 0) * k;
   return out;

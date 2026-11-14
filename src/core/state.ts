@@ -70,7 +70,7 @@ export const newLog = (since = 0): BotLog => ({ since, cells: 0, steps: 0, gold:
 export const newBot = (trip: Trip = 'explore', travelLen = 0, since = 0, kind: RoverKind = 'scout'): Bot =>
   ({ kind, trip, prog: 0, cargo: 0, travel: 0, travelLen, target: -1, from: -1, found: 0, bag: [0, 0, 0], walked: 0, log: newLog(since), up: newUp(), route: 'random' });
 
-export const newUp = (): Record<RoverStat, number> => Object.fromEntries(ROVER_STATS.map((id) => [id, 0])) as Record<RoverStat, number>;
+const newUp = (): Record<RoverStat, number> => Object.fromEntries(ROVER_STATS.map((id) => [id, 0])) as Record<RoverStat, number>;
 
 /** A storm drifting over the map: an irregular blob of about `r` cells around (x, y). */
 export interface Storm {

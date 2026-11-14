@@ -5,7 +5,7 @@ import { hash2 } from '../core/rng';
 
 export const TILE = 16;
 export const VARIANTS = 8;
-export const FRAMES = 2;
+const FRAMES = 2;
 
 /** '#rrggbb' -> ImageData pixel. */
 export function px(hex: string): number {

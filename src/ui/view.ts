@@ -50,6 +50,8 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: s
 };
 
 /** Sets text only if it changed (saves the browser work on every frame). */
+/** How often the panel under the map is refreshed (the map and top bar every frame). */
+const PANEL_MS = 100;
 const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el.textContent = text; };
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -57,7 +59,7 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 const whole = (x: number) => `${Math.floor(x * 100 + 1e-9)}%`;
 
 /** Short effect text (now -> next level), so it fits the narrow mobile cards. */
-export function effectText(id: StatId, a: Stats, b: Stats): string {
+function effectText(id: StatId, a: Stats, b: Stats): string {
   switch (id) {
     case 'speed': return `${fmt(a.speed)}→${fmt(b.speed)}/s`;
     case 'tyres': return `rough −${Math.round(100 * (1 - a.grip))}→${pct(1 - b.grip)}`;
@@ -1152,6 +1154,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   /** Last state drawn (for map taps and the shelf). */
   let current: GameState | null = null;
   let lastHelpCheck = 0;
+  /** When the panel was last refreshed; a tap anywhere refreshes it on the next frame (so buttons answer at once). */
+  let panelAt = -Infinity;
+  root.addEventListener('pointerup', () => { panelAt = -Infinity; }, true);
 
   function showToast(text: string, ms = 2600) {
     toast.textContent = text;
@@ -1217,9 +1222,22 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       zout.disabled = s.zoom >= s.zoomUnlocked - 1;
       if (isComplete(s, world)) set(cellSky, 'Map complete!');
 
+      const lore = loreFound(s, world);
+      // New scraps float up from their cells as icons.
+      if (loreSeen >= 0 && lore.length > loreSeen) {
+        for (const k of lore.slice(-Math.min(6, lore.length - loreSeen))) {
+          const c = world.loreCells[k];
+          map.popup(c, LORE[world.lore[c] - 1].name, now, lorePopIcons[world.lore[c] - 1]);
+        }
+      }
+      loreSeen = lore.length;
+      if (!libView.hidden) { drawShelves(s); drawDecoder(s); }
+
+      // The panel (tabs, cards, prices, alerts) changes slowly: refreshed PANEL_MS apart, or at once after a tap.
+      if (now - panelAt < PANEL_MS) return;
+      panelAt = now;
       // How much of the current ring is done: new rovers, and a queued route or level, start with the next ring.
-      const ringNow = progress(s, world);
-      const ringDone = ringNow.b > ringNow.a ? ringNow.reach.reduce((x, y) => x + y, 0) / (ringNow.b - ringNow.a) : 1;
+      const ringDone = prog.b > prog.a ? (cells - prog.a) / (prog.b - prog.a) : 1;
       fillPicker(s);
       fillRover(s);
       tabUpg.classList.toggle('alert', ROVER_KINDS.some((k) => newFor(s, k.id)));
@@ -1246,16 +1264,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
       const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
-      const lore = loreFound(s, world);
-      // New scraps float up from their cells as icons.
-      if (loreSeen >= 0 && lore.length > loreSeen) {
-        for (const k of lore.slice(-Math.min(6, lore.length - loreSeen))) {
-          const c = world.loreCells[k];
-          map.popup(c, LORE[world.lore[c] - 1].name, now, lorePopIcons[world.lore[c] - 1]);
-        }
-      }
-      loreSeen = lore.length;
-      if (!libView.hidden) { drawShelves(s); drawDecoder(s); }
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       fillRD(s);

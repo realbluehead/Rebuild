@@ -74,7 +74,7 @@ export interface World {
 }
 
 /** Side of the item buckets (see `World.itemStart`). */
-export const ITEM_BUCKET = 16;
+const ITEM_BUCKET = 16;
 
 /** City block size: there is a street every BLOCK cells. */
 const BLOCK = 7;
@@ -372,7 +372,7 @@ const ALGOS: Partial<Record<RouteId, Algo>> = {
 };
 
 /** Entropy of `route` at `level`: [cost noise, angle jitter, stray chance]. */
-export function algoEntropy(route: RouteId, level: number): [number, number, number] {
+function algoEntropy(route: RouteId, level: number): [number, number, number] {
   const a = ALGOS[route];
   const k = a ? a.decay ** level : 0;
   return a ? [a.noise * k, a.jitter * k, a.stray * k] : [0, 0, 0];
@@ -767,7 +767,7 @@ export function prefixAt(w: World, r: number): number {
 }
 
 /** Index (into `itemRanks`) of the first item with rank >= r. */
-export function itemIndexAt(w: World, r: number): number {
+function itemIndexAt(w: World, r: number): number {
   const ir = w.itemRanks;
   let lo = 0;
   let hi = ir.length;

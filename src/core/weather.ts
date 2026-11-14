@@ -9,7 +9,7 @@ import type { GameState, Storm, Weather } from './state';
 import { ringCount, totalCells, type World } from './world';
 
 const STORM_BY_ID = new Map(STORMS.map((d) => [d.id, d]));
-export const stormDef = (id: StormId) => STORM_BY_ID.get(id)!;
+const stormDef = (id: StormId) => STORM_BY_ID.get(id)!;
 
 /** Speed multiplier inside storm `st` (without armour). */
 export const stormFactor = (st: Storm): number => {
@@ -88,7 +88,7 @@ export function stormReach(st: Storm, angle: number): number {
 }
 
 /** Whether map point (x, y) lies inside storm `st`. */
-export function inStorm(st: Storm, x: number, y: number): boolean {
+function inStorm(st: Storm, x: number, y: number): boolean {
   const dx = x - st.x;
   const dy = y - st.y;
   const d2 = dx * dx + dy * dy;

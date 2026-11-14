@@ -225,7 +225,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   to the foreground, `checkWebUpdate` fetches it uncached; a different build shows "New version available" (once per build
   and session), and "Reload now" saves and calls `hardReload` (unregister the service worker, clear caches, reload with
   `?v=` to skip the HTTP cache; `main.ts` strips it). Native apps use the APK check instead.
-- `src/ui/`: plain DOM; built once, `render()` only updates texts.
+- `src/ui/`: plain DOM; built once, `render()` only updates texts. Each frame it draws the map and the top bar; the panel (tabs, cards, prices, alerts) is refreshed `PANEL_MS` (100 ms) apart, or on the next frame after any tap (`pointerup` on the root), as it calls many core checks. Derived counts that walk the whole map are cached on what they depend on (`itemsCollected`, `loreFound`, `metalCollected`: per world version and state key); keep new ones the same way if the panel asks for them.
 
 ## Deployment
 - Web: push to `main` → `.github/workflows/web.yml` (lint, test, build with `BASE_PATH=/<repo>/`) → GitHub Pages.
