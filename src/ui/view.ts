@@ -492,7 +492,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const lorePopIcons = LORE_SPRITES.map(spriteCanvas);
   const loreIcon = (k: number) => { const c = spriteCanvas(LORE_SPRITES[k]); c.className = 'item-icon'; return c; };
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
-  /** Collections on show in the library (albums are hidden for now: they may be replaced by another kind of item). */
+  /** Collections on show in the library (discoveries, made on Goals › Works, have no place in it yet). */
   const SHOWN = WORKS.filter((wd) => wd.id !== 'album');
   // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
   const worksTable = table('works-table', ['Work', 'Made', 'Next', 'Bonus', 'Progress']);
@@ -544,7 +544,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   function hideTip() { tipEl.hidden = true; tipOwner = null; }
 
-  // The library view: three shelves (books, records, albums), WORKS_MAX slots each. Tap a volume to read its title.
+  // The library view: the books shelf and the records jukebox, WORKS_MAX slots each. Tap a volume to read its title.
   const libView = h('div', 'library-view');
   libView.hidden = true;
   const libCaption = h('div', 'lib-caption px-box');
@@ -1026,12 +1026,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
         'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them, but like the bluetreri they only count once the rover unloads at camp.',
-        'On the Goals tab you turn them into books (pages), records (notes) and albums (photos). Each work costs more than the last.'] },
+        'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the places the old world left behind). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
         'On the Library tab, switch the Decoder on: it takes the scraps found one by one (the funnel shows how many wait), reads the DNA left on them and prints a sheet of the planet\'s history for each. Each scrap takes longer than the last; the printer\'s counter shows the time left. It keeps working while you are away. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
-        'Every work gives a permanent bonus: books, speed; records, more bluetreri; albums, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
+        'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around the Scout, reaching as many cells as its range. It detects pages, notes and photos in the dark around it: they light up as the needle passes.',

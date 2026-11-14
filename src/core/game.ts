@@ -1138,7 +1138,7 @@ export const routeLevelNeeded = (w: World, id: RouteId, k = 0): number =>
 export const libraryShare = (s: GameState, id?: WorkId): number =>
   id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
-/** Crafts the next work (book, record or album) from the collected items. */
+/** Crafts the next work (book, record or discovery) from the collected items. */
 /** Seconds the Decoder needs for the next scrap, after `n` printed: from DECODE_SEC for the first scrap of the map up to
  *  DECODE_MAX_SEC for the last, each one a little longer. */
 export const decodeTime = (w: World, n: number): number =>

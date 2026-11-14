@@ -468,7 +468,7 @@ button { font: inherit; color: inherit; }
 @keyframes jb-spin { to { transform: rotate(360deg); } }
 @keyframes jb-run { to { background-position: 20px 0; } }
 @keyframes jb-glow { to { box-shadow: 0 0 14px #ffb05acc; } }
-/* Albums: thick, padded covers with a photo corner. */
+/* Discoveries (id 'album'): thick, padded covers with a photo corner (not on show in the library yet). */
 .vol.album { background: hsl(var(--h) 30% 30%); box-shadow: inset 3px 0 0 hsl(var(--h) 30% 44%), inset -3px 0 0 hsl(var(--h) 30% 18%); }
 .vol.album::before { content: ''; position: absolute; top: 6px; left: 25%; width: 50%; height: 12px; background: hsl(calc(var(--h) + 40) 50% 70%); }
 .vol.album span { inset: 22px 0 4px; }
