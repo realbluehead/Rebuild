@@ -577,3 +577,21 @@ button { font: inherit; color: inherit; }
 .complete-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; text-align: left; }
 .complete-list li { padding-left: 1.2em; text-indent: -1.2em; }
 .complete-list li::before { content: '▸ '; color: var(--gold); }
+
+/* The binder's reader: one printed sheet over the whole phone, to read its full text. */
+.lore-reader { position: absolute; inset: 0; z-index: 12; display: grid; padding: 22px 16px; background: #050a08d9; animation: lore-in .2s ease-out; }
+.lore-sheet {
+  position: relative; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px; min-height: 0;
+  padding: 18px 18px 12px; color: #5a3c20; font-family: Georgia, 'Times New Roman', serif;
+  background: radial-gradient(ellipse at 30% 20%, #efe2b8, #e2cd92 60%, #cfb373);
+  box-shadow: inset 0 0 24px #8a6a3a66, inset 0 0 3px #8a6a3a, 0 6px 18px #000a;
+}
+.lore-helix { justify-self: center; width: 34px; height: 12px; background:
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-9 -4 18 8'%3E%3Cg stroke='%236b3a5a' stroke-width='.9' fill='none'%3E%3Cpath d='M-8,-3 C-4,3 4,-3 8,3'/%3E%3Cpath d='M-8,3 C-4,-3 4,3 8,-3'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
+.lore-title { text-align: center; font-weight: bold; font-size: 17px; padding-bottom: 6px; border-bottom: 1px solid #6b4a2a; }
+.lore-body { overflow-y: auto; font-style: italic; font-size: 15px; line-height: 1.5; padding-right: 4px; }
+.lore-body p { margin: 0 0 10px; }
+.lore-num { text-align: center; font-size: 12px; opacity: .8; }
+.lore-close { position: absolute; top: 4px; right: 6px; width: 32px; height: 32px; border: 0; background: none; color: #6b4a2a; font: 24px/1 Georgia, serif; cursor: pointer; }
+@keyframes lore-in { from { opacity: 0; transform: scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .lore-reader { animation: none; } }

@@ -3,7 +3,8 @@
 // first one, on the right with the cover's inside on the left. Pages go two to a spread like a book (1 | 2-3 | 4-5 …;
 // the last spread is n-1 | n when the count is odd, n | blank when even). A tap on the right-hand side turns a leaf
 // over the rings to the left (past the last spread it shuts); a tap on the left-hand page turns it back, and on the
-// bare inside of the cover it shuts. Silver arrows beside the book do the same (back on the left, forward on the right). Drawn in SVG (viewBox 320×200); only
+// bare inside of the cover (or a blank page) it shuts. Silver arrows beside the book turn the pages (back on the left,
+// forward on the right); a tap on a page opens it in the reader, over the whole phone, to read its full text. Drawn in SVG (viewBox 320×200); only
 // redrawn when what it shows changes, so each page turn plays once.
 
 /** A printed sheet: its heading and its text. */
@@ -146,7 +147,10 @@ function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
   s += `<rect x="${SX - 6}" y="${Y0 + 3}" width="22" height="${H - 6}" fill="${LO}"/><rect x="${SX - 6}" y="${Y0 + 3}" width="22" height="${H - 6}" fill="#000" opacity=".35"/>`;
   // The sheets under each open page, as a stack that grows with them like a real book: those read pile up on the
   // left, those to come on the right (each layer shows a little further out and lower).
-  s += stack(LPX, at - 1, n, -1) + stack(PX, n - at - 1, n, 1);
+  // They count leaves, not pages: a leaf holds two (front on the right, back on the left), so under page 2 (the back of
+  // page 1) there is only the cover, and the last page has nothing under it either.
+  const leaves = Math.ceil(n / 2);
+  s += stack(LPX, at / 2 - 1, leaves, -1) + stack(PX, Math.ceil((n - at) / 2) - 1, leaves, 1);
   // While a leaf turns, the page it is about to cover stays in view underneath (forward: the old left-hand page;
   // back: the old right-hand page), so nothing goes blank before the leaf lands.
   if (turn === 'fwd' && at >= 3) s += sheet(pages[at - 3], at - 3, n, LPX);
@@ -168,6 +172,21 @@ function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
   if (at > 0) s += arrow(X0 / 2, -1);
   if (at + 2 <= n - (n % 2)) s += arrow(X0 + W + (VB_W - X0 - W) / 2, 1);
   return s;
+}
+
+/** The reader: one sheet over the whole phone (with margins), its full text scrolling; a tap outside it or on × closes. */
+function read(page: BinderPage, at: number, of: number): void {
+  const el = (tag: string, cls: string, text = '') => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
+  const wrapEl = el('div', 'lore-reader');
+  const sheetEl = el('div', 'lore-sheet');
+  const close = el('button', 'lore-close', '×');
+  close.setAttribute('aria-label', 'Close');
+  const body = el('div', 'lore-body');
+  for (const para of page.text.split(/\n\s*\n/)) body.append(el('p', '', para));
+  sheetEl.append(close, el('div', 'lore-helix'), el('div', 'lore-title', page.title), body, el('div', 'lore-num', `${at + 1} / ${of}`));
+  wrapEl.append(sheetEl);
+  wrapEl.addEventListener('click', (e) => { if (e.target === wrapEl || e.target === close) wrapEl.remove(); });
+  (document.getElementById('app') ?? document.body).append(wrapEl);
 }
 
 export interface Binder {
@@ -204,10 +223,12 @@ export function createBinder(): Binder {
     const box = svg.getBoundingClientRect();
     const x = ((e.clientX - box.left) / box.width) * VB_W;
     if (!isOpen) { isOpen = true; at = 0; draw(); return; }
-    if (x < SX - 6) {
-      if (at > 0) { at -= 2; draw('back'); return; }
-      isOpen = false; // the bare cover: shut
-    } else if (at + 2 <= lastAt()) { at += 2; draw('fwd'); return; } else isOpen = false; // past the last spread: shut
+    const n = pages.length;
+    if (x < X0) { if (at > 0) { at -= 2; draw('back'); } return; } // the arrows
+    if (x > X0 + W) { if (at + 2 <= lastAt()) { at += 2; draw('fwd'); } return; }
+    if (at > 0 && x >= LPX - 4 && x < SX - 6) { read(pages[at - 1], at - 1, n); return; } // a page: read it
+    if (at < n && x >= PX - 4) { read(pages[at], at, n); return; }
+    isOpen = false; // the bare inside of the cover or a blank page: shut
     draw();
   });
   return {

@@ -46,7 +46,13 @@ export const DECODE_MAX_SEC = 600;
 /** Texts of the scraps, by kind and scrap number (`k`: its index in the world's `loreCells`). To be written: a scrap
  *  without its own text reads "Lore". */
 const LORE_TEXTS: Partial<Record<LoreId, Record<number, string>>> = {};
-export const loreText = (kind: LoreId, k: number): string => LORE_TEXTS[kind]?.[k] ?? 'Lore';
+/** Placeholder until a scrap has its own text (paragraphs split by a blank line). */
+const LORE_PLACEHOLDER = [
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
+  'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
+  'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.',
+].join('\n\n');
+export const loreText = (kind: LoreId, k: number): string => LORE_TEXTS[kind]?.[k] ?? LORE_PLACEHOLDER;
 
 /** Explorer level needed for the k-th work (0-based) of any collection: from WORK_LEVEL_FIRST to WORK_LEVEL_LAST, evenly.
  * The last one stays below the top level so the library can be finished before the map. */
