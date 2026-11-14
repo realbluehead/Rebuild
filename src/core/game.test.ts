@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { buyDetector, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { partOffered, buyDetector, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -332,6 +332,16 @@ describe('game', () => {
     const ring = digPath(s, world).k;
     while (digPath(s, world).k === ring && k++ < 100000) tick(s, world, 0.2);
     expect(s.digOrder).toBe('follow');
+  });
+
+  it('offers the Hauler\'s Hold only once a rover holds more than it', () => {
+    const s = crew(newGame(42), 'miner', 'hauler');
+    expect(partOffered(s, 2, 'cargo')).toBe(false);
+    expect(partOffered(s, 2, 'speed')).toBe(true);
+    expect(partOffered(s, 1, 'cargo')).toBe(true);
+    s.bots[1].up.cargo = 12; // the Miner's hold outgrows the Hauler's
+    expect(stats(s, s.bots[1]).cargo).toBeGreaterThan(stats(s, s.bots[2]).cargo);
+    expect(partOffered(s, 2, 'cargo')).toBe(true);
   });
 
   it('the Hauler goes to the rover the player put first, once it is over the threshold', () => {

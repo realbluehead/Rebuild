@@ -34,7 +34,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   revealed cells keep their colour (and deposits) until dug out, then drain (`dugTo` in `MapView.render`).
 - **Upgrades are per rover** (save v14): `Bot.up` holds each rover's own levels; `GameState.upgrades` holds a fleet base
   level (levels bought before v14) added to every rover. Each kind only has its own parts (`parts`; `hasPart`): Scout Engine,
-  Tires, Body, Hold, Radar; Miner Engine, Drill, Tires, Hold; Hauler Engine, Hold. `stats(s, b)` (default: the Scout) applies
+  Tires, Body, Hold, Radar; Miner Engine, Drill, Tires, Hold; Hauler Engine, Hold. The Hauler takes one rover's load per trip, so its Hold is only offered (`partOffered`: row and tab blink) once some rover's hold is bigger than it; with ×12 base that is rare, and before, it showed a +0.0% gain. `stats(s, b)` (default: the Scout) applies
   the kind's multipliers (`share`, `drill`, radar only on the Scout). `upgradeGain` returns null for the Radar (its Gain column shows the items one more level would put in reach now,
   `itemsInReach`).
   `goldPerSec` estimates Scout + Miner (capped by what the Scout reveals once caught up). The Hauler takes over a share of

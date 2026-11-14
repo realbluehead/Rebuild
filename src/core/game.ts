@@ -1188,6 +1188,16 @@ export function craft(s: GameState, w: World, id: WorkId): boolean {
 /** Whether rover `b` has part `id` (each kind only has the parts it uses). */
 export const hasPart = (b: Bot | undefined, id: StatId): boolean => !!b && kindById(b.kind).parts.includes(id);
 
+/** Whether rover `j`'s part `id` is offered to the player. The Hauler takes one rover's load per trip, so its Hold only
+ *  helps once some rover's hold is bigger than it: until then it is not shown (it would give nothing). */
+export function partOffered(s: GameState, j: number, id: StatId): boolean {
+  const b = s.bots[j];
+  if (!hasPart(b, id)) return false;
+  if (b.kind !== 'hauler' || id !== 'cargo') return true;
+  const cap = stats(s, b).cargo;
+  return s.bots.some((o) => o !== b && stats(s, o).cargo > cap);
+}
+
 /** Whether the next `qty` levels of `id` for rover `j` are affordable. */
 export function canBuy(s: GameState, id: StatId, qty = 1, j = 0): boolean {
   const def = upgradeById(id);

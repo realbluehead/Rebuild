@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { partOffered, canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -364,7 +364,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   /** Whether a kind has something to do: it can be built, or one of its parts can be bought now. */
   const newFor = (s: GameState, k: RoverKind) => {
     const j = roverIndex(s, k);
-    return canBuild(s, world, k) || (j >= 0 && UPGRADES.some((u) => canBuy(s, u.id, 1, j)));
+    return canBuild(s, world, k) || (j >= 0 && UPGRADES.some((u) => partOffered(s, j, u.id) && canBuy(s, u.id, 1, j)));
   };
   function fillPicker(s: GameState) {
     ROVER_KINDS.forEach((k, q) => {
@@ -896,7 +896,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     }
     for (const r of rows) {
       const id = r.def.id;
-      r.card.hidden = !bot || !hasPart(bot, id);
+      r.card.hidden = !bot || !partOffered(s, sel, id);
       if (r.card.hidden || !bot) continue;
       const lvl = levelOn(s, id, bot);
       set(r.lvl, `${lvl}`);
