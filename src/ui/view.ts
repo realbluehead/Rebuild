@@ -1026,7 +1026,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'The + and − buttons, the mouse wheel or a pinch. There are 4 zoom levels; the next opens when you have explored 80% of what it shows (the bar at the bottom left).'] },
       { on: itemsFound, title: 'Pages, notes and photos', lines: [
         'Some cells hide a page, a musical note or a photo. Rovers pick them up when they reach them, but like the bluetreri they only count once the rover unloads at camp.',
-        'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the places the old world left behind). Each work costs more than the last.'] },
+        'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the great inventions of the old world, from fire to the internet). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
         'On the Library tab, switch the Decoder on: it takes the scraps found one by one (the funnel shows how many wait), reads the DNA left on them and prints a sheet of the planet\'s history for each. Each scrap takes longer than the last; the printer\'s counter shows the time left. It keeps working while you are away. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },

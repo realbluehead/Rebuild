@@ -90,13 +90,14 @@ export const WORKS: readonly WorkDef[] = [
     ],
   },
   {
-    // Discoveries: the photos pieced together show where the old world kept what it needed, and the rovers learn to
-    // stow more (bigger holds). The last ones point at the way off the planet (phase II). Its id stays 'album' (saves).
+    // Discoveries: the photos pieced together show the old world's great inventions, from fire to spaceflight, in the
+    // order they were made; the rovers learn to stow more (bigger holds). The last points at phase II (leaving the
+    // planet). Its id stays 'album' (saves).
     id: 'album', name: 'Discoveries', item: 'photo', costGrowth: 1.35, bonus: 1.1, effect: 'hold',
     titles: [
-      'The Seed Vault', 'The Drowned Metro', 'The Last Radio Tower', 'The Glass Greenhouse', 'The Sealed Bunker',
-      'The Rail Depot', 'The Water Works', 'The Hospital Wing', 'The Silent Harbour', 'The Wind Farm', 'The Archive Vault',
-      'The Observatory', 'The Reactor Hall', 'The Launch Pad', 'The Star Chart',
+      'Fire', 'The Wheel', 'Writing', 'Gunpowder', 'The Compass', 'The Printing Press', 'The Telescope',
+      'The Steam Engine', 'Electricity', 'The Light Bulb', 'The Telephone', 'Flight', 'The Computer', 'The Internet',
+      'Spaceflight',
     ],
   },
 ];
