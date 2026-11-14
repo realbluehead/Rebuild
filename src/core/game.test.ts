@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buyDetector, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -101,6 +101,30 @@ describe('world', () => {
     expect(goalValue(s, world, 'historian')).toBe(found.length);
     expect(s.decodeOn).toBe(false);
     expect(setDecoder(s, world, true)).toBe(false);
+  });
+
+  it('metal scraps: the detector opens at its level; then the Scout picks up the ones it reveals, the Miner the ones it digs', () => {
+    expect(world.metalCells.length).toBeGreaterThan(0);
+    for (const c of world.metalCells) expect(world.item[c] + world.special[c] + world.lore[c]).toBe(0);
+    const s = newGame(42);
+    s.gold = D(1e12);
+    expect(levelOf(s, world)).toBeLessThan(detectorLevelNeeded(world));
+    expect(canBuyDetector(s, world)).toBe(false);
+    expect(buyDetector(s, world)).toBe(false);
+    Object.assign(s.upgrades, { speed: 14, cargo: 3 });
+    for (let k = 0; k < 600; k++) tick(s, world, 1);
+    expect(metalCollected(s, world)).toBe(0); // no detector: nothing picked up
+    fitDetector(s, world);
+    expect(metalCollected(s, world)).toBe(0); // nothing at once
+    let before = 0;
+    for (let k = 0; k < 3000; k++) {
+      tick(s, world, 1);
+      const n = metalCollected(s, world);
+      expect(n).toBeGreaterThanOrEqual(before);
+      before = n;
+    }
+    expect(before).toBeGreaterThan(0);
+    expect(before).toBeLessThanOrEqual(world.metalCells.length);
   });
 
   it('the order is a permutation and starts at the centre', () => {

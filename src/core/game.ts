@@ -14,7 +14,7 @@ import { newBot, type Bot, type GameState } from './state';
 import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_LEVELS, kindById, RICH_HOP, type DigOrder, type HaulPick, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
-import { DECODE_MAX_SEC, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
+import { DETECTOR_GOLD, DETECTOR_LEVEL, DECODE_MAX_SEC, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTE_PACE_LEVEL, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
@@ -1247,6 +1247,48 @@ export function canUnlockRoute(s: GameState, w: World, id: RouteId): boolean {
 }
 
 /** Pays the bluetreri for route `id` and unlocks it (the items are only a requirement). */
+/** Explorer level that opens the Metal detector. */
+export const detectorLevelNeeded = (w: World): number => capLevel(w, DETECTOR_LEVEL);
+export const canBuyDetector = (s: GameState, w: World): boolean =>
+  s.detectFrom < 0 && levelOf(s, w) >= detectorLevelNeeded(w) && s.gold.gte(DETECTOR_GOLD);
+
+/** Metal scraps in reach so far: revealed cells past `detectFrom` (the Scout's) plus revealed cells already dug (the
+ *  Miner's). Not counting `metalBase` gives the scraps collected. */
+function metalCount(s: GameState, w: World): number {
+  const p = progress(s, w);
+  const dug = dugCells(s, w);
+  let n = 0;
+  for (const c of w.metalCells) {
+    const r = w.rank[c];
+    if (revealed(s, w, r, p) && (r >= s.detectFrom || r < dug.below || !!dug.extra?.has(r))) n++;
+  }
+  return n;
+}
+const metalCache = new WeakMap<World, { key: string; n: number }>();
+/** Metal scraps collected since the detector was bought (0 before). */
+export function metalCollected(s: GameState, w: World): number {
+  if (s.detectFrom < 0) return 0;
+  const key = `${w.version}/${w.slices}/${s.ring}/${explored(s, w)}/${s.dug}/${s.detectFrom}`;
+  const hit = metalCache.get(w);
+  if (hit && hit.key === key) return Math.max(0, hit.n - s.metalBase);
+  const n = metalCount(s, w);
+  metalCache.set(w, { key, n });
+  return Math.max(0, n - s.metalBase);
+}
+
+/** Buys the Metal detector: from now on the Scout picks up the metal scraps it reveals, and the Miner those it digs. */
+export function buyDetector(s: GameState, w: World): boolean {
+  if (!canBuyDetector(s, w)) return false;
+  s.gold = s.gold.sub(DETECTOR_GOLD);
+  fitDetector(s, w);
+  return true;
+}
+/** Fits the detector (no price or level check): scraps count from now on. */
+export function fitDetector(s: GameState, w: World): void {
+  s.detectFrom = progress(s, w).b;
+  s.metalBase = metalCount(s, w);
+}
+
 export function unlockRoute(s: GameState, w: World, id: RouteId): boolean {
   if (!canUnlockRoute(s, w, id)) return false;
   s.gold = s.gold.sub(routeById(id)!.gold);

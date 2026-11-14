@@ -1,11 +1,11 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { HAUL_LEVELS, ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type HaulPick, type RoverKind, type StatId } from '../content/upgrades';
-import { ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
+import { DETECTOR_GOLD, ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -30,6 +30,8 @@ export interface ViewActions {
   /** Claims the next tier of goal `id`. */
   claimGoal(id: GoalId): void;
   craft(id: WorkId): void;
+  /** Buys the Metal detector (I+D). */
+  buyDetector(): void;
   /** Switches the Library's Decoder on or off. */
   decoder(on: boolean): void;
   zoom(delta: number): void;
@@ -439,10 +441,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
   // I+D: research for every rover, in sub-tabs: the Scout's routes, the Miner's dig order, the Hauler's pick-ups.
-  type RdTab = 'routes' | 'dig' | 'pickups';
+  type RdTab = 'routes' | 'dig' | 'pickups' | 'detector';
   let rdTab: RdTab = 'routes';
   const rdPicker = h('div', 'rover-pick');
-  const rdTabs: { id: RdTab; kind: RoverKind; btn: HTMLButtonElement }[] = ([['routes', 'scout', 'Routes'], ['dig', 'miner', 'Dig'], ['pickups', 'hauler', 'Pick-ups']] as const)
+  const rdTabs: { id: RdTab; kind: RoverKind; btn: HTMLButtonElement }[] = ([['routes', 'scout', 'Routes'], ['dig', 'miner', 'Dig'], ['pickups', 'hauler', 'Pick-ups'], ['detector', 'scout', 'Detector']] as const)
     .map(([id, k, text]) => {
       const btn = h('button', 'px-btn pick', text);
       btn.addEventListener('click', () => { rdTab = id; const s = current; if (s) fillRD(s); });
@@ -450,6 +452,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       return { id, kind: k, btn };
     });
   routesList.append(rdPicker);
+  // The Metal detector: bought once (from its explorer level); then the rovers pick up the metal scraps on the map.
+  const detCard = h('div', 'upg px-box order-card');
+  const detHead = h('div', 'head');
+  detHead.append(h('span', 'name', 'Metal detector'));
+  const detDesc = h('div', 'eff');
+  const detCount = h('div', 'eff');
+  const detBtn = h('button', 'px-btn buy');
+  detBtn.addEventListener('click', () => actions.buyDetector());
+  const detKey = { btnKey: '' };
+  detCard.append(detHead, detDesc, detCount, detBtn);
+  routesList.append(detCard);
   const routesTable = table('routes-table', ['Route', 'Lv', 'Pace', 'Use', 'Next']);
   routesList.append(routesTable);
   // One line per route: name, level, pace, a radio square for the route in use, and the next step (unlock or level) for
@@ -811,15 +824,32 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   function fillRD(s: GameState) {
     for (const t of rdTabs) {
       t.btn.classList.toggle('on', t.id === rdTab);
-      t.btn.classList.toggle('locked', roverIndex(s, t.kind) < 0);
+      t.btn.classList.toggle('locked', t.id === 'detector' ? s.detectFrom < 0 && levelOf(s, world) < detectorLevelNeeded(world) : roverIndex(s, t.kind) < 0);
+      if (t.id === 'detector') t.btn.classList.toggle('alert', canBuyDetector(s, world));
+    }
+    detCard.hidden = rdTab !== 'detector';
+    if (rdTab === 'detector') {
+      const owned = s.detectFrom >= 0;
+      set(detDesc, owned
+        ? 'Fitted. The Scout picks up the metal scraps it reveals, and the Miner the ones in ground revealed before.'
+        : 'Picks up metal scraps from the ground: the Scout as it explores, the Miner as it digs. They are kept for later.');
+      set(detCount, owned ? `Metal scraps: ${metalCollected(s, world)}` : '');
+      detCount.hidden = !owned;
+      detBtn.hidden = owned;
+      const need = detectorLevelNeeded(world);
+      if (!owned) {
+        if (levelOf(s, world) < need) label(detKey, 'btnKey', detBtn, `needs explorer Lv ${need}`);
+        else price(detKey, 'btnKey', detBtn, DETECTOR_GOLD, {}, 'Buy');
+        detBtn.classList.toggle('can', canBuyDetector(s, world));
+      }
     }
     const routes = rdTab === 'routes';
     routesTable.hidden = !routes;
     const hiddenRoutes = ROUTES.filter((rd) => !s.routes.includes(rd.id)).length - 1;
     set(routesMore, hiddenRoutes > 0 ? `??? ${hiddenRoutes} more ${hiddenRoutes === 1 ? 'route' : 'routes'} to discover` : '');
     routesMore.hidden = !routes || hiddenRoutes <= 0;
-    orderCard.hidden = routes;
-    if (routes) return;
+    orderCard.hidden = routes || rdTab === 'detector';
+    if (routes || rdTab === 'detector') return;
     const miner = rdTab === 'dig';
     const built = roverIndex(s, miner ? 'miner' : 'hauler') >= 0;
     set(orderName, miner ? 'Dig order' : 'Pick-ups');
@@ -1252,7 +1282,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         c.needs.hidden = !short;
         if (short) price(c, 'needKey', c.needs, 0, items, `${step} needs`, got);
       }
-      tabRoutes.classList.toggle('alert', ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
+      tabRoutes.classList.toggle('alert', canBuyDetector(s, world) || ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
       for (const c of goalCards) {
         const id = c.g.id;
         const got = s.goals[id];

@@ -34,6 +34,11 @@ export const LORE: readonly LoreDef[] = [
 ];
 /** Chance that a cell with nothing else hides a scrap of lore (its own random draw: items and the map do not change). */
 export const LORE_CHANCE = 1 / 1500;
+/** Metal scraps: one cell in METAL_CHANCE of solid ground (away from camp) hides one. They are only picked up once the
+ *  Metal detector (I+D) is bought, from explorer level DETECTOR_LEVEL, for DETECTOR_GOLD bluetreri. */
+export const METAL_CHANCE = 1 / 150;
+export const DETECTOR_LEVEL = 35;
+export const DETECTOR_GOLD = 400000;
 /** Seconds the Library's Decoder takes on the first scrap of the map and on the last one; in between each scrap takes a
  *  little longer than the one before (the same ratio all along: about 1 min by the 140th of 316; ~12.7 h for a whole map). */
 export const DECODE_SEC = 10;

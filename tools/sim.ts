@@ -4,8 +4,8 @@ import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/content/
 import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
-import { WORKS_MAX } from '../src/content/collection';
-import { carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { DETECTOR_GOLD, WORKS_MAX } from '../src/content/collection';
+import { buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { RateMeter } from '../src/core/rate';
@@ -83,6 +83,8 @@ for (let t = 0; t < hours * 3600; t += DT) {
       mark(t, `route ${s.route} lv${routeLevel(s, s.route)}`);
     }
   }
+  // The Metal detector: bought with spare bluetreri (twice its price).
+  if (canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { buyDetector(s, w); mark(t, 'Metal detector'); }
   for (const id of ['book', 'cd', 'album'] as const) {
     while (craft(s, w, id)) {
       if (process.env.WORKLOG) console.log(`  ${id} #${s.works[id]} at Lv ${explorerLevel(explored(s, w), n).level}`);
@@ -173,4 +175,4 @@ for (const [t, what] of big) {
   console.log(`${fmtTime(t).padStart(12)}  (+${fmtTime(t - prev).padStart(10)})  ${what}`);
   prev = t;
 }
-console.log(`\nEnd (${fmtTime(s.playTime)}): ${(100 * explored(s, w) / n).toFixed(2)}% · rovers ${s.bots.map((b) => JSON.stringify(b.up)).join(' ')} · works ${JSON.stringify(s.works)} · items ${JSON.stringify(s.items)}`);
+console.log(`\nEnd (${fmtTime(s.playTime)}): ${(100 * explored(s, w) / n).toFixed(2)}% · rovers ${s.bots.map((b) => JSON.stringify(b.up)).join(' ')} · works ${JSON.stringify(s.works)} · items ${JSON.stringify(s.items)} · metal scraps ${metalCollected(s, w)}/${w.metalCells.length}`);

@@ -37,6 +37,12 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   the kind's multipliers (`share`, `drill`, radar only on the Scout). `upgradeGain` returns null for the Hauler and Radar.
   `goldPerSec` estimates Scout + Miner (capped by what the Scout reveals once caught up; no trips home with a Hauler).
   The sim buys the best (upgrade, rover) pair, builds each rover as soon as it can and saves up for it and the next route.
+- **Metal scraps** (save v22): `world.metalCells` (own draw `rand2(x, y, seed + 7013) < METAL_CHANCE` 1/150 on solid
+  ground away from camp with no deposit, item or lore). I+D › Detector sells the **Metal detector** from explorer Lv
+  `DETECTOR_LEVEL` 35 for `DETECTOR_GOLD` 400k (`canBuyDetector`, `buyDetector`). Then the Scout picks up the scraps it
+  reveals (ranks ≥ `s.detectFrom`, the end of the ring under way at purchase) and the Miner the ones in ground revealed
+  before, as it digs them; `metalCollected` counts them (derived, cached; `s.metalBase` = those already revealed and dug
+  at purchase, not counted). Picked up on the spot (no hold, no trip). No use yet: only counted (Detector card).
 - **Goals** (`content/goals.ts`, Goals tab, save v17 `s.goals`): Cartographer (cells explored), Tycoon (bluetreri earned),
   Collector (items found), Excavator (cells dug out), Engineer (part levels fitted), Archivist (lore found), Historian (sheets printed by the Decoder; rover speed ×1.03), 5 tiers each (`per` cells/items: shares of
   the map, so small test maps scale). A reached tier is **claimed** by the player (`claimGoal`; never automatic, so stats only

@@ -23,6 +23,7 @@
 // v17: goals (`goals`: tiers claimed of each).
 // v19: routes only ask for items collected and no longer spend them: items spent on routes are given back (recount).
 // v20: the Library's machine (`printed`: scraps of lore already printed).
+// v22: the Metal detector (`detectFrom`, `metalBase`).
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
@@ -36,7 +37,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 22;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -77,6 +78,8 @@ export interface SaveData {
   decodeOn: boolean;
   decoding: number;
   decodeLeft: number;
+  detectFrom: number;
+  metalBase: number;
   routes: RouteId[];
   route: RouteId;
   routeLevels: Partial<Record<RouteId, number>>;
@@ -204,6 +207,8 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   19: (s) => ({ ...s, v: 20, printed: [] }),
   // v20 -> v21: the Decoder starts switched off and empty.
   20: (s) => ({ ...s, v: 21, decodeOn: false, decoding: -1, decodeLeft: 0 }),
+  // v21 -> v22: no metal detector yet.
+  21: (s) => ({ ...s, v: 22, detectFrom: -1, metalBase: 0 }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -231,6 +236,8 @@ export function serialize(s: GameState, now: number): SaveData {
     decodeOn: s.decodeOn,
     decoding: s.decoding,
     decodeLeft: s.decodeLeft,
+    detectFrom: s.detectFrom,
+    metalBase: s.metalBase,
     routes: [...s.routes],
     route: s.route,
     routeLevels: { ...s.routeLevels },
@@ -275,6 +282,8 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.decodeOn = data.decodeOn === true;
   state.decoding = Number.isInteger(data.decoding) && data.decoding >= 0 && !state.printed.includes(data.decoding) ? data.decoding : -1;
   state.decodeLeft = state.decoding >= 0 ? num(data.decodeLeft) : 0;
+  state.detectFrom = Number.isInteger(data.detectFrom) && data.detectFrom >= 0 ? data.detectFrom : -1;
+  state.metalBase = state.detectFrom >= 0 ? Math.floor(num(data.metalBase)) : 0;
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   if (data.recount) state.recount = true;
   if (data.kinds) state.kinds = true;

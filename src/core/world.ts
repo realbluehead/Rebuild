@@ -13,7 +13,7 @@
 // walks there over known ground (steps that reveal nothing). Time is counted in steps, and a cell counts as
 // revealed once the rover has reached it (not when it sets off).
 import { DIST_VALUE_SCALE, MAP_SIZE, SPECIAL_CHANCE, SPECIAL_MULT, T, TERRAINS, ZOOMS, ZOOM_UNLOCK_FRACTION } from '../content/world';
-import { ITEM_CHANCE, ITEMS, LORE, LORE_CHANCE } from '../content/collection';
+import { ITEM_CHANCE, ITEMS, LORE, LORE_CHANCE, METAL_CHANCE } from '../content/collection';
 import { fbm, rand2 } from './rng';
 import type { RouteId } from '../content/routes';
 
@@ -35,6 +35,8 @@ export interface World {
   lore: Uint8Array;
   /** Cells (ascending: a scrap's number, stable across routes) that hold a scrap of lore. */
   loreCells: Uint32Array;
+  /** Cells (ascending) that hide a metal scrap: a draw of their own, on solid ground with no deposit, item or lore. */
+  metalCells: Uint32Array;
   /** Bluetreri of each cell (before multipliers) and its crossing cost (for the exploration order). */
   value: Float32Array;
   cost: Float32Array;
@@ -92,6 +94,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
   const lore = new Uint8Array(n);
   const loreWeight = LORE.reduce((a, it) => a + it.weight, 0);
   const loreList: number[] = [];
+  const metalList: number[] = [];
   const value = new Float32Array(n);
   const cost = new Float32Array(n);
   const angle = new Float32Array(n);
@@ -143,6 +146,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
         lore[i] = k + 1;
         loreList.push(i);
       }
+      if (!sp && !item[i] && !lore[i] && d > 4 && t >= T.Rubble && rand2(x, y, seed + 7013) < METAL_CHANCE) metalList.push(i);
       value[i] = TERRAINS[t].value * (1 + d / DIST_VALUE_SCALE) * (sp ? SPECIAL_MULT : 1);
 
       cost[i] = TERRAINS[t].cost * (1 + COST_NOISE * fbm(x, y, seed + 31, 24, 2));
@@ -179,7 +183,7 @@ export function createWorld(seed: number, size = MAP_SIZE): World {
   if (order[0] !== cy * size + cx) throw new Error('The camp must be the first cell');
 
   const w: World = {
-    seed, size, cx, cy, terrain, special, item, order, lore, loreCells: Uint32Array.from(loreList),
+    seed, size, cx, cy, terrain, special, item, order, lore, loreCells: Uint32Array.from(loreList), metalCells: Uint32Array.from(metalList),
     rank: new Uint32Array(n), goldPrefix: new Float64Array(n + 1), rings: count,
     stepBase: new Float64Array(n + 1), stepRough: new Float64Array(n + 1), ringSteps: new Float64Array(0),
     itemRanks: new Uint32Array(0), itemStart: new Uint32Array(0), itemCells: new Uint32Array(0), zoomRanks: [],

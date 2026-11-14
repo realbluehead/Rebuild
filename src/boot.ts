@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { decode, setDecoder, carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buyDetector, decode, setDecoder, carried, chooseDig, setHaul, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -113,6 +113,11 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       const before = stats(state);
       if (!craft(state, world, id)) return;
       view.crafted(id, state.works[id], before, stats(state));
+      void save();
+    },
+    buyDetector: () => {
+      if (!buyDetector(state, world)) return;
+      view.toast('Metal detector fitted\nthe rovers pick up metal scraps');
       void save();
     },
     decoder: (on) => { if (setDecoder(state, world, on)) void save(); },
