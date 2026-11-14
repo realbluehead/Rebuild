@@ -207,6 +207,14 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - `npm run dev`: local server (Vite). Also as `idle-joc` in `../.claude/launch.json`.
 - `npm test`, `npm run lint`, `npm run typecheck`.
 - `npm run sim -- <hours>`: balance simulator (greedy player), prints when each milestone is reached. Run it whenever numbers in `src/content/` change.
+  Ablations (what each option is worth): `SKIP=<ids>` never uses those parts, rovers, routes, `routelv`, works, goals;
+  `RADAR=<share>` / `HOLD=<share>` buy Radar / Hold whenever a level costs under that share of the bluetreri at hand;
+  `DIG=rich`, `HAUL=0.3|0.5|0.8`, `HAULPICK=scout|miner`. The last line, `SUMMARY`, gives the times of map 50%/100%, the
+  library and the end, bluetreri earned at 2/6/12 h and where it was spent. Findings (seed 12345, Nov 2026): with a
+  Hauler the estimate assumes nobody drives home, so the greedy player (and the Gain column) value Hold at ~0, the
+  Scout then drives home 40–65% of the time and the game ends at ~19 h; buying Hold on a 5% budget ends it at ~12.5 h,
+  and then the Hauler mostly idles (no Hauler: ~10.3 h). Next to nothing: Body, Drill, the Excavator/Archivist/
+  Historian goals, the pick-up threshold and pick, the Metal detector (counts only); `DIG=rich` is ~2.5 h slower.
 - `npm run android:apk`: debug APK in `android/app/build/outputs/apk/debug/`. Needs `JAVA_HOME` from Android Studio's JDK:
   `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` (the system Java does not work with Gradle).
 - **Versioning** (semver, `npm version <part> --no-git-tag-version` in the same commit; no tag, so no APK): a bug fix bumps the patch, any other change that is not a game-rules change bumps the minor. Rule changes are decided with the user.

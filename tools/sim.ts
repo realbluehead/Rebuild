@@ -1,17 +1,31 @@
 // Balance simulator: plays on its own with a greedy strategy and prints when it reaches each milestone.
 // Usage: npm run sim [-- hours [seed]]
+// Ablations, to see what each option is worth: SKIP=<ids> (comma list) never uses those: parts (speed, tyres, body,
+// cargo, drill), rovers (miner, hauler), routes (circular, trail, prospect, survey…), route levels (routelv), works (book,
+// cd, album), goals (goals, or a goal id). RADAR=<share> / HOLD=<share>: buys Radar (Scout) / Hold (Scout and Miner) whenever a level
+// costs under that share of the bluetreri at hand (the greedy score cannot see items, nor Hold once there is a Hauler). DIG=rich, HAUL=0.3|0.5|0.8, HAULPICK=scout|miner|auto.
+// Ends with a SUMMARY line (times of the big milestones, bluetreri earned and where it was spent).
 import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/content/upgrades';
 import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { DETECTOR_GOLD, WORKS_MAX } from '../src/content/collection';
-import { buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { RateMeter } from '../src/core/rate';
 import { createWorld, totalCells } from '../src/core/world';
 
 const hours = Number(process.argv[2] ?? 24);
+const SKIP = new Set((process.env.SKIP ?? '').split(',').filter(Boolean));
+const RADAR = Number(process.env.RADAR ?? 0);
+const HOLD = Number(process.env.HOLD ?? 0);
+/** Bluetreri spent, by what it went on. */
+const spent: Record<string, number> = {};
+const spend = (what: string, gold: number) => { spent[what] = (spent[what] ?? 0) + gold; };
+/** When each milestone was reached (seconds of play). */
+const at: Record<string, number> = {};
+const goldAt: Record<string, number> = {};
 const seed = Number(process.argv[3] ?? 12345);
 
 const t0 = performance.now();
@@ -43,7 +57,7 @@ const value = (): number => plannedRate(s, w) * Math.sqrt(stats(s).speed);
  *  Scout's engine and hold levels at a tenth of the score, so it keeps up. */
 function score(id: StatId, j: number): number {
   const b = s.bots[j];
-  if (!hasPart(b, id)) return -1;
+  if (!hasPart(b, id) || SKIP.has(id)) return -1;
   const cost = costOf(UPGRADES.find((u) => u.id === id)!, levelOn(s, id, b)).toNumber();
   if (b.kind === 'hauler') return b.up[id] < s.bots[0].up[id] ? 0.1 / cost : -1;
   const before = value();
@@ -67,36 +81,43 @@ const mark = (t: number, what: string) => {
 for (let t = 0; t < hours * 3600; t += DT) {
   if (useRoutes) {
     // The Scavenger is for items: the sim does not follow it, and only buys it with spare bluetreri (5× its price).
-    const next = ROUTES.find((r) => !s.routes.includes(r.id) && r.id !== 'scavenge');
+    const next = ROUTES.find((r) => !s.routes.includes(r.id) && r.id !== 'scavenge' && !SKIP.has(r.id));
     if (next && canUnlockRoute(s, w, next.id)) {
+      spend('routes', next.gold);
       unlockRoute(s, w, next.id);
       chooseRoute(s, next.id);
       mark(t, `route ${next.name}`);
     }
     const scav = ROUTES.find((r) => r.id === 'scavenge')!;
-    if (canUnlockRoute(s, w, 'scavenge') && s.gold.gte(5 * scav.gold)) {
+    if (!SKIP.has('scavenge') && canUnlockRoute(s, w, 'scavenge') && s.gold.gte(5 * scav.gold)) {
+      spend('routes', scav.gold);
       unlockRoute(s, w, 'scavenge');
       mark(t, `route ${scav.name}`);
     }
-    if (canUpgradeRoute(s, w, s.route)) {
+    if (!SKIP.has('routelv') && canUpgradeRoute(s, w, s.route)) {
+      const g0 = s.gold.toNumber();
       upgradeRoute(s, w, s.route);
+      spend('route levels', g0 - s.gold.toNumber());
       mark(t, `route ${s.route} lv${routeLevel(s, s.route)}`);
     }
   }
   // The Metal detector: bought with spare bluetreri (twice its price).
-  if (canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { buyDetector(s, w); mark(t, 'Metal detector'); }
+  if (!SKIP.has('detector') && canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { spend('detector', DETECTOR_GOLD); buyDetector(s, w); mark(t, 'Metal detector'); }
   for (const id of ['book', 'cd', 'album'] as const) {
-    while (craft(s, w, id)) {
+    while (!SKIP.has(id) && craft(s, w, id)) {
       if (process.env.WORKLOG) console.log(`  ${id} #${s.works[id]} at Lv ${explorerLevel(explored(s, w), n).level}`);
       if (s.works[id] === WORKS_MAX) mark(t, `${id} collection complete`);
     }
   }
   // Goals: every tier as soon as it is reached.
-  for (const g of GOALS) while (canClaim(s, w, g.id)) { claimGoal(s, w, g.id); mark(t, `${g.name} tier ${s.goals[g.id]}`); }
+  for (const g of GOALS) while (!SKIP.has('goals') && !SKIP.has(g.id) && canClaim(s, w, g.id)) { claimGoal(s, w, g.id); mark(t, `${g.name} tier ${s.goals[g.id]}`); }
   // New rovers: as soon as they can be built.
   for (const k of ROVER_KINDS) {
-    if (canBuild(s, w, k.id)) {
+    if (!SKIP.has(k.id) && canBuild(s, w, k.id)) {
+      spend('rovers', k.gold);
       build(s, w, k.id);
+      if (k.id === 'miner' && process.env.DIG === 'rich') chooseDig(s, w, 'rich');
+      if (k.id === 'hauler' && (process.env.HAUL || process.env.HAULPICK)) setHaul(s, Number(process.env.HAUL ?? s.haulAt), (process.env.HAULPICK ?? s.haulPick) as typeof s.haulPick);
       mark(t, k.name);
     }
   }
@@ -112,15 +133,30 @@ for (let t = 0; t < hours * 3600; t += DT) {
     }
     if (bestScore < 0 || !canBuy(s, best, 1, bestJ)) break;
     // Saving up for the next rover once its level is reached.
-    const nextKind = ROVER_KINDS.find((k) => !s.bots.some((b) => b.kind === k.id));
+    const nextKind = ROVER_KINDS.find((k) => !s.bots.some((b) => b.kind === k.id) && !SKIP.has(k.id));
     if (nextKind && levelOf(s, w) >= nextKind.level && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ]))).lt(nextKind.gold)) break;
     // Saving up: once the next route is open (explorer level and items) only spend what is above its price.
-    const saveFor = useRoutes ? ROUTES.find((r) => !s.routes.includes(r.id) && r.id !== 'scavenge') : undefined;
+    const saveFor = useRoutes ? ROUTES.find((r) => !s.routes.includes(r.id) && r.id !== 'scavenge' && !SKIP.has(r.id)) : undefined;
     if (saveFor && levelOf(s, w) >= routeLevelNeeded(w, saveFor.id)
       && Object.entries(saveFor.items).every(([k, q]) => itemsCollected(s, w)[k as keyof typeof s.items] >= (q ?? 0))
       && s.gold.sub(costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ]))).lt(saveFor.gold)) break;
+    spend(best, costOf(UPGRADES.find((u) => u.id === best)!, levelOn(s, best, s.bots[bestJ])).toNumber());
     buy(s, w, best, 1, bestJ);
   }
+  // On a budget: Radar (RADAR=share; its gain is items, which the greedy score does not see) and Hold on the Scout and
+  // Miner (HOLD=share; with a Hauler the estimate assumes nobody drives home, so it scores Hold at about nothing).
+  const budget = (id: StatId, share: number, j: number) => {
+    while (share > 0 && j >= 0 && j < s.bots.length && !SKIP.has(id)) {
+      const c = costOf(UPGRADES.find((u) => u.id === id)!, levelOn(s, id, s.bots[j])).toNumber();
+      if (c > share * s.gold.toNumber() || !canBuy(s, id, 1, j)) break;
+      spend(id, c);
+      buy(s, w, id, 1, j);
+    }
+  };
+  budget('radar', RADAR, 0);
+  for (const j of [0, s.bots.findIndex((b) => b.kind === 'miner')]) budget('cargo', HOLD, j);
+  for (const h of [2, 6, 12]) if (t === h * 3600) goldAt[`${h}h`] = s.totalGold.toNumber();
+  if (at.library === undefined && s.works.book + s.works.cd + s.works.album >= 3 * WORKS_MAX) at.library = t;
   if (rateCheck) {
     const p = rateParts(s, w);
     rc.est += (p.scout + p.miner) * DT;
@@ -145,6 +181,7 @@ for (let t = 0; t < hours * 3600; t += DT) {
     }
   }
   while (nextPct < pctMilestones.length && explored(s, w) >= n * pctMilestones[nextPct]) {
+    at[`map${pctMilestones[nextPct] * 100}`] = t;
     console.log(`${fmtTime(t).padStart(12)}  ${(pctMilestones[nextPct] * 100).toString().padStart(3)}% of the map · ${fleetSpeed(s).toFixed(1)} steps/s · hold ${s.bots.map((b) => fmt(stats(s, b).cargo)).join('/')} · dug ${(100 * s.dug / n).toFixed(1)}% · bluetreri ${fmt(s.totalGold)} · rovers ${s.bots.map((b) => `${b.kind[0]}:${Object.values(b.up).join(',')}`).join(' | ')} · works ${JSON.stringify(s.works)}`);
     nextPct++;
   }
@@ -176,3 +213,10 @@ for (const [t, what] of big) {
   prev = t;
 }
 console.log(`\nEnd (${fmtTime(s.playTime)}): ${(100 * explored(s, w) / n).toFixed(2)}% · rovers ${s.bots.map((b) => JSON.stringify(b.up)).join(' ')} · works ${JSON.stringify(s.works)} · items ${JSON.stringify(s.items)} · metal scraps ${metalCollected(s, w)}/${w.metalCells.length}`);
+
+const total = Object.values(spent).reduce((a, b) => a + b, 0);
+const tm = (k: string) => (at[k] === undefined ? '—' : fmtTime(at[k]));
+console.log(`SUMMARY ${process.env.SKIP ? `skip ${process.env.SKIP}` : ''}${RADAR ? ` radar ${RADAR}` : ''}${HOLD ? ` hold ${HOLD}` : ''}${process.env.DIG ? ` dig ${process.env.DIG}` : ''}${process.env.HAUL ? ` haul ${process.env.HAUL}` : ''}${process.env.HAULPICK ? ` pick ${process.env.HAULPICK}` : ''}`
+  + ` | map50 ${tm('map50')} | map100 ${tm('map100')} | library ${tm('library')} | done ${isComplete(s, w) ? fmtTime(s.playTime) : '—'}`
+  + ` | earned@2h ${fmt(goldAt['2h'] ?? 0)} @6h ${fmt(goldAt['6h'] ?? 0)} @12h ${fmt(goldAt['12h'] ?? 0)}`
+  + ` | spent ${Object.entries(spent).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${((100 * v) / total).toFixed(1)}%`).join(', ')}`);
