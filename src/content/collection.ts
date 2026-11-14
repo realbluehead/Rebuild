@@ -71,6 +71,8 @@ export interface WorkDef {
   bonus: number;
   effect: string;
   titles: readonly string[];
+  /** When each work was first made in the old world (discoveries only: the library's timeline shows them). */
+  years?: readonly string[];
 }
 
 export const WORKS: readonly WorkDef[] = [
@@ -90,15 +92,17 @@ export const WORKS: readonly WorkDef[] = [
     ],
   },
   {
-    // Discoveries: the photos pieced together show the old world's great inventions, from fire to spaceflight, in the
-    // order they were made; the rovers learn to stow more (bigger holds). The last points at phase II (leaving the
+    // Discoveries: the photos pieced together show the old world's great inventions, from fire to the space station, in
+    // the order they were made; the rovers learn to stow more (bigger holds). The last points at phase II (leaving the
     // planet). Its id stays 'album' (saves).
     id: 'album', name: 'Discoveries', item: 'photo', costGrowth: 1.35, bonus: 1.1, effect: 'hold',
     titles: [
       'Fire', 'The Wheel', 'Writing', 'Gunpowder', 'The Compass', 'The Printing Press', 'The Telescope',
-      'The Steam Engine', 'Electricity', 'The Light Bulb', 'The Telephone', 'Flight', 'The Computer', 'The Internet',
-      'Spaceflight',
+      'The Steam Engine', 'Electricity', 'The Telephone', 'The Light Bulb', 'Flight', 'The Computer', 'The Internet',
+      'The Space Station',
     ],
+    years: ['400,000 BC', '3500 BC', '3200 BC', '850', '1040', '1440', '1608', '1712', '1752', '1876', '1879', '1903', '1945',
+      '1969', '1998'],
   },
 ];
 

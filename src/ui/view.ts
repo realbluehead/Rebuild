@@ -15,6 +15,7 @@ import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
 import { showVoyage } from './voyage';
 import { createBinder } from './binder';
+import { createTimeline } from './timeline';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
@@ -492,8 +493,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const lorePopIcons = LORE_SPRITES.map(spriteCanvas);
   const loreIcon = (k: number) => { const c = spriteCanvas(LORE_SPRITES[k]); c.className = 'item-icon'; return c; };
   const itemIcon = (k: number) => { const c = spriteCanvas(ITEM_SPRITES[k]); c.className = 'item-icon'; return c; };
-  /** Collections on show in the library (discoveries, made on Goals › Works, have no place in it yet). */
+  /** Collections on shelves in the library (discoveries have the spiral of ages instead, `ui/timeline.ts`). */
   const SHOWN = WORKS.filter((wd) => wd.id !== 'album');
+  const ALBUM = WORKS.find((wd) => wd.id === 'album')!;
   // Works (multipliers) on the Goals tab: a pip per work, the next one fills with the items gathered for it.
   const worksTable = table('works-table', ['Work', 'Made', 'Next', 'Bonus', 'Progress']);
   goalsList.append(worksTable);
@@ -595,6 +597,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   machineEl.append(mcLabel, mcBody);
   // The archive binder under it, where the printed sheets go (ui/binder.ts).
   const binder = createBinder();
+  // The spiral of ages, under the books: the discoveries from fire outwards. A tap on one picks it (caption).
+  const timeline = createTimeline((k) => { picked = picked === `album:${k}` ? '' : `album:${k}`; shelfKey = ''; });
+  const timelineRow = h('div', 'shelf-row album');
+  const timelineLabel = h('div', 'shelf-label');
+  timelineRow.append(timelineLabel, timeline.el);
   libView.append(shelvesEl, machineEl, binder.el);
   const MC_TEXT: Record<string, string> = { idle: 'STANDBY_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
   /** The scrap last seen in the Decoder (to show it dropping in and in the caption when a new one starts). */
@@ -719,7 +726,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       row.append(label, plank);
       shelvesEl.append(row);
     }
-    shelvesEl.append(lower);
+    const nd = s.works.album;
+    set(timelineLabel, `${ALBUM.name} ${nd}/${WORKS_MAX}`);
+    timeline.update(nd, WORKS_MAX, picked.startsWith('album:') ? Number(picked.slice(6)) : -1);
+    shelvesEl.append(timelineRow, lower);
     // The decoder: how many scraps are printed, the pile in the tray, and the switch.
     const printed = lore.filter((k) => s.printed.includes(k)).length;
     set(mcLabel, `Decoder · printed ${printed}/${lore.length} · found ${lore.length}/${world.loreCells.length}`);
@@ -734,7 +744,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const kind = world.lore[world.loreCells[Number(pk)]] - 1;
       const k = Number(pk);
       set(libCaption, `${LORE[kind].name} #${k + 1} · ${s.decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'not decoded yet'}`);
-    } else if (wd) set(libCaption, `${workTitle(wd, Number(pk))} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
+    } else if (wd) {
+      const year = wd.years?.[Number(pk)];
+      set(libCaption, `${workTitle(wd, Number(pk))}${year ? ` (${year})` : ''} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
+    }
     // Nothing picked: no caption.
     libCaption.hidden = !wd && pid !== 'lore';
   }

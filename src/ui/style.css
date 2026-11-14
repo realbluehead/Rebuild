@@ -287,7 +287,7 @@ button { font: inherit; color: inherit; }
 .goal-pips.works i { height: 5px; }
 
 /* Library view: shelves in place of the map. */
-.library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 12px;
+.library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 8px;
   background: repeating-linear-gradient(90deg, #16241f 0 22px, #13201c 22px 24px); overflow-y: auto; }
 .library-view[hidden] { display: none; }
 .map-wrap.library-open .zoom-ctl, .map-wrap.library-open .cell-info { display: none; }
@@ -304,9 +304,9 @@ button { font: inherit; color: inherit; }
 @keyframes candle-a { 0%, 100% { opacity: 1; } 18% { opacity: .82; } 31% { opacity: .95; } 52% { opacity: .78; } 70% { opacity: .92; } 83% { opacity: .86; } }
 @keyframes candle-b { 0%, 100% { opacity: .9; } 22% { opacity: 1; } 40% { opacity: .8; } 61% { opacity: .96; } 79% { opacity: .84; } }
 @media (prefers-reduced-motion: reduce) { .lib-dark::before, .lib-dark::after { animation: none; } }
-.shelves { display: flex; flex-direction: column; gap: 10px; flex: none; }
+.shelves { display: flex; flex-direction: column; gap: 6px; flex: none; }
 .shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
-.plank { display: flex; align-items: flex-end; gap: 2px; height: 86px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
+.plank { display: flex; align-items: flex-end; gap: 2px; height: 66px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
   box-shadow: 0 3px 0 #1a2f2a; background: #0d1613; }
 .vol { flex: 1; min-width: 0; height: var(--tall, 80%); padding: 0; border: 0; position: relative; cursor: pointer;
   transform-origin: bottom; transition: transform .12s;
@@ -468,10 +468,13 @@ button { font: inherit; color: inherit; }
 @keyframes jb-spin { to { transform: rotate(360deg); } }
 @keyframes jb-run { to { background-position: 20px 0; } }
 @keyframes jb-glow { to { box-shadow: 0 0 14px #ffb05acc; } }
-/* Discoveries (id 'album'): thick, padded covers with a photo corner (not on show in the library yet). */
-.vol.album { background: hsl(var(--h) 30% 30%); box-shadow: inset 3px 0 0 hsl(var(--h) 30% 44%), inset -3px 0 0 hsl(var(--h) 30% 18%); }
-.vol.album::before { content: ''; position: absolute; top: 6px; left: 25%; width: 50%; height: 12px; background: hsl(calc(var(--h) + 40) 50% 70%); }
-.vol.album span { inset: 22px 0 4px; }
+/* Discoveries (id 'album'): the spiral of ages (ui/timeline.ts), its fire flickering at the heart. */
+.timeline svg { display: block; width: 100%; max-width: 520px; margin: 0 auto; }
+.shelf-row.album { position: relative; }
+.shelf-row.album .shelf-label { position: absolute; top: 0; left: 0; margin: 0; }
+.timeline .tl-made { cursor: pointer; }
+.timeline .tl-fire { animation: candle-a 2.3s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .timeline .tl-fire { animation: none; } }
 .vol.on { outline: 2px solid var(--gold); outline-offset: 1px; transform: translateY(-12px) rotate(-5deg); z-index: 2; }
 .vol.empty { height: 40%; background: none; box-shadow: none; border: 1px dashed #9fb8ab33; cursor: default; }
 .vol.empty.next { border-color: var(--ok); }
@@ -553,7 +556,7 @@ button { font: inherit; color: inherit; }
 .arrival-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a7a52; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
 
 /* The archive binder under the Decoder (ui/binder.ts): black velvet, silver clasp; a tap opens it and turns the pages. */
-.binder { flex: none; margin-top: 4px; cursor: pointer; }
+.binder { flex: none; margin-top: 0; cursor: pointer; }
 .binder svg { display: block; width: 100%; max-width: 520px; margin: 0 auto; }
 .binder .bd-out-r, .binder .bd-out-l, .binder .bd-in-l, .binder .bd-in-r { transform-box: fill-box; }
 /* A page turn: the leaf folds up against the rings, then comes down on the other side (origins on the ring side). */
