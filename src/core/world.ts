@@ -356,16 +356,16 @@ const ALGOS: Partial<Record<RouteId, Algo>> = {
   // Rings: the nearest ground first, by terrain crossing cost.
   circular: { cost: (w, i) => TERRAINS[w.terrain[i]].cost, noise: 2.2, jitter: 0, stray: 0, decay: 0.85 },
   // Trail: easy ground that still pays (a mild bluetreri-per-step pull on top of the crossing cost).
-  trail: { cost: (w, i, c) => TERRAINS[w.terrain[i]].cost * (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.4, noise: 0.45, jitter: 0.2, stray: 0, decay: 0.6 },
+  trail: { cost: (w, i, c) => TERRAINS[w.terrain[i]].cost * (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.4, noise: 0.45, jitter: 0, stray: 0, decay: 0.6 },
   // Scavenger: where items lie thickest (pages, notes and photos within a few cells pull), by terrain crossing cost.
-  scavenge: { cost: (w, i) => TERRAINS[w.terrain[i]].cost / (0.1 + itemPull(w)[i]) ** 2, noise: 0.5, jitter: 0.2, stray: 0, decay: 0.6 },
+  scavenge: { cost: (w, i) => TERRAINS[w.terrain[i]].cost / (0.1 + itemPull(w)[i]) ** 2, noise: 0.5, jitter: 0, stray: 0, decay: 0.6 },
   // Prospector: the most bluetreri per step first (deposits pull hard).
-  prospect: { cost: (w, i, c) => (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.9, noise: 0.7, jitter: 0.3, stray: 0, decay: 0.6 },
+  prospect: { cost: (w, i, c) => (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 0.9, noise: 0.7, jitter: 0, stray: 0, decay: 0.6 },
   // Survey: like the prospector, but keeps the explored area compact so trips home stay short.
   survey: {
     cost: (w, i, c) => (TERRAINS[w.terrain[i]].rough / Math.max(0.05, w.value[i] / c.meanValue)) ** 1.1 * (1 + Math.max(0, w.road[i] - c.frontier) / 8),
     noise: 0.3,
-    jitter: 0.1,
+    jitter: 0,
     stray: 0,
     decay: 0.6,
   },

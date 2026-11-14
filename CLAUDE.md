@@ -78,7 +78,9 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   Trail, Scavenger, Prospector, Survey, each dearer (bluetreri, plus items collected as a requirement, `unlockRoute`). The world is still generated in circular order
   (saves from before Random was the default own Circular and keep it). Upgrades have levels 0..`maxLevel` (`upgradeRoute`,
   `routeUpgradeCost`): a level lowers its **entropy**
-  (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level).
+  (`ALGOS` in `core/world.ts`: cost noise, angle jitter, `stray` = chance to leave the patch it sweeps; × `decay` per level). Only Random has jitter:
+  on the other routes it made the rovers zig-zag along each ring and cost far more than the route gained (with it, a whole
+  game on Circular alone ended in 7 h 35 and with every route in 17 h 50; v0.41 set it to 0).
   **The route is the Scout's** (`chooseRoute(s, id)`; `Bot.route` and mixed plan entries `[ring, [route, level][]]` come
   from v15, when each of several rovers explored its own slice of the map: `sectorAt`, `w.slices`, `sliceStarts`; they still
   replay for old saves, and the next ring after one goes back to a single entry).
@@ -94,10 +96,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   `npx vite-node tools/routes.ts -- <warmHours> <runHours>` (bluetreri and cells per algorithm at levels 0/1/max from the
   same mid-game state) whenever `ALGOS` or prices change; keep prices rising with efficiency (there is a test for prices).
   **Pace**: each route has `pace` (Scout and Miner speed × `pace × ROUTE_PACE_LEVEL (1.03)^level`, `routePace`, applied
-  in `stats` from `activeSector(s, 0)`, i.e. the ring under way; the Hauler is not affected): Circular 1.03, Trail 1.12,
-  Scavenger 1.06, Prospector 1.24, Survey 1.5. Without it, routes past Circular barely beat it (the Miner digs 60% of
-  every cell whatever the order), so they were a bluetreri sink once items stopped gating them (v19). Bench (6 h warm,
-  2 h run, lv0): Trail 107%, Prospector 116%, Survey 122% of Circular's bluetreri; Scavenger 93% but +35% items.
+  in `stats` from `activeSector(s, 0)`, i.e. the ring under way; the Hauler is not affected): Circular 1.03, Trail 1.5,
+  Scavenger 1.3, Prospector 2.1, Survey 3.2 (v0.41; before, 1.12/1.06/1.24/1.5, a whole game was faster on Circular
+  alone). Set so that over a whole game every route pays for itself: skipping any one makes the game longer (see the
+  balance notes). Without pace, routes past Circular barely beat it (the Miner digs 60% of every cell whatever the
+  order).
   Routes steer only the Scout. The Scavenger (`scavenge`) is the item route: cost pulled by `itemPull` (items within
   `ITEM_REACH` cells, a summed-area table): about +40% items for -8% bluetreri vs Circular; the sim unlocks it but keeps
   its route.
@@ -196,12 +199,13 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   code (`ui/sprites.ts`, own palette) up close, flat colour further out and a 4×4 mipmap at zoom 4. Bundled pixel fonts (work offline): `Press Start 2P` for numbers and titles (class/var `--font-num`), `VT323` for text (clear digits; Pixelify Sans was dropped because its 5 looked like an S).
 - Current balance (sim, `BASE_SPEED` 0.18 steps/s × the kind's speed; greedy stats, unlocks each route as soon as it can and
   levels the one in use, no Radar): the goal is visible progress at first and then a **big advance every so often, a bit
-  further apart each time**. Seed 12345 (with goals claimed, v0.36): Circular ~7 min, zoom 2 ~12 min, Miner ~46 min, zoom 3
-  ~1 h 20, Trail ~2 h, Hauler ~2 h 20, Prospector ~4 h 50, Survey ~9 h, library ~12 h, full map ~15 h 15, everything dug out
-  ~17 h 50. Engine's `costGrowth` (2.25) is the length knob: it takes ~65% of the spending (1.9 → ~8.5 h, 2.15 → ~15 h,
-  2.35 → ~21 h). Routes: each one beats the one before over the next hour (`tools/routes.ts`: Trail +31% bluetreri,
-  Prospector +72% over Circular), but over a whole game skipping Trail or Prospector ends ~30 min sooner: they take the
-  easy or rich ground first and leave the rough ground for later routes. Kept on purpose (a boost when unlocked).
+  further apart each time**. Seed 12345 (with goals claimed, v0.41): Circular ~8 min, zoom 2 ~15 min, Miner ~1 h, zoom 3
+  ~2 h, Trail ~3 h 15, Hauler ~3 h 45, Prospector ~6 h 30, Survey ~9 h 50, library ~12 h, full map ~16 h, everything dug
+  out ~18 h 50. Engine's `costGrowth` (3.8) is the length knob (with the v0.41 routes: 2.25 → ~6 h 30, 3.0 → ~13 h 30,
+  3.5 → ~16 h 30). Routes all pay over a whole game: skipping Trail ends at ~19 h 15, Prospector and Survey ~23 h 45,
+  Survey alone ~30 h 50 (the sim then levels the Prospector instead), Circular only ~24 h. Check this (`SKIP=...`) after
+  changing route paces, prices or `ALGOS`; `PACE=trail:1.5,...`, `RGOLD=<x>` (route prices ×x, 0 = free) and `ENG=<x>`
+  (Engine cost growth) try values without editing content.
   (The sim skips the Scavenger on its path and buys it with spare bluetreri.)
   **Rate at the top** (`core/rate.ts`, `RateMeter`, fed in boot.ts after every tick): measured, not estimated — what
   reaches camp plus what the holds gained, averaged over `RATE_TAU` (120 s of game time); it starts from the offline

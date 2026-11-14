@@ -21,6 +21,16 @@ import { RateMeter } from '../src/core/rate';
 import { createWorld, totalCells } from '../src/core/world';
 
 const hours = Number(process.argv[2] ?? 24);
+/** PACE=trail:1.4,prospect:2 overrides route paces (to try values without editing content/routes.ts). */
+for (const kv of (process.env.PACE ?? '').split(',').filter(Boolean)) {
+  const [id, v] = kv.split(':');
+  const r = ROUTES.find((x) => x.id === id);
+  if (r) (r as { pace: number }).pace = Number(v);
+}
+/** ENG=<x> sets the Engine's cost growth. */
+if (process.env.ENG) (UPGRADES.find((u) => u.id === 'speed') as { costGrowth: number }).costGrowth = Number(process.env.ENG);
+/** RGOLD=<x> multiplies every route's unlock and level price (RGOLD=0: free routes). */
+if (process.env.RGOLD) for (const r of ROUTES) Object.assign(r, { gold: r.gold * Number(process.env.RGOLD), levelGold: r.levelGold * Number(process.env.RGOLD) });
 const SKIP = new Set((process.env.SKIP ?? '').split(',').filter(Boolean));
 const RADAR = Number(process.env.RADAR ?? 0);
 const HOLD = Number(process.env.HOLD ?? 0);

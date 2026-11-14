@@ -709,7 +709,7 @@ describe('game', () => {
     s.gold = D(botes.baseCost);
     const before = stats(s).speed;
     expect(buy(s, world, 'speed')).toBe(true);
-    expect(s.gold.toNumber()).toBe(0);
+    expect(s.gold.toNumber()).toBeCloseTo(0, 9);
     expect(stats(s).speed).toBeGreaterThan(before);
   });
 
