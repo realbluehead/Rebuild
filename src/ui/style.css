@@ -293,7 +293,7 @@ button { font: inherit; color: inherit; }
 .list.goals .work-card .gain-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Library view: shelves in place of the map. */
-.library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 48px;
+.library-view { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 12px;
   background: repeating-linear-gradient(90deg, #16241f 0 22px, #13201c 22px 24px); overflow-y: auto; }
 .library-view[hidden] { display: none; }
 .map-wrap.library-open .zoom-ctl, .map-wrap.library-open .cell-info { display: none; }

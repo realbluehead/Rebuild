@@ -4,7 +4,7 @@
 // the last spread is n-1 | n when the count is odd, n | blank when even). A tap on the right-hand side turns a leaf
 // over the rings to the left (past the last spread it shuts); a tap on the left-hand page turns it back, and on the
 // bare inside of the cover (or a blank page) it shuts. Silver arrows beside the book turn the pages (back on the left,
-// forward on the right); a tap on a page opens it in the reader, over the whole phone, to read its full text. Drawn in SVG (viewBox 320×200); only
+// forward on the right); a tap on a page opens it in the reader, over the whole phone, to read its full text. Drawn in SVG (viewBox 320×180 from y 14); only
 // redrawn when what it shows changes, so each page turn plays once.
 
 /** A printed sheet: its heading and its text. */
@@ -199,7 +199,7 @@ export function createBinder(): Binder {
   const el = document.createElement('div');
   el.className = 'binder';
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', `0 0 ${VB_W} 200`);
+  svg.setAttribute('viewBox', `0 14 ${VB_W} 180`); // only the band in use: the label over the shut cover to the board's foot
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', 'Archive of printed sheets');
   el.append(svg);
