@@ -304,10 +304,15 @@ button { font: inherit; color: inherit; }
 @keyframes candle-a { 0%, 100% { opacity: 1; } 18% { opacity: .82; } 31% { opacity: .95; } 52% { opacity: .78; } 70% { opacity: .92; } 83% { opacity: .86; } }
 @keyframes candle-b { 0%, 100% { opacity: .9; } 22% { opacity: 1; } 40% { opacity: .8; } 61% { opacity: .96; } 79% { opacity: .84; } }
 @media (prefers-reduced-motion: reduce) { .lib-dark::before, .lib-dark::after { animation: none; } }
-.shelves { display: flex; flex-direction: column; gap: 6px; flex: none; }
+/* On a short phone the spiral and the binder shrink (keeping their shape) so the library still fits without scrolling;
+   the rest keeps its size. */
+/* (The shelves' rows are laid out by the library view itself, so the spiral row can shrink and nothing overlaps.) */
+.shelves { display: contents; }
+.shelves > * { flex: none; }
 .shelf-label { font: 8px/1 var(--font-num); color: var(--muted); margin: 0 0 4px 2px; }
 .plank { display: flex; align-items: flex-end; gap: 2px; height: 66px; padding: 0 4px; border-bottom: 8px solid #3f6a5f;
   box-shadow: 0 3px 0 #1a2f2a; background: #0d1613; }
+@media (max-height: 700px) { .plank { height: 52px; } }
 .vol { flex: 1; min-width: 0; height: var(--tall, 80%); padding: 0; border: 0; position: relative; cursor: pointer;
   transform-origin: bottom; transition: transform .12s;
   background: hsl(var(--h) 45% 38%); box-shadow: inset 2px 0 0 hsl(var(--h) 45% 52%), inset -2px 0 0 hsl(var(--h) 45% 24%); }
@@ -469,8 +474,9 @@ button { font: inherit; color: inherit; }
 @keyframes jb-run { to { background-position: 20px 0; } }
 @keyframes jb-glow { to { box-shadow: 0 0 14px #ffb05acc; } }
 /* Discoveries (id 'album'): the spiral of ages (ui/timeline.ts), its fire flickering at the heart. */
-.timeline svg { display: block; width: 100%; max-width: 520px; margin: 0 auto; }
-.shelf-row.album { position: relative; }
+.timeline { flex: 1 1 auto; min-height: 0; }
+.timeline svg { display: block; width: 100%; height: 100%; max-width: 520px; margin: 0 auto; }
+.shelves > .shelf-row.album { position: relative; display: flex; flex-direction: column; flex: 0 1 auto; min-height: 40px; }
 .shelf-row.album .shelf-label { position: absolute; top: 0; left: 0; margin: 0; }
 .timeline .tl-made { cursor: pointer; }
 .timeline .tl-fire { animation: candle-a 2.3s ease-in-out infinite; }
@@ -556,8 +562,8 @@ button { font: inherit; color: inherit; }
 .arrival-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a7a52; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
 
 /* The archive binder under the Decoder (ui/binder.ts): black velvet, silver clasp; a tap opens it and turns the pages. */
-.binder { flex: none; margin-top: 0; cursor: pointer; }
-.binder svg { display: block; width: 100%; max-width: 520px; margin: 0 auto; }
+.binder { flex: 0 1 auto; min-height: 100px; margin-top: 0; cursor: pointer; }
+.binder svg { display: block; width: 100%; height: 100%; max-width: 520px; margin: 0 auto; }
 .binder .bd-out-r, .binder .bd-out-l, .binder .bd-in-l, .binder .bd-in-r { transform-box: fill-box; }
 /* A page turn: the leaf folds up against the rings, then comes down on the other side (origins on the ring side). */
 .binder .bd-out-r { transform-origin: left center; animation: bd-fold .32s ease-in forwards; }

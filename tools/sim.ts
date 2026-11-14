@@ -5,6 +5,10 @@
 // cd, album), goals (goals, or a goal id). RADAR=<share> / HOLD=<share>: buys Radar (Scout) / Hold (Scout and Miner) whenever a level
 // costs under that share of the bluetreri at hand (the greedy score cannot see items, nor Hold once there is a Hauler). DIG=rich, HAUL=0.3|0.5|0.8, HAULPICK=scout|miner|auto.
 // Ends with a SUMMARY line (times of the big milestones, bluetreri earned and where it was spent).
+// DUMP=<file> writes the final state as a save (JSON) to try that point of the game in the UI: put it in localStorage
+// 'rebuild:save' on a test origin (never the real game's).
+import { writeFileSync } from 'node:fs';
+import { serialize } from '../src/save/save';
 import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/content/upgrades';
 import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
@@ -220,3 +224,5 @@ console.log(`SUMMARY ${process.env.SKIP ? `skip ${process.env.SKIP}` : ''}${RADA
   + ` | map50 ${tm('map50')} | map100 ${tm('map100')} | library ${tm('library')} | done ${isComplete(s, w) ? fmtTime(s.playTime) : '—'}`
   + ` | earned@2h ${fmt(goldAt['2h'] ?? 0)} @6h ${fmt(goldAt['6h'] ?? 0)} @12h ${fmt(goldAt['12h'] ?? 0)}`
   + ` | spent ${Object.entries(spent).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${((100 * v) / total).toFixed(1)}%`).join(', ')}`);
+
+if (process.env.DUMP) writeFileSync(process.env.DUMP, JSON.stringify(serialize(s, Date.now())));

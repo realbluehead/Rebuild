@@ -220,8 +220,9 @@ export function createBinder(): Binder {
   };
   svg.addEventListener('click', (e) => {
     if (!pages.length) return;
-    const box = svg.getBoundingClientRect();
-    const x = ((e.clientX - box.left) / box.width) * VB_W;
+    // In viewBox units through the SVG's own transform: on a short phone it shrinks and is centred with margins.
+    const m = svg.getScreenCTM();
+    const x = m ? new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()).x : 0;
     if (!isOpen) { isOpen = true; at = 0; draw(); return; }
     const n = pages.length;
     if (x < X0) { if (at > 0) { at -= 2; draw('back'); } return; } // the arrows
