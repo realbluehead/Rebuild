@@ -16,7 +16,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
 import { DETECTOR_GOLD, DETECTOR_LEVEL, DECODE_MAX_SEC, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTE_PACE_LEVEL, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
-import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
+import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, forItemsNear, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
 import { evolveWeather, weatherFactor } from './weather';
 import { GOAL_TIERS, GOALS, goalById, type GoalId, type GoalReward } from '../content/goals';
 
@@ -136,8 +136,8 @@ function homeDistance(s: GameState, w: World, r = s.ring < ringCount(w) ? w.ring
   return Math.floor(w.road[w.order[Math.min(r, totalCells(w) - 1)]]) + 1;
 }
 
-/** Speed of a rover driving home with `cargo` on board (`st.cargo` = full hold). */
-export const homeSpeed = (st: Stats, cargo: number): number => st.travelSpeed / (1 + LOAD_DRAG * Math.min(1, cargo / st.cargo));
+/** Speed of a rover driving home with `cargo` on board (`st.cargo` = full hold); Body softens the drag of the load. */
+export const homeSpeed = (st: Stats, cargo: number): number => st.travelSpeed / (1 + LOAD_DRAG * st.armour * Math.min(1, cargo / st.cargo));
 
 interface Arc { lo: number; hi: number; len: number }
 
@@ -355,42 +355,52 @@ function ringOfRank(w: World, r: number): number {
 
 /** Average bluetreri per second reaching camp: the Scout explores until its hold is full and drives to camp and back,
  *  the Miner digs until its hold is full and does the same (but never faster than the Scout reveals new ground once it
- *  has caught up). With a Hauler nobody drives back: they keep working. */
+ *  has caught up). A Hauler takes over a share of those trips: each load it fetches costs it a drive out and back at its
+ *  own speed, so it covers the loads only as far as its time allows (`share`); the rest the rovers still drive home. */
 export function goldPerSec(s: GameState, w: World): number {
   const p = rateParts(s, w);
   return p.scout + p.miner;
 }
 /** `goldPerSec` split by rover (Scout, Miner). */
 export function rateParts(s: GameState, w: World): { scout: number; miner: number } {
-  const hauled = roverIndex(s, 'hauler') >= 0;
-  const trip = (st: Stats, perSec: number, d: number) => (hauled ? perSec : st.cargo / (st.cargo / perSec + d / homeSpeed(st, st.cargo) + d / st.travelSpeed));
   /** Raw bluetreri per step of ring `k`, with that rover's grip. */
   const perStep = (k: number, grip: number) => {
     const a = w.rings[k];
     const b = w.rings[k + 1];
     return (w.goldPrefix[b] - w.goldPrefix[a]) / Math.max(EPS, stepsAt(w, grip, b) - stepsAt(w, grip, a));
   };
-  let scout = 0;
+  /** A working rover: its hold, how fast it fills it while working, and how far camp is. */
+  interface Job { st: Stats; perSec: number; d: number }
+  let scoutJob: Job | null = null;
   if (s.ring < ringCount(w)) {
     const st = stats(s);
     const g = perStep(s.ring, st.grip);
     if (!(g > 0)) return { scout: 0, miner: 0 };
-    scout = trip(st, st.share * g * st.loot * st.speed, homeDistance(s, w));
+    scoutJob = { st, perSec: st.share * g * st.loot * st.speed, d: homeDistance(s, w) };
   }
-  let miner = 0;
+  let minerJob: Job | null = null;
   const j = roverIndex(s, 'miner');
   const n = totalCells(w);
+  const r = Math.min(n - 1, Math.floor(s.dug));
   if (j >= 0 && s.dug < n - EPS) {
     const st = stats(s, s.bots[j]);
-    const r = Math.min(n - 1, Math.floor(s.dug));
     const g = perStep(ringOfRank(w, r), st.grip);
-    if (g > 0) {
-      const dig = (st.share * g * st.loot * st.speed) / (1 + (st.share * g) / st.drill);
-      // Once it has caught up, it digs only what the Scout leaves behind.
-      const caughtUp = s.ring < ringCount(w) && frontier(s, w) - s.dug < 4 * MINER_GAP;
-      miner = Math.min(trip(st, dig, homeDistance(s, w, r)), caughtUp ? ((1 - SCOUT_SHARE) / SCOUT_SHARE) * scout : Infinity);
-    }
+    if (g > 0) minerJob = { st, perSec: (st.share * g * st.loot * st.speed) / (1 + (st.share * g) / st.drill), d: homeDistance(s, w, r) };
   }
+  // Share of the loads the Hauler can fetch: each fill of a hold asks one round trip of it (out empty, back loaded).
+  let share = 0;
+  const h = roverIndex(s, 'hauler');
+  if (h >= 0) {
+    const hs = stats(s, s.bots[h]);
+    const busy = [scoutJob, minerJob].reduce((t, job) => (job ? t + (job.perSec / job.st.cargo) * (job.d / hs.travelSpeed + job.d / homeSpeed(hs, hs.cargo)) : t), 0);
+    share = busy > 0 ? Math.min(1, 1 / busy) : 1;
+  }
+  /** Rate at camp of a rover that drives home for the loads the Hauler does not fetch. */
+  const rate = (job: Job | null) => (job ? job.st.cargo / (job.st.cargo / job.perSec + (1 - share) * (job.d / homeSpeed(job.st, job.st.cargo) + job.d / job.st.travelSpeed)) : 0);
+  const scout = rate(scoutJob);
+  // Once the Miner has caught up, it digs only what the Scout leaves behind.
+  const caughtUp = s.ring < ringCount(w) && frontier(s, w) - s.dug < 4 * MINER_GAP;
+  const miner = Math.min(rate(minerJob), caughtUp ? ((1 - SCOUT_SHARE) / SCOUT_SHARE) * scout : Infinity);
   return { scout, miner };
 }
 
@@ -405,17 +415,28 @@ export function plannedRate(s: GameState, w: World): number {
 }
 
 /** How much one more level of upgrade `id` on rover `j` would raise the bluetreri per second (0.25 = +25%), or null when
- *  it does not bring bluetreri (the Radar finds items; the Hauler saves trips the estimate does not see) or nothing is
- *  left to explore. */
+ *  it does not bring bluetreri (the Radar finds items) or nothing is left to explore. */
 export function upgradeGain(s: GameState, w: World, id: StatId, j = 0): number | null {
   const b = s.bots[j];
-  if (id === 'radar' || !b || b.kind === 'hauler') return null;
+  if (id === 'radar' || !b) return null;
   const before = plannedRate(s, w);
   if (!(before > 0)) return null;
   b.up[id]++;
   const after = plannedRate(s, w);
   b.up[id]--;
   return after / before - 1;
+}
+
+/** Pages, notes and photos within `range` cells of the Scout right now that are still in the dark and unclaimed: what
+ *  its radar has (or one more level would have) in reach. The Gain column shows the difference for the next level. */
+export function itemsInReach(s: GameState, w: World, range: number): number {
+  if (range <= 0 || s.ring >= ringCount(w)) return 0;
+  const p = progress(s, w);
+  const cell = w.order[Math.min(p.b - 1, p.starts[0] + Math.floor(p.reach[0] ?? 0))];
+  const fetched = new Set(s.fetched);
+  let n = 0;
+  forItemsNear(w, cell, range, (k) => { if (!fetched.has(k) && !revealed(s, w, w.itemRanks[k], p)) n++; });
+  return n;
 }
 
 /** Cost of buying `qty` levels when `owned` are already owned (geometric sum). */

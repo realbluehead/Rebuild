@@ -13,9 +13,9 @@ export interface UpgradeDef {
 }
 
 export const UPGRADES: readonly UpgradeDef[] = [
-  { id: 'speed', name: 'Engine', desc: 'Rovers travel and explore faster', baseCost: 1.5, costGrowth: 1.9 },
+  { id: 'speed', name: 'Engine', desc: 'Rovers travel and explore faster', baseCost: 1.5, costGrowth: 2.25 },
   { id: 'tyres', name: 'Tires', desc: 'Grip on rough ground: rubble, jungle, ruins and towers slow rovers down less', baseCost: 7.5, costGrowth: 2.1 },
-  { id: 'body', name: 'Body', desc: 'Armour against acid storms, snow and lightning: storms slow rovers down less', baseCost: 15, costGrowth: 2.3 },
+  { id: 'body', name: 'Body', desc: 'Armour against acid storms, snow and lightning, and a sturdier chassis: storms, and a full hold on the drive home, slow rovers down less', baseCost: 15, costGrowth: 2.3 },
   { id: 'cargo', name: 'Hold', desc: 'Each rover carries more bluetreri before returning to camp', baseCost: 6, costGrowth: 2.2 },
   { id: 'radar', name: 'Radar', desc: 'Each rover detects pages, notes and photos around it in the dark and goes to fetch them', baseCost: 10, costGrowth: 3 },
   { id: 'drill', name: 'Drill', desc: 'The Miner digs the bluetreri out of each cell faster', baseCost: 20, costGrowth: 2.1 },
@@ -32,7 +32,7 @@ export const TRAVEL_MULT = 5;
 export const LOAD_DRAG = 2;
 /** Tyres: share of each terrain's extra roughness still felt, per level. */
 export const GRIP_MULT = 0.85;
-/** Body: share of a storm's slowdown still felt, per level. */
+/** Body: share of a storm's slowdown, and of the drag of a full hold on the drive home, still felt, per level. */
 export const ARMOUR_MULT = 0.82;
 /** Bluetreri each rover can carry before it has to return to camp to unload. */
 export const BASE_CARGO = 5;
@@ -62,7 +62,7 @@ export interface RoverKindDef {
 export const ROVER_KINDS: readonly RoverKindDef[] = [
   { id: 'scout', name: 'Scout', desc: 'Fast, tiny hold. Explores the dark and scratches a little bluetreri from each cell.', speed: 3, cargo: 0.6, parts: ['speed', 'tyres', 'body', 'cargo', 'radar'], gold: 0, level: 0 },
   { id: 'miner', name: 'Miner', desc: 'Slow, medium hold. Digs out the bluetreri the Scout left behind in every cell it revealed.', speed: 2, cargo: 2, parts: ['speed', 'drill', 'tyres', 'cargo'], gold: 1000, level: 14 },
-  { id: 'hauler', name: 'Hauler', desc: 'Very slow, huge hold, no drill. Drives out to the other rovers and brings their load to camp, so they keep working.', speed: 0.3, cargo: 12, parts: ['speed', 'cargo'], gold: 20000, level: 26 },
+  { id: 'hauler', name: 'Hauler', desc: 'Very slow, huge hold, no drill. Drives out to the other rovers and brings their load to camp, so they keep working.', speed: 0.5, cargo: 12, parts: ['speed', 'cargo'], gold: 8000, level: 26 },
 ];
 export const kindById = (id: RoverKind): RoverKindDef => ROVER_KINDS.find((k) => k.id === id)!;
 /** Share of each cell's bluetreri the Scout's drill takes as it explores (the Miner digs out the rest). */
@@ -75,7 +75,7 @@ export type HaulPick = 'fullest' | 'scout' | 'miner';
 /** How the Miner digs each ring: behind the Scout in its order, or the richest cells (deposits) first. Rich first only
  *  digs rings the Scout has finished, and hops between cells (`RICH_HOP`× the steps). */
 export type DigOrder = 'follow' | 'rich';
-export const RICH_HOP = 1.4;
+export const RICH_HOP = 1.05;
 /** A Miner that has caught up with the Scout waits until this many revealed cells are ahead of it. */
 export const MINER_GAP = 8;
 

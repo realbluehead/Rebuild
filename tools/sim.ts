@@ -10,7 +10,7 @@ import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { DETECTOR_GOLD, WORKS_MAX } from '../src/content/collection';
-import { chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, explorerLevel, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { RateMeter } from '../src/core/rate';
@@ -53,13 +53,11 @@ let zoom = 1;
 // Value of an upgrade: how much it raises the bluetreri/s reaching camp (and, a little, the exploring
 // speed, which is what opens the map) per unit of bluetreri spent.
 const value = (): number => plannedRate(s, w) * Math.sqrt(stats(s).speed);
-/** Gain per bluetreri of one more level of `id` on rover `j`. The Hauler's parts are not in the estimate: it gets the
- *  Scout's engine and hold levels at a tenth of the score, so it keeps up. */
+/** Gain per bluetreri of one more level of `id` on rover `j`. */
 function score(id: StatId, j: number): number {
   const b = s.bots[j];
   if (!hasPart(b, id) || SKIP.has(id)) return -1;
   const cost = costOf(UPGRADES.find((u) => u.id === id)!, levelOn(s, id, b)).toNumber();
-  if (b.kind === 'hauler') return b.up[id] < s.bots[0].up[id] ? 0.1 / cost : -1;
   const before = value();
   b.up[id]++;
   const after = value();
@@ -101,6 +99,8 @@ for (let t = 0; t < hours * 3600; t += DT) {
       mark(t, `route ${s.route} lv${routeLevel(s, s.route)}`);
     }
   }
+  // The Decoder prints the scraps of lore whenever there are some waiting (it turns itself off when none are left).
+  if (!s.decodeOn) setDecoder(s, w, true);
   // The Metal detector: bought with spare bluetreri (twice its price).
   if (!SKIP.has('detector') && canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { spend('detector', DETECTOR_GOLD); buyDetector(s, w); mark(t, 'Metal detector'); }
   for (const id of ['book', 'cd', 'album'] as const) {

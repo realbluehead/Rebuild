@@ -1,11 +1,11 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
-import { HAUL_LEVELS, ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type HaulPick, type RoverKind, type StatId } from '../content/upgrades';
+import { ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type RoverKind, type StatId } from '../content/upgrades';
 import { DETECTOR_GOLD, ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -26,7 +26,6 @@ export interface ViewActions {
   /** Picks the Miner's dig order (from the next ring it starts). */
   digOrder(order: DigOrder): void;
   /** Sets the Hauler policy: how full a hold must be, and which rover it drives to first. */
-  haul(at: number, pick: HaulPick): void;
   /** Builds the rover of kind `kind`. */
   build(kind: RoverKind): void;
   /** Claims the next tier of goal `id`. */
@@ -407,21 +406,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     orderCard.append(row);
     return { row, btns };
   };
-  const haulPolicy = () => current ?? null;
   const digRow = choiceRow('Dig', [
     { text: 'Behind Scout', title: 'Digs every cell in the order the Scout revealed it, right behind it.', pick: () => actions.digOrder('follow') },
     { text: 'Richest first', title: 'Digs each finished ring from its richest cells down (deposits first), hopping between them.', pick: () => actions.digOrder('rich') },
   ]);
-  const atRow = choiceRow('Leave at', HAUL_LEVELS.map((at) => ({
-    text: `${Math.round(at * 100)}%`,
-    title: `Drives out once a hold is ${Math.round(at * 100)}% full.`,
-    pick: () => { const s = haulPolicy(); if (s) actions.haul(at, s.haulPick); },
-  })));
-  const pickRow = choiceRow('First', (['fullest', 'scout', 'miner'] as HaulPick[]).map((p) => ({
-    text: p === 'fullest' ? 'Fullest' : kindById(p).name,
-    title: p === 'fullest' ? 'Drives to the fullest rover.' : `Drives to the ${kindById(p).name} first whenever it is full enough.`,
-    pick: () => { const s = haulPolicy(); if (s) actions.haul(s.haulAt, p); },
-  })));
   // Rover parts in a grid: everything within thumb reach, no scrolling. Each kind shows only its own parts.
   // The selected rover's parts as a table: part, level, now → next, gain in bluetreri/s, price.
   const partTable = h('div', 'part-table px-box');
@@ -448,11 +436,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   // Exploration routes: unlock with bluetreri once enough items are collected (not spent), then pick the one the Scout follows from the next ring.
   const routesList = h('div', 'list rover routes');
   routesList.hidden = true;
-  // I+D: research for every rover, in sub-tabs: the Scout's routes, the Miner's dig order, the Hauler's pick-ups.
-  type RdTab = 'routes' | 'dig' | 'pickups' | 'detector';
+  // I+D: research for every rover, in sub-tabs: the Scout's routes, the Miner's dig order, the Metal detector. (The
+  // Hauler's pick-up policy had its own sub-tab; it made no measurable difference, so it keeps the defaults.)
+  type RdTab = 'routes' | 'dig' | 'detector';
   let rdTab: RdTab = 'routes';
   const rdPicker = h('div', 'rover-pick');
-  const rdTabs: { id: RdTab; kind: RoverKind; btn: HTMLButtonElement }[] = ([['routes', 'scout', 'Routes'], ['dig', 'miner', 'Dig'], ['pickups', 'hauler', 'Pick-ups'], ['detector', 'scout', 'Detector']] as const)
+  const rdTabs: { id: RdTab; kind: RoverKind; btn: HTMLButtonElement }[] = ([['routes', 'scout', 'Routes'], ['dig', 'miner', 'Dig'], ['detector', 'scout', 'Detector']] as const)
     .map(([id, k, text]) => {
       const btn = h('button', 'px-btn pick', text);
       btn.addEventListener('click', () => { rdTab = id; const s = current; if (s) fillRD(s); });
@@ -864,23 +853,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     routesMore.hidden = !routes || hiddenRoutes <= 0;
     orderCard.hidden = routes || rdTab === 'detector';
     if (routes || rdTab === 'detector') return;
-    const miner = rdTab === 'dig';
-    const built = roverIndex(s, miner ? 'miner' : 'hauler') >= 0;
-    set(orderName, miner ? 'Dig order' : 'Pick-ups');
+    const built = roverIndex(s, 'miner') >= 0;
+    set(orderName, 'Dig order');
     set(orderDesc, !built
-      ? `Build the ${miner ? 'Miner' : 'Hauler'} first (Rovers tab).`
-      : miner
-        ? (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : '')
-        : `Leaves camp at ${Math.round(s.haulAt * 100)}% full, for ${s.haulPick === 'fullest' ? 'the fullest rover' : `the ${kindById(s.haulPick).name} first`}.`);
-    digRow.row.hidden = !miner;
-    atRow.row.hidden = miner;
-    pickRow.row.hidden = miner;
-    for (const r of [digRow, atRow, pickRow]) r.btns.forEach((b) => { b.disabled = !built; });
+      ? 'Build the Miner first (Rovers tab).'
+      : (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : ''));
+    digRow.btns.forEach((b) => { b.disabled = !built; });
     // Radio squares, not brass buttons: brass means something can be bought.
     const mark = (b: HTMLButtonElement, on: boolean) => { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); };
     digRow.btns.forEach((b, q) => mark(b, (q === 1 ? 'rich' : 'follow') === s.digPick));
-    atRow.btns.forEach((b, q) => mark(b, HAUL_LEVELS[q] === s.haulAt));
-    pickRow.btns.forEach((b, q) => mark(b, (['fullest', 'scout', 'miner'] as HaulPick[])[q] === s.haulPick));
   }
 
   /** Fills the Rovers tab for the picked kind. */
@@ -913,8 +894,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       set(r.eff, effectText(r.def.id, cur, next));
       set(r.cost, fmt(costOf(r.def, lvl)));
       r.btn.classList.toggle('can', canBuy(s, id, 1, sel));
+      if (id === 'radar') {
+        // The Radar brings items, not bluetreri: how many more it would have in reach right now.
+        const more = itemsInReach(s, world, next.radar) - itemsInReach(s, world, cur.radar);
+        set(r.gain, `+${more} item${more === 1 ? '' : 's'}`);
+        r.gain.title = `Pages, notes and photos in reach now: ${itemsInReach(s, world, cur.radar)} → ${itemsInReach(s, world, next.radar)}`;
+        continue;
+      }
       const g = upgradeGain(s, world, id, sel);
-      set(r.gain, g === null ? (id === 'radar' ? 'items' : bot.kind === 'hauler' ? (id === 'speed' ? 'pick-up' : 'loads') : '') : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}%`);
+      set(r.gain, g === null ? '' : `+${g < 0.1 ? (g * 100).toFixed(1) : Math.round(g * 100)}%`);
       r.gain.title = g === null ? '' : 'More bluetreri per second from one more level';
     }
   }

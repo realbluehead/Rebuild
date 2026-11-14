@@ -24,11 +24,11 @@ export const GOAL_TIERS = 5;
 export const GOALS: readonly GoalDef[] = [
   { id: 'cartographer', name: 'Cartographer', what: 'cells explored', tiers: [0.0005, 0.005, 0.05, 0.3, 1], per: 'cells', reward: 'speed', mult: 1.05, rewardText: 'rover speed' },
   { id: 'tycoon', name: 'Tycoon', what: 'bluetreri earned', tiers: [1e3, 3e4, 1e6, 5e6, 1.5e7], reward: 'loot', mult: 1.05, rewardText: 'bluetreri' },
-  { id: 'collector', name: 'Collector', what: 'pages, notes and photos', tiers: [0.02, 0.1, 0.3, 0.6, 1], per: 'items', reward: 'cargo', mult: 1.08, rewardText: 'holds' },
-  { id: 'excavator', name: 'Excavator', what: 'cells dug out', tiers: [0.001, 0.01, 0.1, 0.4, 1], per: 'cells', reward: 'drill', mult: 1.1, rewardText: 'Miner drill' },
-  { id: 'engineer', name: 'Engineer', what: 'part levels fitted', tiers: [10, 30, 60, 90, 120], reward: 'travel', mult: 1.1, rewardText: 'drive to and from camp' },
+  { id: 'collector', name: 'Collector', what: 'pages, notes and photos', tiers: [0.02, 0.1, 0.3, 0.6, 1], per: 'items', reward: 'cargo', mult: 1.2, rewardText: 'holds' },
+  { id: 'excavator', name: 'Excavator', what: 'cells dug out', tiers: [0.001, 0.01, 0.1, 0.4, 1], per: 'cells', reward: 'drill', mult: 1.25, rewardText: 'Miner drill' },
+  { id: 'engineer', name: 'Engineer', what: 'part levels fitted', tiers: [10, 30, 60, 90, 120], reward: 'travel', mult: 1.2, rewardText: 'drive to and from camp' },
   { id: 'archivist', name: 'Archivist', what: 'scraps of lore found', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'loot', mult: 1.03, rewardText: 'bluetreri' },
-  { id: 'historian', name: 'Historian', what: 'sheets of history printed', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'speed', mult: 1.03, rewardText: 'rover speed' },
+  { id: 'historian', name: 'Historian', what: 'sheets of history printed', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'speed', mult: 1.08, rewardText: 'rover speed' },
 ];
 
 export const goalById = (id: GoalId): GoalDef => GOALS.find((g) => g.id === id)!;
