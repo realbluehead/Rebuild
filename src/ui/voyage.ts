@@ -1,7 +1,8 @@
 // "The voyage" splash: shown once, when the explorer reaches the top level (the whole map explored), as the start of
 // phase II. A robot jellyfish ship (the Black siphon: an obsidian armoured bell with red lights and a dozen jointed
 // tentacles ending in probes) floats over a starfield. Drawn in SVG; the tentacles are redrawn every frame so each
-// joint follows the one above it. It stays up for good: phase II is not playable yet.
+// joint follows the one above it. It stays up for good (phase II is not playable yet); only the ≡ menu is there,
+// for export, import or a restart.
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const W = 240;
@@ -142,8 +143,9 @@ function tentacles(t: number): string {
   return o;
 }
 
-/** Shows the splash over `root` (the phone). It cannot be closed: the game waits here for phase II. */
-export function showVoyage(root: HTMLElement): void {
+/** Shows the splash over `root` (the phone). It cannot be closed: the game waits here for phase II. `openMenu` opens
+ *  the game's ≡ menu (its dialogs open over the splash). */
+export function showVoyage(root: HTMLElement, openMenu: () => void): void {
   const el = document.createElement('div');
   el.className = 'voyage';
   const svg = document.createElementNS(SVGNS, 'svg');
@@ -155,7 +157,12 @@ export function showVoyage(root: HTMLElement): void {
   const hint = document.createElement('span');
   hint.className = 'voyage-hint';
   hint.textContent = 'phase II is on its way';
-  el.append(svg, hint);
+  const menu = document.createElement('button');
+  menu.className = 'px-btn menu-btn voyage-menu';
+  menu.title = 'Menu';
+  menu.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
+  menu.addEventListener('click', openMenu);
+  el.append(svg, hint, menu);
   root.append(el);
   const tents = svg.querySelector('#vy-tents')!;
   const frame = (ms: number) => { tents.innerHTML = tentacles(ms / 1000); requestAnimationFrame(frame); };

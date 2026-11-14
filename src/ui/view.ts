@@ -1201,7 +1201,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       // Phase I ends at the top level: "The voyage" splash covers the game for good until phase II exists.
       if (lv.level >= lv.max && !voyageShown) {
         voyageShown = true;
-        showVoyage(root);
+        showVoyage(root, openMenu);
       }
 
       pipEls.forEach((p, i) => { p.className = i === s.zoom ? 'on' : i < s.zoomUnlocked ? '' : 'locked'; });

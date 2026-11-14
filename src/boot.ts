@@ -143,7 +143,8 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   void title.ready().then(() => {
     // A new game opens with phase I's splash, then the field notes.
     if (loaded.fresh) void showArrival(app).then(() => setTimeout(() => view.openHelp(), 300));
-    if (report) view.showOffline(report);
+    // (once the game is over there is nothing to report, unless it ended while away)
+    if (report && (state.doneAt === undefined || report.cells > 0)) view.showOffline(report);
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
     if (!loaded.fresh && finishedUnseen(state)) view.showComplete(state);
