@@ -3,7 +3,7 @@
 // first one, on the right with the cover's inside on the left. Pages go two to a spread like a book (1 | 2-3 | 4-5 …;
 // the last spread is n-1 | n when the count is odd, n | blank when even). A tap on the right-hand side turns a leaf
 // over the rings to the left (past the last spread it shuts); a tap on the left-hand page turns it back, and on the
-// bare inside of the cover it shuts. Drawn in SVG (viewBox 320×200); only
+// bare inside of the cover it shuts. Silver arrows beside the book do the same (back on the left, forward on the right). Drawn in SVG (viewBox 320×200); only
 // redrawn when what it shows changes, so each page turn plays once.
 
 /** A printed sheet: its heading and its text. */
@@ -112,6 +112,14 @@ function shut(count: number): string {
   return s;
 }
 
+/** A silver page-turn arrow centred at `x` on the book's middle, pointing `dir` (-1: back, 1: forward). */
+function arrow(x: number, dir: number): string {
+  const y = Y0 + H / 2;
+  const tip = (dx: number) => f(x + dir * dx);
+  return `<g class="bd-arrow"><circle cx="${f(x)}" cy="${y}" r="11" fill="${LO}" stroke="${SILVER[1]}" stroke-width="1.2"/>`
+    + `<path d="M${tip(-3)},${y - 6} L${tip(4)},${y} L${tip(-3)},${y + 6}" fill="none" stroke="${SILVER[0]}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+}
+
 /** Layers drawn for a stack of `k` sheets out of `n` (thick when it holds most of them, at least one if any). */
 const STACK_LAYERS = 10;
 /** A stack of `k` sheets under a page at `x`, its edges showing outwards (`side` -1: left, 1: right) and downwards. */
@@ -139,6 +147,10 @@ function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
   // The sheets under each open page, as a stack that grows with them like a real book: those read pile up on the
   // left, those to come on the right (each layer shows a little further out and lower).
   s += stack(LPX, at - 1, n, -1) + stack(PX, n - at - 1, n, 1);
+  // While a leaf turns, the page it is about to cover stays in view underneath (forward: the old left-hand page;
+  // back: the old right-hand page), so nothing goes blank before the leaf lands.
+  if (turn === 'fwd' && at >= 3) s += sheet(pages[at - 3], at - 3, n, LPX);
+  if (turn === 'back' && at + 2 < n) s += sheet(pages[at + 2], at + 2, n, PX);
   // Left: the sheet before (coming down there after a forward turn); right: this one, if any (after a back turn).
   if (at > 0) s += sheet(pages[at - 1], at - 1, n, LPX, turn === 'fwd' ? 'bd-in-l' : '');
   if (at < n) s += sheet(pages[at], at, n, PX, turn === 'back' ? 'bd-in-r' : '');
@@ -152,6 +164,9 @@ function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
       + `<path d="M${SX - 4},${cy - 3} q9,-6 18,0" fill="none" stroke="${SILVER[2]}" stroke-width=".9"/>`;
   }
   s += `<rect x="${SX - 8}" y="${Y0 + 10}" width="6" height="${H - 20}" rx="2" fill="${SILVER[0]}" stroke="${SILVER[1]}"/><rect x="${SX - 7}" y="${Y0 + 12}" width="1.4" height="${H - 24}" fill="${SILVER[2]}" opacity=".6"/>`;
+  // Page-turn arrows beside the book: back on the left (once past the first spread), forward on the right.
+  if (at > 0) s += arrow(X0 / 2, -1);
+  if (at + 2 <= n - (n % 2)) s += arrow(X0 + W + (VB_W - X0 - W) / 2, 1);
   return s;
 }
 
