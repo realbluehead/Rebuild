@@ -196,7 +196,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   fades in; nothing saved; "TAP TO ENTER": a tap after the first second fades it out while the phase II screen
   (`showPhase2`, the mock-up below) fades in over it, both 0.6 s): an SVG robot jellyfish ship, the Black siphon (obsidian plated bell with seams, rivets, red
   windows, a beacon mast and engine ports on a ribbed rim; 12 jointed tentacles redrawn every frame so each joint follows the
-  one above, with glowing probe tips) over stars, "THE VOYAGE · PHASE II", "phase II is on its way". A ≡ button on it opens the game menu (export, import, restart);
+  one above, with glowing probe tips) over stars, "THE VOYAGE · PHASE II", "TAP TO ENTER". A ≡ button on it opens the game menu (export, import, restart);
   dialogs opened after it (`.voyage ~ .modal`) sit above it.
   Nothing of phase II is playable yet. **Phase II shell** (mock-up, `ui/phase2.ts`, `showPhase2`, entered from the voyage
   splash, or shown over the game with `?phase2` in the address, `view.showPhase2`; fades in): phase I's layout (top bar with metal scraps as the currency and ≡ menu,
