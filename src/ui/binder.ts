@@ -1,7 +1,8 @@
 // The archive binder, under the Decoder in the Library: where the printed sheets go. An old ring binder in black crushed
-// velvet with a silver clasp and faded silver lettering. It starts shut; once there are sheets a tap opens it, a tap
-// on the page turns to the next one (the last one closes it again) and a tap on the inside of the cover closes it.
-// Drawn in SVG (viewBox 320×200); only redrawn when what it shows changes, so the page turn animation plays once.
+// velvet with a silver clasp and faded silver lettering. It starts shut; once there are sheets a tap opens it on the
+// first one. A tap on the right-hand page turns it over the rings to the left (past the last sheet it shuts); a tap on
+// the left-hand page turns it back, and on the bare inside of the cover it shuts. Drawn in SVG (viewBox 320×200); only
+// redrawn when what it shows changes, so each page turn plays once.
 
 /** A printed sheet: its heading and its text. */
 export interface BinderPage { title: string; text: string }
@@ -20,6 +21,10 @@ const X0 = 30, Y0 = 34, W = 260, H = 156;
 const LW = 112;
 const SX = X0 + LW + 16;
 const PX = SX + 14, PW = W - (PX - X0) - 10;
+/** The left-hand page (a sheet already turned), mirrored across the rings. */
+const LPX = SX - 8 - (PW - 2);
+/** How the open binder was reached: a page turned forward or back, or just opened. */
+type Turn = 'fwd' | 'back' | '';
 /** Shut: the front cover alone, centred. */
 const CW = 132, CX = (VB_W - CW) / 2;
 
@@ -76,10 +81,10 @@ function wrap(text: string, max: number): string[] {
 
 /** An aged sheet: yellowed paper, browned edges, foxing, the helix at the head, its heading and text, then faint
  *  hand-written lines down to the page number. */
-function sheet(page: BinderPage, at: number, of: number, seed: number, turn: boolean): string {
-  const r = rand(seed * 7 + 3);
-  const x = PX, y = Y0 + 8, w = PW - 2, hh = H - 24;
-  let s = `<g${turn ? ' class="bd-flip"' : ''}><rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="url(#bd-paper)" stroke="#a8884e" stroke-width=".6"/>`
+function sheet(page: BinderPage, at: number, of: number, x: number, cls = ''): string {
+  const r = rand(at * 7 + 3);
+  const y = Y0 + 8, w = PW - 2, hh = H - 24;
+  let s = `<g${cls ? ` class="${cls}"` : ''}><rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="url(#bd-paper)" stroke="#a8884e" stroke-width=".6"/>`
     + `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="none" stroke="#8a6a3a" stroke-width="3" opacity=".18"/>`;
   for (let i = 0; i < 7; i++) s += `<circle cx="${f(x + r() * w)}" cy="${f(y + r() * hh)}" r="${f(0.6 + r() * 2.2)}" fill="#9a6a30" opacity="${f(0.12 + r() * 0.2)}"/>`;
   s += `<g transform="translate(${f(x + w / 2)} ${y + 10})" stroke="#6b3a5a" stroke-width=".9" fill="none"><path d="M-8,-3 C-4,3 4,-3 8,3"/><path d="M-8,3 C-4,-3 4,3 8,-3"/></g>`;
@@ -101,19 +106,28 @@ function shut(count: number): string {
   for (let k = 0; k < 3; k++) s += `<rect x="${CX - 3}" y="${Y0 + 24 + k * 48}" width="6" height="14" rx="2" fill="${SILVER[1]}"/><rect x="${CX - 2}" y="${Y0 + 26 + k * 48}" width="1.4" height="10" fill="${SILVER[2]}" opacity=".5"/>`;
   s += title(CX + 6, Y0 + 8, CW - 18, H - 16);
   s += clasp(CX + CW + 6, Y0 + H / 2, count > 0);
-  s += `<text x="${VB_W / 2}" y="${Y0 - 10}" text-anchor="middle" fill="${SILVER[0]}" style="font:8px var(--font-num)">${count ? `${count} sheet${count > 1 ? 's' : ''} · tap to open` : 'empty'}</text>`;
+  s += `<text x="${VB_W / 2}" y="${Y0 - 10}" text-anchor="middle" fill="${SILVER[0]}" style="font:8px var(--font-num)">${count ? `${count} sheet${count > 1 ? 's' : ''} · tap to open` : ''}</text>`;
   return s;
 }
 
-function open(pages: readonly BinderPage[], at: number, turn: boolean): string {
+/** Open at sheet `at`: the sheets before it on the left (or the cover's inside), `at` on the right. A turn draws the
+ *  leaf that moves: forward, the old right-hand page folds onto the rings and comes down on the left; back, the old
+ *  left-hand page folds up and comes down on the right. */
+function open(pages: readonly BinderPage[], at: number, turn: Turn): string {
+  const n = pages.length;
   let s = board(X0, Y0, W, H);
   // Inside of the cover, with the title; the spine channel.
   s += `<rect x="${X0 + 8}" y="${Y0 + 8}" width="${LW}" height="${H - 16}" rx="2" fill="${LO}" opacity=".55"/>` + title(X0 + 8, Y0 + 8, LW, H - 16);
   s += `<rect x="${SX - 6}" y="${Y0 + 3}" width="22" height="${H - 6}" fill="${LO}"/><rect x="${SX - 6}" y="${Y0 + 3}" width="22" height="${H - 6}" fill="#000" opacity=".35"/>`;
-  // The pages still to come, as edges under the open one.
-  const under = Math.min(14, pages.length - at - 1);
-  for (let j = 0; j < under; j++) s += `<rect x="${f(PX + 3 + j * 0.25)}" y="${f(Y0 + H - 10 - j * 0.55)}" width="${PW - 4}" height="1.2" fill="${j % 2 ? '#d8c48e' : '#b89a5e'}"/>`;
-  s += sheet(pages[at], at, pages.length, at, turn);
+  // Edges of the sheets on each side: those read on the left, those to come on the right.
+  const edges = (x: number, k: number) => { let e = ''; for (let j = 0; j < Math.min(14, k); j++) e += `<rect x="${f(x + 3 + j * 0.25)}" y="${f(Y0 + H - 10 - j * 0.55)}" width="${PW - 4}" height="1.2" fill="${j % 2 ? '#d8c48e' : '#b89a5e'}"/>`; return e; };
+  s += edges(LPX - 2, at - 1) + edges(PX, n - at - 1);
+  // Left: the sheet before (coming down there after a forward turn); right: this one (coming down after a back turn).
+  if (at > 0) s += sheet(pages[at - 1], at - 1, n, LPX, turn === 'fwd' ? 'bd-in-l' : '');
+  s += sheet(pages[at], at, n, PX, turn === 'back' ? 'bd-in-r' : '');
+  // The leaf on its way up: forward, the old right page; back, the old left page.
+  if (turn === 'fwd') s += sheet(pages[at - 1], at - 1, n, PX, 'bd-out-r');
+  if (turn === 'back') s += sheet(pages[at], at, n, LPX, 'bd-out-l');
   // Silver rings and the bar that holds them.
   for (let k = 0; k < 3; k++) {
     const cy = Y0 + 30 + k * 48;
@@ -121,7 +135,6 @@ function open(pages: readonly BinderPage[], at: number, turn: boolean): string {
       + `<path d="M${SX - 4},${cy - 3} q9,-6 18,0" fill="none" stroke="${SILVER[2]}" stroke-width=".9"/>`;
   }
   s += `<rect x="${SX - 8}" y="${Y0 + 10}" width="6" height="${H - 20}" rx="2" fill="${SILVER[0]}" stroke="${SILVER[1]}"/><rect x="${SX - 7}" y="${Y0 + 12}" width="1.4" height="${H - 24}" fill="${SILVER[2]}" opacity=".6"/>`;
-  s += `<text x="${VB_W / 2}" y="${Y0 - 10}" text-anchor="middle" fill="${SILVER[0]}" style="font:8px var(--font-num)">page: turn · cover: close</text>`;
   return s;
 }
 
@@ -141,28 +154,26 @@ export function createBinder(): Binder {
   el.append(svg);
   let pages: readonly BinderPage[] = [];
   let isOpen = false;
-  /** The page shown when open (kept while it is shut, so it opens where it was left). */
+  /** The sheet on the right-hand page while open (it always opens on the first). */
   let at = 0;
   let key = '';
-  /** The page last drawn open (-1: shut), so only opening or turning animates the sheet. */
-  let shown = -1;
-  const draw = () => {
+  const draw = (turn: Turn = '') => {
     if (isOpen && !pages.length) isOpen = false;
     at = Math.min(at, Math.max(0, pages.length - 1));
     const k = `${isOpen}|${at}|${pages.length}`;
     if (k === key) return;
     key = k;
-    svg.innerHTML = defs() + (isOpen ? open(pages, at, shown !== at) : shut(pages.length));
-    shown = isOpen ? at : -1;
+    svg.innerHTML = defs() + (isOpen ? open(pages, at, turn) : shut(pages.length));
   };
   svg.addEventListener('click', (e) => {
     if (!pages.length) return;
     const box = svg.getBoundingClientRect();
     const x = ((e.clientX - box.left) / box.width) * VB_W;
-    if (!isOpen) isOpen = true;
-    else if (x < SX - 6) isOpen = false; // the cover
-    else if (at + 1 < pages.length) at++;
-    else { isOpen = false; at = 0; } // past the last sheet: shut, back to the first
+    if (!isOpen) { isOpen = true; at = 0; draw(); return; }
+    if (x < SX - 6) {
+      if (at > 0) { at--; draw('back'); return; }
+      isOpen = false; // the bare cover: shut
+    } else if (at + 1 < pages.length) { at++; draw('fwd'); return; } else isOpen = false; // past the last sheet: shut
     draw();
   });
   return {

@@ -560,8 +560,14 @@ button { font: inherit; color: inherit; }
 /* The archive binder under the Decoder (ui/binder.ts): black velvet, silver clasp; a tap opens it and turns the pages. */
 .binder { flex: none; margin-top: 4px; cursor: pointer; }
 .binder svg { display: block; width: 100%; max-width: 520px; margin: 0 auto; }
-.binder .bd-flip { animation: bd-flip .9s cubic-bezier(.4, 0, .2, 1) both; transform-box: fill-box; transform-origin: left center; }
+.binder .bd-out-r, .binder .bd-out-l, .binder .bd-in-l, .binder .bd-in-r { transform-box: fill-box; }
+/* A page turn: the leaf folds up against the rings, then comes down on the other side (origins on the ring side). */
+.binder .bd-out-r { transform-origin: left center; animation: bd-fold .32s ease-in forwards; }
+.binder .bd-out-l { transform-origin: right center; animation: bd-fold .32s ease-in forwards; }
+.binder .bd-in-l { transform-origin: right center; animation: bd-unfold .32s ease-out .32s both; }
+.binder .bd-in-r { transform-origin: left center; animation: bd-unfold .32s ease-out .32s both; }
 .binder .bd-ready { animation: bd-ready 2s ease-in-out infinite; }
-@keyframes bd-flip { from { transform: scaleX(-.9) skewY(-4deg); opacity: .4; } 60% { opacity: 1; } to { transform: none; } }
+@keyframes bd-fold { to { transform: scaleX(0) skewY(3deg); filter: brightness(.6); } }
+@keyframes bd-unfold { from { transform: scaleX(0) skewY(-3deg); filter: brightness(.6); } }
 @keyframes bd-ready { 50% { fill: #e0e4e6; } }
-@media (prefers-reduced-motion: reduce) { .binder .bd-flip, .binder .bd-ready { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .binder .bd-in-l, .binder .bd-in-r, .binder .bd-ready { animation: none; } .binder .bd-out-r, .binder .bd-out-l { display: none; } }
