@@ -62,14 +62,14 @@ function starfield(n: number): string {
   return out;
 }
 
-/** Everything but the tentacles, which `tentacles` draws into `#vy-tents` each frame. */
-function scene(): string {
+/** Everything but the tentacles (and the title only if `titled`), which `tentacles` draws into `#vy-tents` each frame. */
+function scene(titled: boolean): string {
   const [a, b, c] = CURVE;
   const dome = `M${-BW},0 C${f(-BW * a)},${f(-BH * b)} ${f(-BW * c)},${-BH} 0,${-BH} C${f(BW * c)},${-BH} ${f(BW * a)},${f(-BH * b)} ${BW},0Z`;
   let o = `<defs><linearGradient id="vy-plate" x1="0" x2="1">${[0, 0.28, 0.42, 0.7, 1].map((at, i) => `<stop offset="${at}" stop-color="${PLATE[i]}"/>`).join('')}</linearGradient>`
     + `<clipPath id="vy-hull"><path d="${dome}"/></clipPath></defs>`;
   o += `<rect width="${W}" height="${H}" fill="#030305"/>${starfield(70)}`;
-  o += `<text x="120" y="44" text-anchor="middle" class="vy-title">THE VOYAGE</text>`
+  if (titled) o += `<text x="120" y="44" text-anchor="middle" class="vy-title">THE VOYAGE</text>`
     + `<line x1="42" y1="60" x2="68" y2="60" class="vy-rule"/><line x1="172" y1="60" x2="198" y2="60" class="vy-rule"/>`
     + `<text x="120" y="63" text-anchor="middle" class="vy-sub">PHASE II</text>`;
   o += `<g transform="translate(120,205)"><g class="vy-bob"><g id="vy-tents"></g>`;
@@ -143,17 +143,27 @@ function tentacles(t: number): string {
   return o;
 }
 
+/** The Black siphon over its starfield, as an SVG (viewBox W×H), with its tentacles moving; `stop` ends the animation. */
+export function shipScene(label: string, titled = true): { svg: SVGSVGElement; stop: () => void } {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', label);
+  svg.innerHTML = scene(titled);
+  const tents = svg.querySelector('#vy-tents')!;
+  let on = true;
+  const frame = (ms: number) => { if (!on) return; tents.innerHTML = tentacles(ms / 1000); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+  return { svg, stop: () => { on = false; } };
+}
+
 /** Shows the splash over `root` (the phone). It cannot be closed: the game waits here for phase II. `openMenu` opens
  *  the game's ≡ menu (its dialogs open over the splash). */
 export function showVoyage(root: HTMLElement, openMenu: () => void): void {
   const el = document.createElement('div');
   el.className = 'voyage';
-  const svg = document.createElementNS(SVGNS, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'The voyage');
-  svg.innerHTML = scene();
+  const { svg } = shipScene('The voyage');
   const hint = document.createElement('span');
   hint.className = 'voyage-hint';
   hint.textContent = 'phase II is on its way';
@@ -164,8 +174,5 @@ export function showVoyage(root: HTMLElement, openMenu: () => void): void {
   menu.addEventListener('click', openMenu);
   el.append(svg, hint, menu);
   root.append(el);
-  const tents = svg.querySelector('#vy-tents')!;
-  const frame = (ms: number) => { tents.innerHTML = tentacles(ms / 1000); requestAnimationFrame(frame); };
-  requestAnimationFrame(frame);
   requestAnimationFrame(() => el.classList.add('in'));
 }

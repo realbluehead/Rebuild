@@ -14,6 +14,7 @@ import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
 import { showVoyage } from './voyage';
+import { showPhase2 } from './phase2';
 import { createBinder } from './binder';
 import { createTimeline } from './timeline';
 
@@ -1413,6 +1414,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     },
     /** A game already over whose message was seen: straight to "The voyage". */
     showVoyage: voyage,
+    /** The phase II mock-up (`?phase2`): over everything, for good. */
+    showPhase2: () => showPhase2(root, openMenu),
     showOffline(r: OfflineReport) {
       const m = modal();
       m.box.append(

@@ -145,6 +145,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
     // (then, or straight away if it was seen before, "The voyage" covers the game: phase I is over)
+    if (new URLSearchParams(location.search).has('phase2')) view.showPhase2();
     if (!loaded.fresh && state.doneAt !== undefined) { if (finishedUnseen(state)) view.showComplete(state); else view.showVoyage(); }
   });
   await cancelReminders();
