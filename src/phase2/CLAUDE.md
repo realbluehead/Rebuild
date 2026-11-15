@@ -42,7 +42,7 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian plates, steel rivets, red for lights, bars and the
   active tab, yellow for buttons you can press and the currency. One panel height for every tab.
 - **The desert** (`ui/desert.ts`, `createDesert`, three.js, only in phase II's chunk: phase I imports `../phase2/boot` dynamically, never statically): a real 3D scene with an
-  orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (3) of the screen and scaled up with crisp
+  orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (2) of the screen and scaled up with crisp
   pixels over a pixel night sky (a canvas drawn once, CSS background). A 48-unit slab with dunes (`duneHeight`, flat
   towards the edges; the slab top sits just under the flattest sand to avoid z-fighting), the Black siphon's bell on four
   legs: obsidian plating over `plated` of it, the open sector (ribs and hoops) facing the camera (angles as three's sphere

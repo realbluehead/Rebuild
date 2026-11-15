@@ -12,7 +12,7 @@ import {
 /** Size of the ground, in world units (one unit ~ one voxel of the mock-up). */
 const SIZE = 48;
 /** Screen pixels per rendered pixel (the pixel-art look). */
-const PX = 3;
+const PX = 2;
 /** World units across the view (the diorama's corners may leave the screen). */
 const VIEW = 44;
 /** The sway: seconds per bob and per turn, and how far. */
@@ -154,7 +154,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[] } {
 
 /** A night sky of pixel stars and a crescent moon, drawn once (the 3D view is transparent over it). */
 function skyBackground(): string {
-  const w = 120, h = 160;
+  const w = 180, h = 240; // (about PX screen pixels per sky pixel on a phone, like the scene)
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const g = c.getContext('2d')!;
@@ -163,9 +163,9 @@ function skyBackground(): string {
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,255,255,${0.25 + rnd() * 0.75})`; g.fillRect(Math.floor(rnd() * w), Math.floor(rnd() * h * 0.7), 1, 1); }
-  g.fillStyle = '#e8e8f0'; g.beginPath(); g.arc(22, 20, 6, 0, 7); g.fill();
-  g.fillStyle = '#05060e'; g.beginPath(); g.arc(25, 18, 5, 0, 7); g.fill();
+  for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(255,255,255,${0.25 + rnd() * 0.75})`; g.fillRect(Math.floor(rnd() * w), Math.floor(rnd() * h * 0.7), 1, 1); }
+  g.fillStyle = '#e8e8f0'; g.beginPath(); g.arc(33, 30, 9, 0, 7); g.fill();
+  g.fillStyle = '#05060e'; g.beginPath(); g.arc(37, 27, 7.5, 0, 7); g.fill();
   return c.toDataURL();
 }
 
