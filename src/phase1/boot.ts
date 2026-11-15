@@ -1,9 +1,10 @@
-// The game proper, loaded by main.ts once the title screen is up.
+// Phase I, the game proper: loaded by main.ts once the title screen is up (unless a phase II save exists). Once the map
+// is done, "The voyage" splash leads into phase II, which starts from what phase I hands over (`legacyOf`).
 import { buildSection, buildSections, buyDetector, buyDetectorUp, decode, setDecoder, carried, chooseDig, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
-import { D } from './core/decimal';
-import { fmt } from './core/format';
+import { D } from '../shared/decimal';
+import { fmt } from '../shared/format';
 import { ZOOMS } from './content/world';
 import { routeById } from './content/routes';
 import { DETECTOR_UPS } from './content/collection';
@@ -12,12 +13,16 @@ import { kindById } from './content/upgrades';
 import { goalById } from './content/goals';
 import { applyOffline, type OfflineReport } from './save/offline';
 import { RateMeter } from './core/rate';
-import { loadGame, saveGame, wipeGame } from './save/persist';
-import { deserialize, exportSave, importSave, serialize, type SaveData } from './save/save';
-import { cancelReminders, onBackground, scheduleReminder } from './platform';
-import { checkForUpdate, checkWebUpdate, hardReload } from './platform/update';
+import { loadGame, saveGame } from './save/persist';
+import { deserialize, exportSave, serialize, type SaveData } from './save/save';
+import { cancelReminders, onBackground, scheduleReminder } from '../platform';
+import { offerUpdates } from '../shared/updates';
+import { importAny, wipeAll } from '../saves';
+import { showVoyage } from '../phase2/ui/voyage';
+import { startPhase2 } from '../phase2/boot';
+import { legacyOf } from './legacy';
 import { createView } from './ui/view';
-import type { TitleScreen } from './ui/title';
+import type { TitleScreen } from '../shared/ui/title';
 import { showArrival } from './ui/arrival';
 import { loadWorld, type Loaded } from './load';
 
@@ -65,6 +70,20 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   /** On restart or import the current game must not be saved any more (pagehide would write it back). */
   let locked = false;
   const save = () => (locked ? Promise.resolve() : saveGame(state));
+  /** Phase II has begun: phase I stops (its save stays as it was, for good). */
+  let over = false;
+  let voyageShown = false;
+  /** Phase I is over: "The voyage" splash; a tap on it enters phase II, from what phase I achieved. */
+  function voyage() {
+    if (voyageShown) return;
+    voyageShown = true;
+    showVoyage(app, view.openMenu, () => {
+      void save();
+      over = true;
+      locked = true;
+      startPhase2(app, legacyOf(state, world, Date.now()), true);
+    });
+  }
 
   const view = createView(app, world, state, {
     buy: (id, rover) => {
@@ -133,16 +152,10 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     zoom: (d) => { setZoom(state, state.zoom + d); },
     exportText: () => exportSave(serialize(state, Date.now())),
     importText: (text) => {
-      try {
-        // Save and reload: the imported game may have a different map (seed).
-        const imported = deserialize(importSave(text)).state;
-        locked = true;
-        void saveGame(imported).then(() => location.reload());
-      } catch {
-        view.toast('That text is not a valid game.');
-      }
+      // Save and reload: the imported game may have a different map (seed), or be a phase II game.
+      importAny(text).then(() => { locked = true; location.reload(); }, () => view.toast('That text is not a valid game.'));
     },
-    reset: () => { locked = true; void wipeGame().then(() => location.reload()); },
+    reset: () => { locked = true; void wipeAll().then(() => location.reload()); },
   });
   app.append(title.el); // the view replaced the page: keep the title on top until the player taps
 
@@ -157,8 +170,8 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
     // (then, or straight away if it was seen before, "The voyage" covers the game: phase I is over)
-    if (new URLSearchParams(location.search).has('phase2')) view.showPhase2();
-    if (!loaded.fresh && state.doneAt !== undefined) { if (finishedUnseen(state)) view.showComplete(state); else view.showVoyage(); }
+    if (new URLSearchParams(location.search).has('phase2')) startPhase2(app, legacyOf(state, world, Date.now()), false); // (a preview)
+    else if (!loaded.fresh && state.doneAt !== undefined) { if (finishedUnseen(state)) view.showComplete(state, voyage); else voyage(); }
   });
   await cancelReminders();
 
@@ -172,7 +185,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     for (const i of ev.items) view.itemFound(i, now);
     if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
     for (const id of ev.built ?? []) { view.toast(`${sectionById(id).name} built!\nin the Library`); void save(); }
-    if (ev.completed) { finishedUnseen(state); view.showComplete(state); void save(); }
+    if (ev.completed) { finishedUnseen(state); view.showComplete(state, voyage); void save(); }
     if (ev.zoomUnlocked) {
       view.toast(`New zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);
       setZoom(state, ev.zoomUnlocked - 1); // show the new view right away
@@ -184,6 +197,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
   let last = performance.now();
   let acc = 0;
   const frame = (now: number) => {
+    if (over) return;
     const dt = (now - last) / 1000;
     last = now;
     if (state.doneAt !== undefined) {
@@ -216,26 +230,15 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     requestAnimationFrame(frame);
   });
 
-  void checkForUpdate().then((u) => {
-    // Opening the APK URL outside the WebView makes Android download it and offer to install it.
-    if (u) view.showUpdate(u.version, u.notes, () => { location.href = u.apkUrl; });
-  });
-  // A newer web build: offer a hard reload, on opening (after the tap) and on coming back to the game. Each build is
-  // offered once per session.
-  let offered = '';
-  const checkWeb = () => void checkWebUpdate().then((u) => {
-    if (!u || u.build === offered) return;
-    offered = u.build;
-    view.showReload(u.version, u.build, () => { locked = true; void saveGame(state).then(() => hardReload(u.build)); });
-  });
-  void title.ready().then(checkWeb);
+  // New versions (each phase II session offers them on its own: this one is phase I's).
+  const checkWeb = offerUpdates(title.ready(), () => { locked = true; return over ? Promise.resolve() : saveGame(state); });
   setInterval(() => void save(), AUTOSAVE_MS);
 
   onBackground((hidden) => {
     if (hidden) {
       void save();
       // Local notification in an hour: cancelled if the player comes back sooner.
-      if (goldPerSec(state, world) > 0) void scheduleReminder('Your rovers keep going', 'Come back and see what they have uncovered!', 3600);
+      if (!over && goldPerSec(state, world) > 0) void scheduleReminder('Your rovers keep going', 'Come back and see what they have uncovered!', 3600);
     } else {
       void cancelReminders();
       checkWeb();

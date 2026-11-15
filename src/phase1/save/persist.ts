@@ -1,4 +1,4 @@
-import { store } from '../platform';
+import { store } from '../../platform';
 import type { GameState } from '../core/state';
 import { deserialize, serialize } from './save';
 

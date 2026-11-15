@@ -540,25 +540,6 @@ button { font: inherit; color: inherit; }
 .part-row .goal-pips.works { gap: 1px; }
 .part-row .goal-pips i { height: 6px; }
 
-/* "The voyage" splash (ui/voyage.ts): full screen over the game for good, fades in; under the title screen. */
-.voyage { position: absolute; inset: 0; z-index: 90; background: #030305; opacity: 0; transition: opacity .6s; }
-.voyage.in { opacity: 1; }
-.voyage { cursor: pointer; }
-.voyage.out { opacity: 0; pointer-events: none; }
-.voyage-menu { position: absolute; top: 10px; right: 10px; }
-.voyage ~ .modal { z-index: 91; } /* the menu and its dialogs open over the splash */
-.voyage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.voyage .vy-title { font: 17px var(--font-num); fill: #ff6a74; letter-spacing: 2px; }
-.voyage .vy-sub { font: 7px var(--font-num); fill: #ff6a74; opacity: .7; letter-spacing: 4px; }
-.voyage .vy-rule { stroke: #ff6a74; stroke-opacity: .5; }
-.voyage .vy-bob { animation: vy-bob 4s ease-in-out infinite; }
-.voyage .vy-pulse, .voyage .vy-blink { animation: vy-pulse 2.4s ease-in-out infinite; }
-.voyage .vy-beacon { animation: vy-beacon 1.6s steps(1) infinite; }
-.voyage-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #ff6a74; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
-@keyframes vy-bob { 50% { transform: translateY(-5px); } }
-@keyframes vy-pulse { 50% { opacity: .3; } }
-@keyframes vy-beacon { 0%, 80% { opacity: 1; } 90% { opacity: .1; } }
-
 /* "The arrival" splash (ui/arrival.ts): phase I, over a new game after the title; a tap closes it. */
 .arrival { position: absolute; inset: 0; z-index: 95; background: #07060a; cursor: pointer; opacity: 0; transition: opacity .6s; container-type: size; }
 .arrival.in { opacity: 1; }
@@ -607,47 +588,6 @@ button { font: inherit; color: inherit; }
 .lore-close { position: absolute; top: 4px; right: 6px; width: 32px; height: 32px; border: 0; background: none; color: #6b4a2a; font: 24px/1 Georgia, serif; cursor: pointer; }
 @keyframes lore-in { from { opacity: 0; transform: scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .lore-reader { animation: none; } }
-
-/* Phase II shell (fades in: .in) (ui/phase2.ts, a mock-up behind ?phase2): phase I's layout re-themed in the voyage palette — obsidian
-   plates, steel rivets, red lights — with yellow for what you can press and for the currency (metal scraps). */
-.p2 {
-  --void: #030305;
-  --bg: #0b0c10;
-  --panel: #1b1d23;
-  --panel-2: #23262c;
-  --edge: #000;
-  --hi: #3a3e48;
-  --lo: #101116;
-  --text: #ece7e8;
-  --muted: #8d919c;
-  --rivet: #6a707c;
-  --gold: #ffd23a;
-  --gold-2: #8a6a00;
-  --blu: #ffd23a;
-  --ok: #ff4a5a;
-  --red: #ff2a3a;
-  position: absolute; inset: 0; z-index: 95; opacity: 0; transition: opacity .6s;
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--bg); color: var(--text);
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-}
-.p2.in { opacity: 1; }
-.p2 ~ .modal { z-index: 96; }
-.p2 .topbar { box-shadow: inset 0 var(--u) 0 var(--hi), 0 var(--u) 0 #ff2a3a33; }
-.p2 .px-btn { box-shadow: inset var(--u) var(--u) 0 #2c2f37, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #07080a; }
-.p2 .px-btn.can { color: #1a1400; box-shadow: inset var(--u) var(--u) 0 #fff07a, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 var(--gold-2); }
-.p2 .tab.on { color: var(--text); box-shadow: inset 0 var(--u) 0 var(--red); }
-.p2 .rover-pick .pick.on { box-shadow: inset 0 var(--u) 0 var(--red); }
-.p2 .cargo-bar i { background: var(--red); }
-.p2 .bar.slim i { background: var(--red); box-shadow: 0 0 4px var(--red); }
-.p2 .nut { display: inline-block; width: 12px; height: 12px; flex: none; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
-  background: radial-gradient(circle, var(--bg) 0 22%, #2a3034 24% 30%, transparent 32%), linear-gradient(135deg, #fff6c8, #d9a820 50%, #6a5000); }
-.p2 .buy .nut { width: 9px; height: 9px; }
-.p2 .buy.can .nut { background: radial-gradient(circle, var(--gold) 0 22%, #1a1400 24% 30%, transparent 32%), linear-gradient(135deg, #3a2e00, #1a1400); }
-.p2-scene { position: relative; min-height: 0; overflow: hidden; background: var(--void); }
-.p2-scene svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.p2-dock { position: absolute; left: 8px; bottom: 8px; padding: 7px 10px; font: 8px/1.4 var(--font-num); color: #ff6a74; }
-.p2-table .part-row { --cols: minmax(0, 1fr) 40px minmax(0, 1.1fr) 62px; }
 
 /* Library sections not built yet: a locked plate in their place (padlock, name, what it asks for, Build or the time
    left), and the magnifying glass that opens the Library's help. */

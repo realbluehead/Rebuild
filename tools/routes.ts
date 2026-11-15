@@ -1,12 +1,12 @@
 // Route efficiency bench: plays a greedy game up to a mid-game point, then from that same state runs every discovery
 // algorithm at level 0 and at its top level for a while (no purchases) and prints the bluetreri unloaded and cells explored.
 // Usage: npx vite-node tools/routes.ts [-- warmHours runHours seed]
-import { UPGRADES } from '../src/content/upgrades';
-import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../src/content/routes';
-import { buy, canBuy, chooseRoute, costOf, explored, goldPerSec, stats, TICK_SEC, tick } from '../src/core/game';
-import { newGame } from '../src/core/state';
-import { applyPlan, createWorld } from '../src/core/world';
-import { deserialize, serialize } from '../src/save/save';
+import { UPGRADES } from '../src/phase1/content/upgrades';
+import { ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../src/phase1/content/routes';
+import { buy, canBuy, chooseRoute, costOf, explored, goldPerSec, stats, TICK_SEC, tick } from '../src/phase1/core/game';
+import { newGame } from '../src/phase1/core/state';
+import { applyPlan, createWorld } from '../src/phase1/core/world';
+import { deserialize, serialize } from '../src/phase1/save/save';
 
 const warm = Number(process.argv[2] ?? 3);
 const run = Number(process.argv[3] ?? 1);

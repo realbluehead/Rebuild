@@ -8,18 +8,18 @@
 // DUMP=<file> writes the final state as a save (JSON) to try that point of the game in the UI: put it in localStorage
 // 'rebuild:save' on a test origin (never the real game's).
 import { writeFileSync } from 'node:fs';
-import { serialize } from '../src/save/save';
-import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/content/upgrades';
-import { GOALS } from '../src/content/goals';
-import { T, TERRAINS, ZOOMS } from '../src/content/world';
-import { ROUTES } from '../src/content/routes';
-import { DETECTOR_GOLD, DETECTOR_UPS, WORKS_MAX } from '../src/content/collection';
-import { SECTIONS } from '../src/content/library';
-import { buildSection, canBuildSection, buyDetectorUp, canBuyDetectorUp, detectorUpCost, setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
-import { newGame } from '../src/core/state';
-import { fmt, fmtTime } from '../src/core/format';
-import { RateMeter } from '../src/core/rate';
-import { createWorld, totalCells } from '../src/core/world';
+import { serialize } from '../src/phase1/save/save';
+import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/phase1/content/upgrades';
+import { GOALS } from '../src/phase1/content/goals';
+import { T, TERRAINS, ZOOMS } from '../src/phase1/content/world';
+import { ROUTES } from '../src/phase1/content/routes';
+import { DETECTOR_GOLD, DETECTOR_UPS, WORKS_MAX } from '../src/phase1/content/collection';
+import { SECTIONS } from '../src/phase1/content/library';
+import { buildSection, canBuildSection, buyDetectorUp, canBuyDetectorUp, detectorUpCost, setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/phase1/core/game';
+import { newGame } from '../src/phase1/core/state';
+import { fmt, fmtTime } from '../src/shared/format';
+import { RateMeter } from '../src/phase1/core/rate';
+import { createWorld, totalCells } from '../src/phase1/core/world';
 
 const hours = Number(process.argv[2] ?? 24);
 /** PACE=trail:1.4,prospect:2 overrides route paces (to try values without editing content/routes.ts). */

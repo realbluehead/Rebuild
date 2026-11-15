@@ -6,8 +6,8 @@ import { buildSection, buildSections, canBuildSection, libraryOpen, sectionBuilt
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
-import { D } from './decimal';
-import { fmt } from './format';
+import { D } from '../../shared/decimal';
+import { fmt } from '../../shared/format';
 import { applyPlan, createWorld, sectorAt, goldBetween, kingDistance, pathCells, ringCount, stepsAt, totalCells, totalSteps, unlockAt, zoomFraction, type PlanEntry, type World } from './world';
 import { ROUTE_MAX_LEVEL, ROUTE_PACE_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { WORKS, WORKS_MAX } from '../content/collection';

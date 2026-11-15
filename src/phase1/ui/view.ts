@@ -7,14 +7,13 @@ import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
 import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, canPrintNext, pageNeed, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
-import { fmt, fmtTime } from '../core/format';
+import { fmt, fmtTime } from '../../shared/format';
 import type { Bot, GameState } from '../core/state';
 import { totalCells, type World } from '../core/world';
 import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
-import { showVoyage } from './voyage';
-import { showPhase2 } from './phase2';
+import { confirmModal, h, modal, textModal } from '../../shared/ui/dom';
 import { createBinder } from './binder';
 import { createTimeline } from './timeline';
 import { SECTIONS, sectionOfWork, type SectionDef, type SectionId } from '../content/library';
@@ -48,12 +47,6 @@ export interface ViewActions {
   reset(): void;
 }
 
-const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] => {
-  const el = document.createElement(tag);
-  if (cls) el.className = cls;
-  if (text) el.textContent = text;
-  return el;
-};
 
 /** Sets text only if it changed (saves the browser work on every frame). */
 /** How often the panel under the map is refreshed (the map and top bar every frame). */
@@ -1167,13 +1160,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     return entries;
   }
   const HELP_SEEN_KEY = 'rebuild:help-seen';
-  let voyageShown = false;
-  /** Phase I is over: "The voyage" splash covers the game for good until phase II exists. */
-  function voyage() {
-    if (voyageShown) return;
-    voyageShown = true;
-    showVoyage(root, openMenu, () => showPhase2(root, openMenu));
-  }
   let helpSeen = 0;
   try { helpSeen = Number(localStorage.getItem(HELP_SEEN_KEY)) || 0; } catch { /* no storage */ }
 
@@ -1482,27 +1468,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     },
     /** Chosen speed multiplier (1 = normal). */
     gameSpeed: () => speed,
-    showUpdate(version: string, notes: string, onInstall: () => void) {
-      const m = modal();
-      m.box.append(h('div', 'name', `New version: ${version}`), h('div', 'info', notes));
-      m.addClose('Download', onInstall);
-      m.addClose('Later');
-    },
-    /** A newer web build is out: reload now (saving first) or later. */
-    showReload(version: string, build: string, onReload: () => void) {
-      const m = modal();
-      m.box.append(
-        h('div', 'name', 'New version available'),
-        h('div', 'info', `Version ${version} · build ${build}`),
-        h('div', 'info', `(you have ${__APP_VERSION__} · build ${__APP_BUILD__})`),
-        h('div', '', 'Reload to get it. Your game is saved first.'),
-      );
-      m.addClose('Reload now', onReload);
-      m.addClose('Later');
-    },
     /** The end of phase I (the whole map explored and every bluetreri at camp): what the expedition achieved, then,
-     *  on Continue, "The voyage" splash. */
-    showComplete(s: GameState) {
+     *  `onContinue` (boot puts up "The voyage" splash). */
+    showComplete(s: GameState, onContinue: () => void) {
       const m = modal('complete');
       const got = itemsCollected(s, world);
       const lines = [
@@ -1524,12 +1492,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         list,
         h('div', 'info', 'Now we are ready for phase II: we will build a fleet of ships to carry all these resources to a new planet.'),
       );
-      m.addClose('Continue', voyage);
+      m.addClose('Continue', onContinue);
     },
-    /** A game already over whose message was seen: straight to "The voyage". */
-    showVoyage: voyage,
-    /** The phase II mock-up (`?phase2`): over everything, for good. */
-    showPhase2: () => showPhase2(root, openMenu),
+    /** The ≡ menu (export, import, restart), also opened from "The voyage" splash. */
+    openMenu,
     showOffline(r: OfflineReport) {
       const m = modal();
       m.box.append(
@@ -1543,41 +1509,4 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       m.addClose('Let\'s go');
     },
   };
-}
-
-function modal(cls = '') {
-  const wrap = h('div', `modal ${cls}`);
-  const box = h('div', 'box px-box');
-  wrap.append(box);
-  // Inside the "phone", not the whole window.
-  (document.getElementById('app') ?? document.body).append(wrap);
-  return {
-    box,
-    close: () => wrap.remove(),
-    addClose(label: string, onClose?: () => void) {
-      const b = h('button', 'px-btn can', label);
-      b.addEventListener('click', () => { wrap.remove(); onClose?.(); });
-      box.append(b);
-    },
-  };
-}
-
-/** In-game yes/no dialog (the browser's own confirm() is blocked in some embedded browsers). */
-function confirmModal(question: string, yes: string, onYes: () => void) {
-  const m = modal();
-  m.box.append(h('div', '', question));
-  const b = h('button', 'px-btn danger', yes);
-  b.addEventListener('click', () => { m.close(); onYes(); });
-  m.box.append(b);
-  m.addClose('Cancel');
-}
-
-function textModal(title: string, value: string, readOnly: boolean, onOk?: (t: string) => void) {
-  const m = modal();
-  const ta = h('textarea');
-  ta.value = value;
-  ta.readOnly = readOnly;
-  m.box.append(h('div', '', title), ta);
-  m.addClose(readOnly ? 'Close' : 'Load', () => onOk?.(ta.value));
-  if (readOnly) ta.select();
 }

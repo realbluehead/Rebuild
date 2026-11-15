@@ -1,8 +1,8 @@
 // "The voyage" splash: shown once, when the explorer reaches the top level (the whole map explored), as the start of
-// phase II. A robot jellyfish ship (the Black siphon: an obsidian armoured bell with red lights and a dozen jointed
+// phase II (from phase I's boot: a tap enters phase II). A robot jellyfish ship (the Black siphon: an obsidian armoured bell with red lights and a dozen jointed
 // tentacles ending in probes) floats over a starfield. Drawn in SVG; the tentacles are redrawn every frame so each
-// joint follows the one above it. It stays up for good (phase II is not playable yet); only the ≡ menu is there,
-// for export, import or a restart.
+// joint follows the one above it. Its ≡ menu is phase I's (export, import or a restart).
+import './phase2.css';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** Taps are ignored for the first second (so the tap that opened it does not close it), and the fades take FADE_MS. */

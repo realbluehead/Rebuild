@@ -9,7 +9,7 @@
 // to camp. `tick` processes events (hold full, ring done, trip done, arriving at a cell where the weather changes or
 // the radar spots something, the Scout getting far enough ahead of a waiting Miner, the sky changing) in time order,
 // so one long step (offline) gives the same result as many short ones.
-import { D, Decimal } from './decimal';
+import { D, Decimal } from '../../shared/decimal';
 import { newBot, type Bot, type GameState } from './state';
 import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_LEVELS, kindById, RICH_HOP, type DigOrder, type HaulPick, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';

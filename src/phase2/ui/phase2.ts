@@ -1,15 +1,12 @@
-// Phase II shell (a mock-up, nothing works yet): the same layout as phase I — a top bar with the currency and the ≡ menu,
+// Phase II screen (still mostly a mock-up): the same layout as phase I — a top bar with the currency and the ≡ menu,
 // the scene in the middle and a panel of tabs at the bottom — re-themed in the voyage splash's palette (obsidian
-// plates, steel rivets, red lights) with yellow for what you can press. The tabs and rows are placeholders, to see how
-// the screen looks; shown over the game with `?phase2` in the address.
+// plates, steel rivets, red lights) with yellow for what you can press. The currency and the Cargo tab's "Have" column
+// come from the state (what phase I handed over); the other tabs and rows are placeholders, to see how the screen looks.
+import './phase2.css';
+import { fmt } from '../../shared/format';
+import { h } from '../../shared/ui/dom';
+import type { P2State } from '../core/state';
 import { shipScene } from './voyage';
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 interface Row { name: string; lvl: string; eff: string; cost: string; can: boolean }
 
@@ -39,12 +36,7 @@ const TABS: { name: string; picks?: string[]; heads: string[]; rows: Row[] }[] =
   {
     name: 'Cargo',
     heads: ['Load', 'Have', 'Aboard', ''],
-    rows: [
-      { name: 'Bluetreri', lvl: '22.8M', eff: '0 / 40 t', cost: 'Load', can: true },
-      { name: 'Pages', lvl: '1155', eff: '0 / 200', cost: 'Load', can: true },
-      { name: 'Notes', lvl: '570', eff: '0 / 120', cost: 'Load', can: true },
-      { name: 'Photos', lvl: '911', eff: '0 / 120', cost: 'Load', can: true },
-    ],
+    rows: [], // (from the state: `cargoRows`)
   },
   {
     name: 'Launch',
@@ -58,15 +50,29 @@ const TABS: { name: string; picks?: string[]; heads: string[]; rows: Row[] }[] =
   },
 ];
 
-/** Puts the phase II shell over `root` (the phone), fading in. `openMenu` opens the game's ≡ menu. */
-export function showPhase2(root: HTMLElement, openMenu: () => void): void {
+/** The Cargo tab: what phase I handed over, ready to load. */
+const cargoRows = (s: P2State): Row[] => [
+  { name: 'Bluetreri', lvl: fmt(s.bluetreri), eff: '0 / 40 t', cost: 'Load', can: true },
+  { name: 'Pages', lvl: fmt(s.items.page), eff: '0 / 200', cost: 'Load', can: true },
+  { name: 'Notes', lvl: fmt(s.items.note), eff: '0 / 120', cost: 'Load', can: true },
+  { name: 'Photos', lvl: fmt(s.items.photo), eff: '0 / 120', cost: 'Load', can: true },
+];
+
+export interface Phase2Screen {
+  /** Updates the texts from the state (every frame; only what changed is written). */
+  render(s: P2State): void;
+}
+
+/** Puts the phase II screen over `root` (the phone), fading in. `openMenu` opens the ≡ menu. */
+export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void): Phase2Screen {
   const el = h('div', 'p2');
 
   // Top bar: metal scraps (the currency of phase II), rate, the fleet line and a progress bar; menu on the right.
   const top = h('header', 'topbar');
   const stats = h('div', 'stats');
   const line = h('div', 'gold-line');
-  line.append(h('i', 'nut'), h('span', 'gold', '2,539'), h('span', 'rate', '+12/min'));
+  const metal = h('span', 'gold', fmt(s.metal));
+  line.append(h('i', 'nut'), metal, h('span', 'rate', '+0/min'));
   const fleet = h('div', 'cargo-line');
   const bar = h('div', 'bar cargo-bar');
   const fill = h('i');
@@ -108,7 +114,7 @@ export function showPhase2(root: HTMLElement, openMenu: () => void): void {
     const head = h('div', 'part-row head');
     for (const x of t.heads) head.append(h('span', '', x));
     table.append(head);
-    for (const r of t.rows) {
+    for (const r of t.name === 'Cargo' ? cargoRows(s) : t.rows) {
       const row = h('div', 'part-row');
       row.append(h('span', 'name', r.name), h('span', 'lvl', r.lvl), h('span', 'eff', r.eff));
       const buy = h('button', `px-btn buy${r.can ? ' can' : ''}`);
@@ -145,4 +151,11 @@ export function showPhase2(root: HTMLElement, openMenu: () => void): void {
   });
   lists.forEach((x, q) => (x.hidden = q !== 0));
   panel.style.height = `${tallest}px`;
+
+  return {
+    render(st) {
+      const m = fmt(st.metal);
+      if (metal.textContent !== m) metal.textContent = m;
+    },
+  };
 }

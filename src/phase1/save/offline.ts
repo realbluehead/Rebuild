@@ -1,4 +1,4 @@
-import { D, Decimal } from '../core/decimal';
+import { D, Decimal } from '../../shared/decimal';
 import { explored, tick } from '../core/game';
 import type { GameState } from '../core/state';
 import type { World } from '../core/world';

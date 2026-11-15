@@ -1,4 +1,4 @@
-import { D, Decimal } from './decimal';
+import { D, Decimal } from '../../shared/decimal';
 import { ROVER_STATS, UPGRADES, type RoverStat, type StatId } from '../content/upgrades';
 import { ITEMS, WORKS, type DetectorUpId, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';

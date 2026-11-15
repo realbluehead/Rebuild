@@ -31,7 +31,8 @@
 //      (`printed`) become sheets at today's prices once the world exists (`legacyPrinted`, `fromLegacyPrinted`).
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
-import { D } from '../core/decimal';
+import { D } from '../../shared/decimal';
+import { decodeSave, encodeSave } from '../../shared/codec';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
 import { DETECTOR_UPS, PAGES_MAX, WORKS_MAX } from '../content/collection';
@@ -416,5 +417,5 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
 }
 
 /** Text for manual export/import (copy and paste). */
-export const exportSave = (d: SaveData): string => btoa(unescape(encodeURIComponent(JSON.stringify(d))));
-export const importSave = (text: string): RawSave => JSON.parse(decodeURIComponent(escape(atob(text.trim()))));
+export const exportSave = (d: SaveData): string => encodeSave(d);
+export const importSave = (text: string): RawSave => decodeSave(text) as RawSave;

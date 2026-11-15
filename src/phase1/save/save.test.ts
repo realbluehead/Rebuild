@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame } from '../core/state';
-import { D } from '../core/decimal';
+import { D } from '../../shared/decimal';
 import { costOf, explored, fromLegacy, stats, toKinds } from '../core/game';
 import { UPGRADES } from '../content/upgrades';
 import { createWorld } from '../core/world';
