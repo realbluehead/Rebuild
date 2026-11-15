@@ -1,7 +1,8 @@
 // Phase II's scene: the Black siphon being built on a night desert, rendered in real 3D (three.js) with an isometric
 // (orthographic) camera, at a low resolution scaled up with crisp pixels. Dunes, the obsidian bell half plated (the rest
 // still ribs) on four legs, its tentacles laid out on the sand, and floodlights casting warm pools. The camera sways
-// gently (a slow bob up and down and ±1° of turn) so the scene never looks frozen.
+// gently (a slow bob up and down and ±1° of turn) so the scene never looks frozen, and a finger dragged sideways turns
+// it round (only round: the height of the view never changes), with a little glide after letting go.
 import {
   AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
@@ -19,6 +20,9 @@ const BOB_SEC = 7;
 const BOB_UNITS = 0.9;
 const TURN_SEC = 11;
 const TURN_DEG = 1;
+/** Turn for a drag across the whole view (radians), and how fast the glide after a drag dies away (share kept per second). */
+const DRAG_TURN = Math.PI;
+const GLIDE_KEEP = 0.04;
 
 const SAND = '#5a5a82';
 const OBSIDIAN = '#3a3c48';
@@ -196,12 +200,29 @@ export function createDesert(): Desert {
   ro.observe(el);
   resize();
 
+  // Drag sideways to turn the scene round its centre.
+  let turn = 0, spin = 0, dragX: number | null = null, lastMove = 0, lastFrame = performance.now();
+  el.addEventListener('pointerdown', (e) => { dragX = e.clientX; spin = 0; lastMove = performance.now(); el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove', (e) => {
+    if (dragX === null) return;
+    const now = performance.now(), d = ((e.clientX - dragX) / Math.max(1, el.clientWidth)) * DRAG_TURN;
+    turn -= d;
+    spin = -d / Math.max(0.008, (now - lastMove) / 1000); // radians per second, for the glide
+    dragX = e.clientX; lastMove = now;
+  });
+  const release = () => { if (dragX === null) return; dragX = null; if (performance.now() - lastMove > 80) spin = 0; };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+
   let on = true;
   const frame = (ms: number) => {
     if (!on) return;
     const t = reduced ? 0 : ms / 1000;
     // Isometric: 45° around, ~35° down; plus the sway.
-    const yaw = Math.PI / 4 + (Math.sin((t / TURN_SEC) * Math.PI * 2) * TURN_DEG * Math.PI) / 180;
+    const dt = Math.min(0.1, (ms - lastFrame) / 1000);
+    lastFrame = ms;
+    if (dragX === null && spin !== 0) { turn += spin * dt; spin *= Math.pow(GLIDE_KEEP, dt); if (Math.abs(spin) < 0.02) spin = 0; }
+    const yaw = Math.PI / 4 + turn + (Math.sin((t / TURN_SEC) * Math.PI * 2) * TURN_DEG * Math.PI) / 180;
     const bob = Math.sin((t / BOB_SEC) * Math.PI * 2) * BOB_UNITS;
     const d = 100;
     camera.position.set(Math.sin(yaw) * d * 0.8165, d * 0.5774 + bob, Math.cos(yaw) * d * 0.8165);
