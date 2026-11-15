@@ -670,14 +670,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   };
   /** The Decoder as the game has it (it works in game time, `decode` in core): stage, hopper, clock and switch. */
   function drawDecoder(s: GameState) {
-    // The hopper: the scraps found against what the next sheet needs (each needs more; they are not used up). The heap
-    // fills from the last sheet's mark to the next one's.
+    // The hopper: the scraps found since the last sheet's mark against the ones the next sheet adds (each needs more;
+    // they are not used up). The heap fills from the last sheet's mark to the next one's.
     const found = loreFound(s, world).length;
     const next = s.pages + (s.decoding >= 0 ? 1 : 0);
     const last = next >= PAGES_MAX;
     const need = last ? 0 : pageNeed(world, next);
     const from = next > 0 ? pageNeed(world, next - 1) : 0;
-    set(mcCount, `${found}/${need}`);
+    const step = Math.max(1, need - from);
+    set(mcCount, `${Math.max(0, Math.min(step, found - from))}/${step}`);
     mcCount.hidden = last; // (no sheet left to start)
     mcCount.classList.toggle('short', !last && found < need);
     mcHeap.style.height = `${last ? 0 : Math.round(16 + 84 * Math.max(0, Math.min(1, (found - from) / Math.max(1, need - from))))}%`;
@@ -1132,7 +1133,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the great inventions of the old world, from fire to the internet). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'Once the Decoder is built in the Library, switch it on: it reads the DNA left on the scraps found and prints the planet\'s history, 20 sheets in all. Each sheet needs more scraps found than the last (they are not used up; the funnel shows the scraps found against what the next sheet needs) and takes a little longer; the printer\'s counter shows the time left. Left on, it prints one sheet after another, also while you are away, and switches itself off when it has too few scraps for the next. Tap the printer\'s tray to read the sheets. The Archivist goal counts every scrap found.'] },
+        'Once the Decoder is built in the Library, switch it on: it reads the DNA left on the scraps found and prints the planet\'s history, 20 sheets in all. Each sheet needs more scraps found than the last (they are not used up; the funnel shows the scraps found towards the next sheet) and takes a little longer; the printer\'s counter shows the time left. Left on, it prints one sheet after another, also while you are away, and switches itself off when it has too few scraps for the next. Tap the printer\'s tray to read the sheets. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title. Each part of the Library is built first (the magnifying glass there explains them).',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
