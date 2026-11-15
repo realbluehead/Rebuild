@@ -1,7 +1,7 @@
 # Rebuild · phase II (the voyage)
 
 Phase II: build a fleet of ships to carry what phase I gathered to a new planet. **Its rules are still to be designed**
-(decide them with the user); for now the screen is a mock-up with real resources. Paths below are relative to
+(decide them with the user); for now the screen has the giant telescope's level simulation. Paths below are relative to
 `src/phase2/` unless they start with `src/`.
 
 ## Starting point: the legacy
@@ -39,28 +39,48 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   **preview**: phase II from the current game's legacy, nothing saved, no Import/Restart.
 
 ## Screen (`ui/phase2.ts`, `showPhase2` → `render(state)`)
-- Phase I's layout (top bar with metal scraps as the currency and ≡ menu, the 3D desert in the middle with a "DRY DOCK 1"
-  plate, tabs Shipyard / Fleet / Cargo / Launch) re-themed by overriding the colour variables on
-  `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian plates, steel rivets, red for lights, bars and the
-  active tab, yellow for buttons you can press and the currency. One panel height for every tab.
-- **The desert** (`ui/desert.ts`, `createDesert`, three.js, only in phase II's chunk: phase I imports `../phase2/boot` dynamically, never statically): a real 3D scene with an
-  orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (2) of the screen and scaled up with crisp
-  pixels over a pixel night sky (a canvas drawn once, CSS background). **Plots** (work areas): the ground is `GRID`×`GRID`
-  (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1); the middle one (`DOCK_PLOT`) is the dry dock, the
-  rest are empty for now. Each plot has its own dunes (`duneHeight`, flat towards its edges), with flat lanes between
-  (darker strips, red lights at crossings; posts along them looked like rain); the slab top sits just under the
-  flattest sand to avoid z-fighting. A tap (a short still press) picks the plot under it (raycast onto the ground
-  plane), zooms back in and the view glides to it (`focus`); `createDesert(onPlot)` reports it and the dock plate shows
-  its name. Zooming out drifts the view to the ground's centre (all of it fits at `ZOOM_MAX`) and outlines the selected
-  plot in yellow. Selection is view state, not saved. In the dock plot: the Black siphon's bell on four
-  legs: obsidian plating over `plated` of it, the open sector (ribs and hoops) facing the camera (angles as three's sphere
-  `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a blinking beacon; seven tentacles (tubes) on the sand with red
-  probe tips; four floodlights (point lights, gently flickering). The camera sways: a bob of `BOB_UNITS` every `BOB_SEC`
-  and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides
-  on a little after a flick (`spin`, `GLIDE_KEEP`). Two fingers (pinch) or the mouse wheel zoom out up to `ZOOM_MAX`
-  (4) times `VIEW` (the closest, and the start); the view eases to it (`shown`, `ZOOM_EASE`). Not saved.
-- Real so far: the metal count at the top and the Cargo tab's "Have" column (bluetreri, pages, notes, photos). Everything
-  else is placeholder rows.
+- Phase I's layout (top bar with metal scraps as the currency, the telescope's level and bar, and the ≡ menu; the 3D
+  desert in the middle with the selected area's plate; the tab panel below, about 3/7 of the height, its list scrolling)
+  re-themed by overriding the colour variables on `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian
+  plates, steel rivets, red for lights, bars and the active tab, yellow for buttons you can press and the currency.
+- **One tab so far: Telescope** (the earlier mocked tabs are gone). A card with what the telescope sees (a small canvas:
+  a ringed planet among stars, drawn at a resolution and noise that improve with the level, `drawView`) and its numbers;
+  **a simulation**: "Lv −"/"Lv +" and the next row's button step the level freely (nothing spent or saved, the costs
+  shown are suggestions); the 20 upgrades as rows (Built / next / cost). Changing the level rebuilds the telescope in
+  the desert and glides the view to its plot.
+
+## The telescope (`core/telescope.ts`, `ui/telescope3d.ts`)
+- 20 levels, one upgrade each (`UPGRADES`: part Size / Lenses / Sharpness / Mount / Dome / Mirror / Laser);
+  `telescopeAt(level)` folds them into a `Telescope` (aperture, lenses, sharpness, mount tripod → pier → fork, tube
+  refractor → reflector → truss, finder, platform, wall, dome, mirror segments 0/7/19, lasers 0/1/3);
+  `telescopeRange` (ly) and `upgradeCost` (metal, a suggestion) for the tab. Tested in `telescope.test.ts`. **Its rules
+  (real costs, saving the level, what it is for) are still to be decided with the user**; saving the level means a
+  `P2State` field (version bump, migration, test).
+- `buildTelescope(t)` draws it at its level round its plot's centre: the tube tilted 40° up, sideways to the starting
+  view (so its length shows), on its mount; lens rings glow brighter with sharpness; platform with red lights, wind wall,
+  a half dome behind (open towards the view), hexagonal mirror segments, laser beams; a work lamp. `setTelescope`
+  swaps it (`disposeTelescope` frees the old one).
+
+## The desert (`ui/desert.ts`, `createDesert(onPlot, start)` → `{ el, setTelescope, select, stop }`)
+- three.js, only in phase II's chunk (phase I imports `../phase2/boot` dynamically, never statically). A real 3D scene
+  with an orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (2) of the screen and scaled up with
+  crisp pixels over a pixel night sky (a canvas drawn once, CSS background).
+- **Plots** (work areas): the ground is `GRID`×`GRID` (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1).
+  `TELESCOPE_PLOT` (0, AREA 1, where the view starts) holds the telescope, its sand cleared flat within `CLEARED`;
+  the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; the rest are empty for now. Each plot has its own dunes
+  (`duneHeight`, flat towards its edges), with flat lanes between (darker strips, red lights at crossings; posts along
+  them looked like rain); the slab top sits just under the flattest sand to avoid z-fighting. A tap (a short still
+  press) picks the plot under it (raycast onto the ground plane), zooms back in and the view glides to it (`focus`);
+  `onPlot` reports it and the plate shows its name. Zooming out drifts the view to the ground's centre (all of it fits
+  at `ZOOM_MAX`) and outlines the selected plot in yellow. Selection is view state, not saved.
+- In the dock plot: the Black siphon's bell on four legs: obsidian plating over `plated` of it, the open sector (ribs
+  and hoops) facing the camera (angles as three's sphere `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a
+  blinking beacon; seven tentacles (tubes) on the sand with red probe tips; four floodlights (point lights, gently
+  flickering).
+- The camera sways: a bob of `BOB_UNITS` every `BOB_SEC` and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with
+  reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides on a little
+  after a flick (`spin`, `GLIDE_KEEP`). Two fingers (pinch) or the mouse wheel zoom out up to `ZOOM_MAX` (4) times
+  `VIEW` (the closest, and the start); the view eases to it (`shown`, `ZOOM_EASE`). Not saved.
 
 ## Testing
 - Unit tests next to the code (`*.test.ts`). In the browser, use a test origin (`fresh.localhost`, `copy.localhost`),

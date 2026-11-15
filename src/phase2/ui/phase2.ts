@@ -1,62 +1,53 @@
-// Phase II screen (still mostly a mock-up): the same layout as phase I — a top bar with the currency and the ≡ menu,
-// the scene in the middle and a panel of tabs at the bottom — re-themed in the voyage splash's palette (obsidian
-// plates, steel rivets, red lights) with yellow for what you can press. The currency and the Cargo tab's "Have" column
-// come from the state (what phase I handed over); the other tabs and rows are placeholders, to see how the screen looks.
+// Phase II screen: the same layout as phase I — a top bar with the currency and the ≡ menu, the scene in the middle and
+// a panel of tabs at the bottom — re-themed in the voyage splash's palette (obsidian plates, steel rivets, red lights)
+// with yellow for what you can press. The currency comes from the state (what phase I handed over). One tab so far, the
+// Telescope: a simulation of its 20 levels (stepped freely, nothing spent or saved) that rebuilds it in the desert.
 import './phase2.css';
 import { fmt } from '../../shared/format';
 import { h } from '../../shared/ui/dom';
 import type { P2State } from '../core/state';
-import { createDesert, DOCK_PLOT } from './desert';
+import { TELESCOPE_MAX, telescopeAt, telescopeRange, UPGRADES, upgradeCost, type Telescope } from '../core/telescope';
+import { createDesert, DOCK_PLOT, TELESCOPE_PLOT } from './desert';
 
-interface Row { name: string; lvl: string; eff: string; cost: string; can: boolean }
-
-/** Placeholder content per tab: a sub-tab picker (optional) and a table. */
-const TABS: { name: string; picks?: string[]; heads: string[]; rows: Row[] }[] = [
-  {
-    name: 'Shipyard',
-    picks: ['Black siphon', 'Ship 2', 'Ship 3'],
-    heads: ['Part', 'Lv', 'Effect', 'Cost'],
-    rows: [
-      { name: 'Hull', lvl: '3', eff: 'armour ×1.6', cost: '1.2k', can: true },
-      { name: 'Engines', lvl: '2', eff: 'speed ×1.4', cost: '860', can: true },
-      { name: 'Cargo bay', lvl: '1', eff: 'hold 40 t', cost: '2.4k', can: false },
-      { name: 'Tentacles', lvl: '0', eff: 'grab ×1', cost: '5k', can: false },
-      { name: 'Shield', lvl: '0', eff: 'storms −0%', cost: '12k', can: false },
-    ],
-  },
-  {
-    name: 'Fleet',
-    heads: ['Ship', 'Lv', 'State', ''],
-    rows: [
-      { name: 'Black siphon', lvl: '6', eff: 'in dock', cost: 'Crew', can: true },
-      { name: 'Ship 2', lvl: '—', eff: 'blueprint 40%', cost: '30k', can: false },
-      { name: 'Ship 3', lvl: '—', eff: '???', cost: '—', can: false },
-    ],
-  },
-  {
-    name: 'Cargo',
-    heads: ['Load', 'Have', 'Aboard', ''],
-    rows: [], // (from the state: `cargoRows`)
-  },
-  {
-    name: 'Launch',
-    picks: ['Routes', 'Beacons'],
-    heads: ['Destination', 'Ly', 'Odds', ''],
-    rows: [
-      { name: 'Kepler drift', lvl: '4', eff: '62% safe', cost: '3k', can: true },
-      { name: 'Ash belt', lvl: '9', eff: '35% safe', cost: '18k', can: false },
-      { name: 'New home', lvl: '27', eff: '???', cost: '—', can: false },
-    ],
-  },
-];
-
-/** The Cargo tab: what phase I handed over, ready to load. */
-const cargoRows = (s: P2State): Row[] => [
-  { name: 'Bluetreri', lvl: fmt(s.bluetreri), eff: '0 / 40 t', cost: 'Load', can: true },
-  { name: 'Pages', lvl: fmt(s.items.page), eff: '0 / 200', cost: 'Load', can: true },
-  { name: 'Notes', lvl: fmt(s.items.note), eff: '0 / 120', cost: 'Load', can: true },
-  { name: 'Photos', lvl: fmt(s.items.photo), eff: '0 / 120', cost: 'Load', can: true },
-];
+/** What the telescope sees (a ringed planet among stars), drawn at a resolution and with noise that improve with it. */
+function drawView(c: HTMLCanvasElement, t: Telescope): void {
+  const n = 8 + Math.round(((t.level - 1) / (TELESCOPE_MAX - 1)) * 56);
+  c.width = n; c.height = n;
+  const g = c.getContext('2d');
+  if (!g) return;
+  g.fillStyle = '#04050c'; g.fillRect(0, 0, n, n);
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const stars = 8 + t.level * 6;
+  for (let i = 0; i < stars; i++) {
+    const x = rnd(), y = rnd(), b = 0.3 + rnd() * 0.7;
+    g.fillStyle = `rgba(255,255,255,${b})`;
+    g.fillRect(Math.floor(x * n), Math.floor(y * n), 1, 1);
+  }
+  const cx = n * 0.5, cy = n * 0.52, R = n * 0.22;
+  g.save();
+  g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+  g.fillStyle = '#c87a4a'; g.fillRect(0, 0, n, n);
+  if (t.sharpness >= 25) for (let k = -3; k <= 3; k++) { // bands
+    g.fillStyle = k % 2 ? '#a85a3a' : '#e8a870';
+    g.fillRect(cx - R, cy + (k / 3.5) * R - R * 0.07, R * 2, R * 0.14);
+  }
+  if (t.sharpness >= 60) { g.fillStyle = '#ff6a4a'; g.beginPath(); g.ellipse(cx + R * 0.35, cy + R * 0.3, R * 0.18, R * 0.1, 0, 0, 7); g.fill(); }
+  g.fillStyle = 'rgba(0,0,0,0.45)'; g.beginPath(); g.arc(cx + R * 0.45, cy - R * 0.2, R, 0, 7); g.fill(); // night side
+  g.restore();
+  if (t.aperture >= 0.5) { // the rings
+    g.strokeStyle = '#e8d8a8'; g.lineWidth = Math.max(1, n / 40);
+    g.beginPath(); g.ellipse(cx, cy, R * 1.7, R * 0.42, -0.25, 0.08 * Math.PI, 0.92 * Math.PI); g.stroke();
+  }
+  if (t.level >= 10) { g.fillStyle = '#9aa8c8'; g.beginPath(); g.arc(cx + R * 2.2, cy - R * 1.4, Math.max(1, R * 0.18), 0, 7); g.fill(); }
+  // Noise, less the sharper it gets.
+  const img = g.getImageData(0, 0, n, n), noise = (100 - t.sharpness) * 0.9;
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = (rnd() - 0.5) * noise;
+    img.data[i] += v; img.data[i + 1] += v; img.data[i + 2] += v;
+  }
+  g.putImageData(img, 0, 0);
+}
 
 export interface Phase2Screen {
   /** Updates the texts from the state (every frame; only what changed is written). */
@@ -66,94 +57,103 @@ export interface Phase2Screen {
 /** Puts the phase II screen over `root` (the phone), fading in. `openMenu` opens the ≡ menu. */
 export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void): Phase2Screen {
   const el = h('div', 'p2');
+  /** The telescope's level in the simulation (view state: not saved). */
+  let level = 1;
 
-  // Top bar: metal scraps (the currency of phase II), rate, the fleet line and a progress bar; menu on the right.
+  // Top bar: metal scraps (the currency of phase II), the telescope's level and its bar; menu on the right.
   const top = h('header', 'topbar');
   const stats = h('div', 'stats');
   const line = h('div', 'gold-line');
   const metal = h('span', 'gold', fmt(s.metal));
-  line.append(h('i', 'nut'), metal, h('span', 'rate', '+0/min'));
-  const fleet = h('div', 'cargo-line');
-  const bar = h('div', 'bar cargo-bar');
-  const fill = h('i');
-  fill.style.width = '35%';
-  bar.append(fill);
-  fleet.append(bar, h('span', 'cargo-text', 'Fleet 1/6 · cargo 0%'));
-  const lvl = h('div', 'explored', 'Shipyard Lv 1/12 · 35%');
+  line.append(h('i', 'nut'), metal);
+  const lvl = h('div', 'explored');
   const track = h('div', 'bar slim');
   const tfill = h('i');
-  tfill.style.width = '35%';
   track.append(tfill);
-  stats.append(line, fleet, lvl, track);
+  stats.append(line, lvl, track);
   const menu = h('button', 'px-btn menu-btn');
   menu.title = 'Menu';
   menu.append(h('i'), h('i'), h('i'));
   menu.addEventListener('click', openMenu);
   top.append(stats, menu);
 
-  // Middle: the Black siphon being built on the night desert (3D, isometric).
+  // Middle: the night desert (3D, isometric), starting on the telescope's plot.
   const scene = h('section', 'p2-scene');
-  const dock = h('div', 'p2-dock px-box');
-  const name = (k: number) => (k === DOCK_PLOT ? `AREA ${k + 1} · DRY DOCK · Black siphon` : `AREA ${k + 1} · empty`);
-  dock.textContent = name(DOCK_PLOT);
-  scene.append(createDesert((k) => { dock.textContent = name(k); }).el, dock);
+  const plate = h('div', 'p2-dock px-box');
+  let shownPlot = TELESCOPE_PLOT;
+  const name = (k: number) =>
+    k === TELESCOPE_PLOT ? `AREA ${k + 1} · TELESCOPE · Lv ${level}`
+      : k === DOCK_PLOT ? `AREA ${k + 1} · DRY DOCK · Black siphon` : `AREA ${k + 1} · empty`;
+  const desert = createDesert((k) => { shownPlot = k; plate.textContent = name(k); }, TELESCOPE_PLOT);
+  scene.append(desert.el, plate);
 
-  // Bottom panel: four tabs, each a placeholder table.
+  // Bottom panel: the Telescope tab — what it sees, its numbers, the level stepper and the 20 upgrades.
   const panel = h('aside', 'panel');
   const tabs = h('div', 'tabs');
-  const lists = TABS.map((t, k) => {
-    const list = h('div', 'list');
-    list.hidden = k !== 0;
-    if (t.picks) {
-      const pick = h('div', 'rover-pick');
-      t.picks.forEach((p, q) => {
-        const b = h('button', `px-btn pick${q === 0 ? ' on' : ''}${q === 2 ? ' locked' : ''}`, p);
-        b.addEventListener('click', () => pick.querySelectorAll('.pick').forEach((x) => x.classList.toggle('on', x === b)));
-        pick.append(b);
-      });
-      list.append(pick);
-    }
-    const table = h('div', 'part-table px-box p2-table');
-    const head = h('div', 'part-row head');
-    for (const x of t.heads) head.append(h('span', '', x));
-    table.append(head);
-    for (const r of t.name === 'Cargo' ? cargoRows(s) : t.rows) {
-      const row = h('div', 'part-row');
-      row.append(h('span', 'name', r.name), h('span', 'lvl', r.lvl), h('span', 'eff', r.eff));
-      const buy = h('button', `px-btn buy${r.can ? ' can' : ''}`);
-      if (/^[\d.]+k?$/.test(r.cost)) buy.append(h('i', 'nut'));
-      buy.append(r.cost);
-      buy.disabled = !r.can;
-      row.append(buy);
-      table.append(row);
-    }
-    list.append(table);
-    return list;
+  tabs.append(h('button', 'px-btn tab on', 'Telescope'));
+  const list = h('div', 'list tele');
+  const card = h('div', 'px-box tele-card');
+  const view = document.createElement('canvas');
+  view.className = 'tele-view';
+  const specs = h('div', 'tele-specs');
+  const step = h('div', 'tele-step');
+  const down = h('button', 'px-btn', 'Lv −'), up = h('button', 'px-btn can', 'Lv +');
+  step.append(down, up);
+  card.append(view, specs);
+  const sim = h('div', 'tele-sim');
+  sim.append(h('span', '', 'Simulation: free levels, not saved'), step);
+  const table = h('div', 'part-table px-box p2-table tele-table');
+  const head = h('div', 'part-row head');
+  for (const x of ['Lv', 'Upgrade', 'Does', '']) head.append(h('span', '', x));
+  table.append(head);
+  const rows = UPGRADES.map((u, k) => {
+    const row = h('div', 'part-row');
+    const buy = h('button', 'px-btn buy');
+    buy.addEventListener('click', () => setLevel(k + 1));
+    row.append(h('span', 'lvl', String(k + 1)), h('span', 'name', u.name), h('span', 'eff', `${u.part} · ${u.note}`), buy);
+    table.append(row);
+    return { row, buy };
   });
-  const tabBtns = TABS.map((t, k) => {
-    const b = h('button', `px-btn tab${k === 0 ? ' on' : ''}${k === 1 ? ' alert' : ''}`, t.name);
-    b.addEventListener('click', () => {
-      tabBtns.forEach((x, q) => x.classList.toggle('on', q === k));
-      lists.forEach((l, q) => (l.hidden = q !== k));
-      b.classList.remove('alert');
+  list.append(card, sim, table);
+  panel.append(tabs, list);
+
+  const setLevel = (lv: number) => {
+    level = Math.max(1, Math.min(TELESCOPE_MAX, lv));
+    const t = telescopeAt(level);
+    desert.setTelescope(t);
+    desert.select(TELESCOPE_PLOT);
+    shownPlot = TELESCOPE_PLOT;
+    plate.textContent = name(shownPlot);
+    lvl.textContent = `Telescope Lv ${level}/${TELESCOPE_MAX}`;
+    tfill.style.width = `${(level / TELESCOPE_MAX) * 100}%`;
+    drawView(view, t);
+    specs.replaceChildren(
+      h('div', 'tele-name', `Lv ${level} · ${UPGRADES[level - 1].name}`),
+      h('div', '', `Aperture ${t.aperture} m`),
+      h('div', '', `Lenses ${t.lenses} · sharp ${t.sharpness}%`),
+      h('div', '', `Sees ${fmt(telescopeRange(t))} ly`),
+    );
+    down.disabled = level <= 1;
+    up.disabled = level >= TELESCOPE_MAX;
+    up.classList.toggle('can', level < TELESCOPE_MAX);
+    rows.forEach(({ row, buy }, k) => {
+      const lv = k + 1;
+      row.classList.toggle('done', lv <= level);
+      buy.classList.toggle('can', lv === level + 1);
+      buy.disabled = lv > level + 1;
+      buy.replaceChildren();
+      if (lv <= level) buy.append(lv === 1 ? 'Start' : 'Built');
+      else { buy.append(h('i', 'nut'), fmt(upgradeCost(lv))); }
     });
-    tabs.append(b);
-    return b;
-  });
-  panel.append(tabs, ...lists);
+  };
+  down.addEventListener('click', () => setLevel(level - 1));
+  up.addEventListener('click', () => setLevel(level + 1));
+  setLevel(1);
 
   el.append(top, scene, panel);
   root.append(el);
   void el.offsetWidth; // (styles applied at opacity 0 first, so the change below fades)
   el.classList.add('in'); // fades in (over the voyage splash)
-  // One panel height for every tab (the tallest), so the scene never jumps (as in phase I).
-  let tallest = 0;
-  lists.forEach((_, k) => {
-    lists.forEach((x, q) => (x.hidden = q !== k));
-    tallest = Math.max(tallest, panel.offsetHeight);
-  });
-  lists.forEach((x, q) => (x.hidden = q !== 0));
-  panel.style.height = `${tallest}px`;
 
   return {
     render(st) {
