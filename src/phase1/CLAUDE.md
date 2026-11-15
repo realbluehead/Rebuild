@@ -244,7 +244,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   saved).
 
 ## Balance tools
-- `npm run sim -- <hours>`: balance simulator (greedy player), prints when each milestone is reached. Run it whenever numbers in `src/content/` change.
+- `npm run sim -- <hours>`: balance simulator (greedy player), prints when each milestone is reached. Run it whenever numbers in `content/` change.
   Ablations (what each option is worth): `SKIP=<ids>` never uses those parts, rovers, routes, `routelv`, works, goals;
   `RADAR=<share>` / `HOLD=<share>` buy Radar / Hold whenever a level costs under that share of the bluetreri at hand;
   `DIG=rich`, `HAUL=0.3|0.5|0.8`, `HAULPICK=scout|miner`. `DUMP=<file>` writes the final state as a save: to try that point of the game in the UI, set it as `localStorage['rebuild:save']` on a test origin (fresh.localhost), never the real game. The last line, `SUMMARY`, gives the times of map 50%/100%, the
