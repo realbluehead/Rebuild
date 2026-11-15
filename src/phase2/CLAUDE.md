@@ -43,8 +43,14 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   active tab, yellow for buttons you can press and the currency. One panel height for every tab.
 - **The desert** (`ui/desert.ts`, `createDesert`, three.js, only in phase II's chunk: phase I imports `../phase2/boot` dynamically, never statically): a real 3D scene with an
   orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (2) of the screen and scaled up with crisp
-  pixels over a pixel night sky (a canvas drawn once, CSS background). A 48-unit slab with dunes (`duneHeight`, flat
-  towards the edges; the slab top sits just under the flattest sand to avoid z-fighting), the Black siphon's bell on four
+  pixels over a pixel night sky (a canvas drawn once, CSS background). **Plots** (work areas): the ground is `GRID`×`GRID`
+  (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1); the middle one (`DOCK_PLOT`) is the dry dock, the
+  rest are empty for now. Each plot has its own dunes (`duneHeight`, flat towards its edges), with flat lanes between
+  (darker strips, red lights at crossings; posts along them looked like rain); the slab top sits just under the
+  flattest sand to avoid z-fighting. A tap (a short still press) picks the plot under it (raycast onto the ground
+  plane), zooms back in and the view glides to it (`focus`); `createDesert(onPlot)` reports it and the dock plate shows
+  its name. Zooming out drifts the view to the ground's centre (all of it fits at `ZOOM_MAX`) and outlines the selected
+  plot in yellow. Selection is view state, not saved. In the dock plot: the Black siphon's bell on four
   legs: obsidian plating over `plated` of it, the open sector (ribs and hoops) facing the camera (angles as three's sphere
   `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a blinking beacon; seven tentacles (tubes) on the sand with red
   probe tips; four floodlights (point lights, gently flickering). The camera sways: a bob of `BOB_UNITS` every `BOB_SEC`

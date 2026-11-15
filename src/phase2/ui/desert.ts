@@ -4,14 +4,27 @@
 // gently (a slow bob up and down and ±1° of turn) so the scene never looks frozen, and a finger dragged sideways turns
 // it round (only round: the height of the view never changes), with a little glide after letting go. Two fingers (or
 // the mouse wheel) zoom out, up to ZOOM_MAX times as much ground, and back in to the starting view.
+// The ground is a GRID × GRID of plots (work areas), each about one closest view; the middle one is the Black siphon's
+// dry dock. Zoomed out, the whole ground shows; a tap on a plot selects it and the view glides in to it.
 import {
   AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
-  TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, type Material,
+  TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, type Material, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
+  BufferGeometry, Raycaster, Plane, Vector2,
 } from 'three';
 
-/** Size of the ground, in world units (one unit ~ one voxel of the mock-up). */
-const SIZE = 48;
+/** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
+ *  mock-up). Plots are numbered row by row (0..GRID²-1); the middle one is the dry dock. */
+export const PLOT = 40;
+export const GRID = 3;
+const SIZE = PLOT * GRID;
+export const DOCK_PLOT = (GRID * GRID - 1) / 2;
+/** Centre of plot `k`, and the plot under (x, z) (clamped to the ground). */
+const plotCentre = (k: number) => new Vector3(((k % GRID) - (GRID - 1) / 2) * PLOT, 0, (Math.floor(k / GRID) - (GRID - 1) / 2) * PLOT);
+const plotAt = (x: number, z: number) => {
+  const c = (v: number) => Math.max(0, Math.min(GRID - 1, Math.floor((v + SIZE / 2) / PLOT)));
+  return c(z) * GRID + c(x);
+};
 /** Screen pixels per rendered pixel (the pixel-art look). */
 const PX = 2;
 /** World units across the view (the diorama's corners may leave the screen). */
@@ -35,10 +48,11 @@ const STEEL = '#4a4e58';
 const RED = '#ff2a3a';
 const LAMP = '#fff2b0';
 
-/** Dune height at (x, z) (world units, 0 = the slab's top at the edges). */
+/** Dune height at (x, z) (world units, 0.8 = the flat sand of the lanes between plots and round the slab's edge). */
 function duneHeight(x: number, z: number): number {
-  const edge = Math.min(SIZE / 2 - Math.abs(x), SIZE / 2 - Math.abs(z));
-  const fade = Math.max(0, Math.min(1, edge / 6)); // flat towards the edges, so the slab's sides meet the sand
+  const local = (v: number) => ((((v + SIZE / 2) % PLOT) + PLOT) % PLOT) - PLOT / 2;
+  const edge = PLOT / 2 - Math.max(Math.abs(local(x)), Math.abs(local(z)));
+  const fade = Math.max(0, Math.min(1, (edge - 1.5) / 5));
   const h = 1.2 + Math.sin((x * 0.8 + z * 0.35) / 3.2) * 0.9 + Math.sin(x / 7.3 + 1.7) * Math.cos(z / 6.1) * 1.3;
   return 0.8 + Math.max(0, h) * fade;
 }
@@ -46,9 +60,9 @@ function duneHeight(x: number, z: number): number {
 const lambert = (c: string, flat = true) => new MeshLambertMaterial({ color: c, flatShading: flat });
 const glow = (c: string) => new MeshBasicMaterial({ color: c });
 
-function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[] } {
+function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outline: LineLoop } {
   const scene = new Scene();
-  scene.fog = new Fog('#141a34', 105, 165);
+  scene.fog = new Fog('#141a34', 230, 380);
 
   // Ground: a slab with displaced dunes on top.
   const ground = new PlaneGeometry(SIZE, SIZE, SIZE, SIZE);
@@ -126,7 +140,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[] } {
     for (let t = 0; t <= 15; t++) {
       const r = 8 + t, w = Math.sin(t / 2.5 + k) * 1.6;
       const x = Math.cos(a) * r - Math.sin(a) * w, z = Math.sin(a) * r + Math.cos(a) * w;
-      if (Math.abs(x) > SIZE / 2 - 1 || Math.abs(z) > SIZE / 2 - 1) break;
+      if (Math.abs(x) > PLOT / 2 - 2 || Math.abs(z) > PLOT / 2 - 2) break; // (they stay inside the dock's plot)
       pts.push(new Vector3(x, duneHeight(x, z) + 0.45, z));
     }
     if (pts.length < 3) continue;
@@ -150,11 +164,37 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[] } {
     lamps.push(light);
   }
 
+  // The plots' borders: a darker strip along each lane (on the flat sand), a red light where lanes cross. (Posts along
+  // the lanes looked like rain at the closest zoom.)
+  const lane = lambert('#3c3c5e');
+  const crossings: [number, number][] = [];
+  for (let i = 0; i <= GRID; i++) {
+    const a = -SIZE / 2 + i * PLOT;
+    for (let j = 0; j <= GRID; j++) crossings.push([a, -SIZE / 2 + j * PLOT]);
+    const along = new Mesh(new BoxGeometry(SIZE + 1.4, 0.1, 1.4), lane), across = new Mesh(new BoxGeometry(1.4, 0.1, SIZE + 1.4), lane);
+    along.position.set(0, 0.82, a);
+    across.position.set(a, 0.83, 0);
+    scene.add(along, across);
+  }
+  const place = (mesh: InstancedMesh, at: [number, number][], y: number) => {
+    const o = new Object3D();
+    at.forEach(([x, z], k) => { o.position.set(x, y, z); o.updateMatrix(); mesh.setMatrixAt(k, o.matrix); });
+    scene.add(mesh);
+  };
+  place(new InstancedMesh(new BoxGeometry(0.7, 0.7, 0.7), red, crossings.length), crossings, 1.5);
+
+  // The selected plot's outline (shown while zoomed out).
+  const e = PLOT / 2 - 0.8;
+  const outline = new LineLoop(
+    new BufferGeometry().setFromPoints([new Vector3(-e, 0.9, -e), new Vector3(e, 0.9, -e), new Vector3(e, 0.9, e), new Vector3(-e, 0.9, e)]),
+    new LineBasicMaterial({ color: '#ffd23a', transparent: true }));
+  scene.add(outline);
+
   scene.add(new AmbientLight('#6a7aaa', 1.2));
   const moon = new DirectionalLight('#b8c8f8', 1.4);
   moon.position.set(-30, 40, -10);
   scene.add(moon);
-  return { scene, beacon, lamps };
+  return { scene, beacon, lamps, outline };
 }
 
 /** A night sky of pixel stars and a crescent moon, drawn once (the 3D view is transparent over it). */
@@ -179,8 +219,9 @@ export interface Desert {
   stop(): void;
 }
 
-/** The 3D desert, filling its parent (call `stop` to end the animation). */
-export function createDesert(): Desert {
+/** The 3D desert, filling its parent (call `stop` to end the animation). `onPlot` hears which plot gets selected (it
+ *  starts on the dock's). */
+export function createDesert(onPlot: (k: number) => void = () => {}): Desert {
   const el = document.createElement('div');
   el.className = 'p2-desert';
   el.style.backgroundImage = `url(${skyBackground()})`;
@@ -189,9 +230,13 @@ export function createDesert(): Desert {
   renderer.setClearColor(new Color('#000000'), 0);
   el.append(renderer.domElement);
 
-  const { scene, beacon, lamps } = buildScene();
-  const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
-  const target = new Vector3(0, 6, 0);
+  const { scene, beacon, lamps, outline } = buildScene();
+  const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 600);
+  /** The plot selected, and the point the view centres on (easing to it; it drifts to the ground's centre as the view
+   *  zooms out, so the whole ground fits). */
+  let plot = DOCK_PLOT;
+  const focus = plotCentre(plot);
+  const target = new Vector3();
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /** Zoom picked (1..ZOOM_MAX) and the one shown, easing towards it. */
@@ -214,18 +259,31 @@ export function createDesert(): Desert {
   let turn = 0, spin = 0, dragX: number | null = null, lastMove = 0, lastFrame = performance.now();
   const fingers = new Map<number, { x: number; y: number }>();
   let pinch: { dist: number; zoom: number } | null = null;
+  /** Where and when the last single finger went down, and how far it has moved: a short still press is a tap. */
+  let press: { x: number; y: number; at: number; moved: number } | null = null;
+  const ray = new Raycaster(), ground = new Plane(new Vector3(0, 1, 0), -0.8), hit = new Vector3();
+  const tapPlot = (cx: number, cy: number) => {
+    const r = el.getBoundingClientRect();
+    ray.setFromCamera(new Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+    if (!ray.ray.intersectPlane(ground, hit) || Math.abs(hit.x) > SIZE / 2 || Math.abs(hit.z) > SIZE / 2) return;
+    plot = plotAt(hit.x, hit.z);
+    zoom = 1;
+    spin = 0;
+    onPlot(plot);
+  };
   const spread = () => { const [a, b] = [...fingers.values()]; return Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)); };
   const setZoom = (z: number) => { zoom = Math.min(ZOOM_MAX, Math.max(1, z)); };
   el.addEventListener('pointerdown', (e) => {
     fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { el.setPointerCapture(e.pointerId); } catch { /* (a pointer the browser no longer tracks) */ }
     spin = 0;
-    if (fingers.size === 2) { pinch = { dist: spread(), zoom }; dragX = null; return; }
-    if (fingers.size === 1) { dragX = e.clientX; lastMove = performance.now(); }
+    if (fingers.size === 2) { pinch = { dist: spread(), zoom }; dragX = null; press = null; return; }
+    if (fingers.size === 1) { dragX = e.clientX; lastMove = performance.now(); press = { x: e.clientX, y: e.clientY, at: lastMove, moved: 0 }; }
   });
   el.addEventListener('pointermove', (e) => {
     if (!fingers.has(e.pointerId)) return;
     fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (press) press.moved = Math.max(press.moved, Math.hypot(e.clientX - press.x, e.clientY - press.y));
     if (pinch && fingers.size >= 2) { setZoom(pinch.zoom * (pinch.dist / spread())); return; }
     if (dragX === null) return;
     const now = performance.now(), d = ((e.clientX - dragX) / Math.max(1, el.clientWidth)) * DRAG_TURN;
@@ -235,6 +293,12 @@ export function createDesert(): Desert {
   });
   const release = (e: PointerEvent) => {
     fingers.delete(e.pointerId);
+    if (press && e.type === 'pointerup' && fingers.size === 0 && press.moved < 6 && performance.now() - press.at < 400) {
+      press = null; dragX = null;
+      tapPlot(e.clientX, e.clientY);
+      return;
+    }
+    press = null;
     if (fingers.size < 2) pinch = null;
     if (fingers.size === 1) { dragX = [...fingers.values()][0].x; lastMove = performance.now(); spin = 0; return; } // (a pinch ends: no glide)
     if (dragX === null) return;
@@ -256,8 +320,14 @@ export function createDesert(): Desert {
     if (dragX === null && spin !== 0) { turn += spin * dt; spin *= Math.pow(GLIDE_KEEP, dt); if (Math.abs(spin) < 0.02) spin = 0; }
     const yaw = Math.PI / 4 + turn + (Math.sin((t / TURN_SEC) * Math.PI * 2) * TURN_DEG * Math.PI) / 180;
     const bob = Math.sin((t / BOB_SEC) * Math.PI * 2) * BOB_UNITS;
-    const d = 100;
-    camera.position.set(Math.sin(yaw) * d * 0.8165, d * 0.5774 + bob, Math.cos(yaw) * d * 0.8165);
+    focus.lerp(plotCentre(plot), Math.min(1, ZOOM_EASE * 0.5 * dt));
+    const out = (shown - 1) / (ZOOM_MAX - 1); // 0 closest, 1 furthest
+    target.set(focus.x * (1 - out), 6 * (1 - out) + 2 * out, focus.z * (1 - out));
+    outline.position.set(plotCentre(plot).x, 0, plotCentre(plot).z);
+    (outline.material as LineBasicMaterial).opacity = Math.min(1, out * 3);
+    outline.visible = out > 0.02;
+    const d = 200;
+    camera.position.set(target.x + Math.sin(yaw) * d * 0.8165, target.y + d * 0.5774 + bob, target.z + Math.cos(yaw) * d * 0.8165);
     camera.lookAt(target.x, target.y + bob, target.z);
     beacon.visible = Math.floor(ms / 800) % 2 === 0;
     for (const [k, l] of lamps.entries()) l.intensity = 260 + Math.sin(ms / 900 + k * 2) * 15;
