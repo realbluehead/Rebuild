@@ -42,6 +42,14 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   the rovers drive the rest (`rateParts`). Before, the estimate assumed nobody drove home once there was a Hauler, which
   made Hold look worthless (the Scout then drove home ~50% of the time). It now tracks what arrives within ~5%.
   The sim buys the best (upgrade, rover) pair (Hauler parts included), builds each rover as soon as it can and saves up for it and the next route; it keeps the Decoder on.
+- **Decoder sheets** (save v25): it prints `PAGES_MAX` 20 sheets (`s.pages`), each from more scraps of lore than the
+  last (`pageCost`: growth `PAGE_COST_GROWTH` 1.15, all 20 = `LORE_PAGE_SHARE` 0.9 of the map's scraps, ~3 → ~43 on a
+  full map) and longer (`decodeTime(n)`: 60 s → 30 min, ~3 h in all). `s.scrapsUsed` = scraps taken; `scrapsWaiting` =
+  found − used; `canPrintNext`. Left on it waits for scraps and starts each sheet when it has them; off after the
+  last. Hopper count shows `waiting/needed` (dim `.short` when short), hidden once all 20 are done. Texts: `pageText(k)`
+  (placeholder until written). Historian goal tiers are sheets: 1/3/8/14/20. v24 saves (one sheet per scrap): the
+  scraps printed become as many sheets as they pay for (`legacyPrinted`, `fromLegacyPrinted` in load.ts). Sim: all 20
+  by ~11 h 43.
 - **Library sections** (save v24, `content/library.ts`, `s.library`: -1 locked, >0 seconds left, 0 built): the Library
   tab shows from explorer Lv `LIBRARY_LEVEL` 16 (`libraryOpen`; it stays once a section is started). Bookshelf (Lv 17,
   10 pages, 300, 2 min), Spiral of ages (Lv 20, 10 photos, 800, 4 min), Jukebox (Lv 21, 6 notes, 1.5k, 6 min), Decoder
@@ -149,7 +157,7 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - **Lore** (`LORE` in `content/collection.ts`: receipts, concert tickets, propaganda leaflets): scraps of the old world in
   ~1/1500 empty solid cells (`w.lore`, `w.loreCells` ascending = each scrap's number; their own draw, seed + 4001, so the map and
   items do not change). A scrap is found when its cell is revealed (`loreFound`, derived, nothing saved, no detour), floats
-  up as an icon, and is read once it has gone through the Library's **Decoder** (save v20 `s.printed`; v21 `decodeOn`, `decoding`, `decodeLeft`). It runs in game time (`decode` in core, called from `tick` and, once the map is done, from the frame loop; it also works offline), one scrap at a time in map order; scrap n takes `decodeTime(w, n)` = `DECODE_SEC` 10 s × 60^(n / (scraps on the map − 1)), rising evenly to `DECODE_MAX_SEC` 10 min for the last (~37 s by the 100th, ~1 min by the 140th, ~12.7 h for all 316). The ON/OFF switch (`setDecoder`) works while scraps wait and turns itself off when none are left; switching off lets the one under way finish. The hopper shows the scraps waiting (heap height and a brass count badge); an amber counter on the printer shows the time left (dim: what the next will take). View: `drawDecoder` each frame derives the stage (drop, flow, print) from the time left. Tap the printer's tray to read the sheets in turn. There is no Archive list. Texts are still to be written:
+  up as an icon, and is read once it has gone through the Library's **Decoder** (sheets: see **Decoder sheets** above; v21 `decodeOn`, `decoding`, `decodeLeft`). It runs in game time (`decode` in core, called from `tick` and, once the map is done, from the frame loop; it also works offline). An amber counter on the printer shows the time left (dim: what the next will take). View: `drawDecoder` each frame derives the stage (drop, flow, print) from the time left. Tap the printer's tray to read the sheets in turn. There is no Archive list. Texts are still to be written:
   `loreText` gives lorem ipsum (`LORE_PLACEHOLDER`, paragraphs split by a blank line) until `LORE_TEXTS` has one. Goal **Archivist** (per: 'lore', bluetreri ×1.03 per tier; a goal
   missing from an older save loads as 0, so no migration). Found items and scraps float up as their icon, not a word.
 - End of the game: the tick where the map is done and everything is unloaded sets `s.doneAt` (play time) and

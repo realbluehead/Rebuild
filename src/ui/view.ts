@@ -1,11 +1,11 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type RoverKind, type StatId } from '../content/upgrades';
-import { COIL_MULT, DETECTOR_GOLD, DETECTOR_UPS, SIFT_EVERY, type DetectorUpId, ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
+import { COIL_MULT, DETECTOR_GOLD, DETECTOR_UPS, SIFT_EVERY, type DetectorUpId, ITEMS, LORE, PAGES_MAX, pageText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, canPrintNext, pageCost, scrapsWaiting, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -670,27 +670,31 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   };
   /** The Decoder as the game has it (it works in game time, `decode` in core): stage, hopper, clock and switch. */
   function drawDecoder(s: GameState) {
-    const queue = scrapsToDecode(s, world).length;
-    set(mcCount, String(queue));
-    mcCount.hidden = queue === 0;
-    mcHeap.style.height = `${queue ? Math.round(16 + 84 * Math.min(1, queue / 40)) : 0}%`;
+    // The hopper: the scraps waiting against what the next sheet takes (each sheet takes more).
+    const queue = scrapsWaiting(s, world);
+    const done20 = s.pages >= PAGES_MAX;
+    const need = done20 ? 0 : pageCost(world, s.pages + (s.decoding >= 0 ? 1 : 0));
+    set(mcCount, done20 || (s.decoding >= 0 && s.pages + 1 >= PAGES_MAX) ? String(queue) : `${queue}/${need}`);
+    mcCount.hidden = done20; // (all sheets printed: the scraps left over are of no use)
+    mcCount.classList.toggle('short', !done20 && queue < need);
+    mcHeap.style.height = `${queue && !done20 ? Math.round(16 + 84 * Math.min(1, queue / Math.max(1, need))) : 0}%`;
     if (s.decoding !== mcLast) {
       mcLast = s.decoding;
       if (s.decoding >= 0) {
-        mcDrop.replaceChildren(loreIcon(world.lore[world.loreCells[s.decoding]] - 1));
+        mcDrop.replaceChildren(loreIcon(s.decoding % LORE.length));
         picked = `lore:${s.decoding}`;
       }
       shelfKey = '';
     }
     let st = 'idle';
     if (s.decoding >= 0) {
-      const done = decodeTime(world, s.printed.length) - s.decodeLeft;
+      const done = decodeTime(s.decoding) - s.decodeLeft;
       st = done < 0.7 ? 'drop' : s.decodeLeft < 1.2 ? 'print' : 'flow';
     }
     if (machineEl.dataset.stage !== st) { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); }
-    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : queue ? clock(decodeTime(world, s.printed.length)) : '-:--');
+    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : !done20 ? clock(decodeTime(s.pages)) : '-:--');
     mcClock.classList.toggle('next', s.decoding < 0);
-    mcSwitch.disabled = !s.decodeOn && queue === 0;
+    mcSwitch.disabled = !s.decodeOn && !canPrintNext(s, world);
     mcSwitch.classList.toggle('is-on', s.decodeOn);
     machineEl.classList.toggle('powered', s.decodeOn || s.decoding >= 0);
   }
@@ -698,9 +702,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   /** Tapping the tray shows the printed sheets one after another. */
   mcTray.addEventListener('click', () => {
     const s = current;
-    if (!s || !s.printed.length) return;
-    const at = picked.startsWith('lore:') ? s.printed.indexOf(Number(picked.slice(5))) : -1;
-    picked = `lore:${s.printed[(at + 1) % s.printed.length]}`;
+    if (!s || !s.pages) return;
+    const at = picked.startsWith('lore:') ? Number(picked.slice(5)) : -1;
+    picked = `lore:${(at + 1) % s.pages}`;
     shelfKey = '';
   });
   // The library is lit by a few soft candles: dim, warm, flickering a little (all CSS). The caption sits above it.
@@ -747,7 +751,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   function drawShelves(s: GameState) {
     const lore = loreFound(s, world);
-    const key = `${s.printed.length}|${s.decoding}|` + SECTIONS.map((d) => (s.library[d.id] === 0 ? 1 : 0)).join('') + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
+    const key = `${s.pages}|${s.decoding}|` + SECTIONS.map((d) => (s.library[d.id] === 0 ? 1 : 0)).join('') + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
@@ -800,20 +804,15 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const decLock = locks.get('decoder')!.el;
     if (dec) decLock.remove();
     else if (decLock.parentElement !== libView) libView.insertBefore(decLock, machineEl);
-    // The decoder: how many scraps are printed, the pile in the tray, and the switch.
-    const printed = lore.filter((k) => s.printed.includes(k)).length;
-    set(mcLabel, `Decoder · printed ${printed}/${lore.length} · found ${lore.length}/${world.loreCells.length}`);
-    mcTray.style.setProperty('--n', String(Math.min(6, printed)));
-    binder.update(s.printed.map((k) => {
-      const kind = LORE[world.lore[world.loreCells[k]] - 1];
-      return { title: `${kind.name} #${k + 1}`, text: loreText(kind.id, k) };
-    }));
+    // The decoder: the sheets printed, the scraps found, the pile in the tray.
+    set(mcLabel, `Decoder · sheets ${s.pages}/${PAGES_MAX} · scraps found ${lore.length}/${world.loreCells.length}`);
+    mcTray.style.setProperty('--n', String(Math.min(6, s.pages)));
+    binder.update(Array.from({ length: s.pages }, (_, k) => ({ title: `Sheet #${k + 1}`, text: pageText(k) })));
     const [pid, pk] = picked.split(':');
     const wd = WORKS.find((w) => w.id === pid);
     if (pid === 'lore') {
-      const kind = world.lore[world.loreCells[Number(pk)]] - 1;
       const k = Number(pk);
-      set(libCaption, `${LORE[kind].name} #${k + 1} · ${s.decoding === k ? 'decoding…' : s.printed.includes(k) ? loreText(LORE[kind].id, k) : 'not decoded yet'}`);
+      set(libCaption, `Sheet #${k + 1} · ${s.decoding === k ? 'printing…' : k < s.pages ? pageText(k) : 'not printed yet'}`);
     } else if (wd) {
       const year = wd.years?.[Number(pk)];
       set(libCaption, `${workTitle(wd, Number(pk))}${year ? ` (${year})` : ''} · ${wd.name} #${Number(pk) + 1} · ${wd.effect} ×${wd.bonus}`);
@@ -1130,7 +1129,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the great inventions of the old world, from fire to the internet). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'Once the Decoder is built in the Library, switch it on: it takes the scraps found one by one (the funnel shows how many wait), reads the DNA left on them and prints a sheet of the planet\'s history for each. Each scrap takes longer than the last; the printer\'s counter shows the time left. It keeps working while you are away. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
+        'Once the Decoder is built in the Library, switch it on: it reads the DNA left on the scraps found and prints the planet\'s history, 20 sheets in all. Each sheet takes more scraps than the last (the funnel shows the scraps waiting against what the next sheet needs) and a little longer; the printer\'s counter shows the time left. Left on, it starts each sheet as soon as it has the scraps, also while you are away. Tap the printer\'s tray to read the sheets. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title. Each part of the Library is built first (the magnifying glass there explains them).',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
@@ -1507,7 +1506,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         `${fmt(s.totalGold)} bluetreri gathered`,
         `${fmt(got.page)} pages, ${fmt(got.note)} notes and ${fmt(got.photo)} photos`,
         `${WORKS.reduce((a, wd) => a + s.works[wd.id], 0)} works in the library (${whole(libraryShare(s))})`,
-        `${s.printed.length} pages of the planet's history printed`,
+        `${s.pages} sheets of the planet's history printed`,
         ...(s.detectFrom >= 0 ? [`${fmt(metalCollected(s, world))} metal scraps`] : []),
         `${fmtTime(s.doneAt ?? s.playTime)} of play with ${s.bots.length} rovers`,
       ];

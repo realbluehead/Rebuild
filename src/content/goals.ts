@@ -28,7 +28,7 @@ export const GOALS: readonly GoalDef[] = [
   { id: 'excavator', name: 'Excavator', what: 'cells dug out', tiers: [0.001, 0.01, 0.1, 0.4, 1], per: 'cells', reward: 'drill', mult: 1.25, rewardText: 'Miner drill' },
   { id: 'engineer', name: 'Engineer', what: 'part levels fitted', tiers: [10, 30, 60, 90, 120], reward: 'travel', mult: 1.2, rewardText: 'drive to and from camp' },
   { id: 'archivist', name: 'Archivist', what: 'scraps of lore found', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'loot', mult: 1.03, rewardText: 'bluetreri' },
-  { id: 'historian', name: 'Historian', what: 'sheets of history printed', tiers: [0.01, 0.1, 0.3, 0.6, 1], per: 'lore', reward: 'speed', mult: 1.08, rewardText: 'rover speed' },
+  { id: 'historian', name: 'Historian', what: 'sheets of history printed', tiers: [1, 3, 8, 14, 20], reward: 'speed', mult: 1.08, rewardText: 'rover speed' },
 ];
 
 export const goalById = (id: GoalId): GoalDef => GOALS.find((g) => g.id === id)!;

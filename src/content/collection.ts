@@ -53,20 +53,23 @@ export const DETECTOR_UPS: readonly DetectorUpDef[] = [
 export const COIL_MULT = [1, 2, 3, 4];
 /** Cells the Miner digs (since the detector) for each scrap sifted, by Sifter level (0: no Sifter). */
 export const SIFT_EVERY = [0, 200, 100, 50];
-/** Seconds the Library's Decoder takes on the first scrap of the map and on the last one; in between each scrap takes a
- *  little longer than the one before (the same ratio all along: about 1 min by the 140th of 316; ~12.7 h for a whole map). */
-export const DECODE_SEC = 10;
-export const DECODE_MAX_SEC = 600;
-/** Texts of the scraps, by kind and scrap number (`k`: its index in the world's `loreCells`). To be written: a scrap
- *  without its own text reads "Lore". */
-const LORE_TEXTS: Partial<Record<LoreId, Record<number, string>>> = {};
+/** The Library's Decoder prints PAGES_MAX sheets of the planet's history, each from more scraps of lore than the last
+ *  (growing by PAGE_COST_GROWTH; all of them together take LORE_PAGE_SHARE of the map's scraps, `pageCost` in core).
+ *  A sheet takes DECODE_SEC to print, the last one DECODE_MAX_SEC, each a little longer (~3 h for all 20). */
+export const PAGES_MAX = 20;
+export const PAGE_COST_GROWTH = 1.15;
+export const LORE_PAGE_SHARE = 0.9;
+export const DECODE_SEC = 60;
+export const DECODE_MAX_SEC = 1800;
+/** Texts of the sheets, by sheet number (0-based). To be written: a sheet without its own text shows the placeholder. */
+const PAGE_TEXTS: Record<number, string> = {};
 /** Placeholder until a scrap has its own text (paragraphs split by a blank line). */
 const LORE_PLACEHOLDER = [
   'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
   'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
   'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.',
 ].join('\n\n');
-export const loreText = (kind: LoreId, k: number): string => LORE_TEXTS[kind]?.[k] ?? LORE_PLACEHOLDER;
+export const pageText = (k: number): string => PAGE_TEXTS[k] ?? LORE_PLACEHOLDER;
 
 /** Explorer level needed for the k-th work (0-based) of any collection: from WORK_LEVEL_FIRST to WORK_LEVEL_LAST, evenly.
  * The last one stays below the top level so the library can be finished before the map. */

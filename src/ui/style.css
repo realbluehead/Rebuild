@@ -396,6 +396,7 @@ button { font: inherit; color: inherit; }
   border: 1px solid #1a1208; background: radial-gradient(circle at 35% 30%, #f4d890, #b07a2a 70%); color: #1a1208;
   font: 7px/13px var(--font-num); text-align: center; box-shadow: 0 1px 2px #000a; z-index: 2; }
 .mc-count[hidden] { display: none; }
+.mc-count.short { opacity: .7; } /* (not yet enough scraps for the next sheet) */
 .mc-drop { position: absolute; left: 50%; top: -14px; width: 12px; height: 12px; margin-left: -6px; line-height: 0; opacity: 0; pointer-events: none; }
 .mc-drop .item-icon { width: 12px; height: 12px; }
 .machine[data-stage=drop] .mc-drop { animation: mc-drop .7s ease-in forwards; }

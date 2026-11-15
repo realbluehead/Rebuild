@@ -154,11 +154,13 @@ export interface GameState {
   zoom: number;
   /** Accumulated play time, in seconds. */
   playTime: number;
-  /** Scraps of lore (index into `world.loreCells`) run through the Library's machine and printed (readable). */
-  printed: number[];
-  /** The Decoder's switch: while on, it takes the next scrap found as soon as it is free (it turns off when none is left). */
+  /** Sheets of history the Decoder has printed (0..PAGES_MAX, readable in the binder). */
+  pages: number;
+  /** Scraps of lore the Decoder has taken (each sheet takes more: `pageCost`); the rest of those found wait for it. */
+  scrapsUsed: number;
+  /** The Decoder's switch: while on, it starts the next sheet as soon as it is free and has the scraps for it. */
   decodeOn: boolean;
-  /** The scrap in the Decoder (index into `world.loreCells`), or -1, and the seconds it still needs. */
+  /** The sheet being printed (= `pages`), or -1, and the seconds it still needs. */
   decoding: number;
   decodeLeft: number;
   /** The Metal detector (I+D): -1 until bought; then the rank from which the Scout picks up the scraps it reveals (cells
@@ -174,6 +176,9 @@ export interface GameState {
   library: Record<SectionId, number>;
   /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
   doneAt?: number;
+  /** Saves from before v25: scraps printed one sheet each, turned into sheets at today's prices once the world exists
+   *  (`fromLegacyPrinted`). */
+  legacyPrinted?: number;
   /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
   recount?: boolean;
   /** Saves from before rover kinds (v15): the current ring restarts for the Scout alone once the world exists
@@ -201,7 +206,8 @@ export function newGame(seed = randomSeed()): GameState {
     works: Object.fromEntries(WORKS.map((x) => [x.id, 0])) as Record<WorkId, number>,
     goals: Object.fromEntries(GOALS.map((g) => [g.id, 0])) as Record<GoalId, number>,
     fetched: [],
-    printed: [],
+    pages: 0,
+    scrapsUsed: 0,
     decodeOn: false,
     decoding: -1,
     decodeLeft: 0,

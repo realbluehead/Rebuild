@@ -95,22 +95,16 @@ describe('save', () => {
     expect(back.scouted).toEqual([1, 9, 12]);
   });
 
-  it('keeps the scraps printed, and a v19 save starts with none', () => {
+  it('keeps the sheets printed and the Decoder under way; a v24 save turns its scraps printed into sheets later', () => {
     const s = newGame(5);
-    s.printed = [3, 0, 3];
-    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state.printed).toEqual([3, 0]);
-    const { printed, ...v19 } = { ...serialize(newGame(5), 0), v: 19 };
-    void printed;
-    expect(deserialize(v19).state.printed).toEqual([]);
-  });
-
-  it('keeps the Decoder under way, and a v20 save starts with it off', () => {
-    const s = newGame(5);
-    Object.assign(s, { printed: [2], decodeOn: true, decoding: 7, decodeLeft: 3.5 });
-    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state).toMatchObject({ decodeOn: true, decoding: 7, decodeLeft: 3.5 });
-    const { decodeOn, decoding, decodeLeft, ...v20 } = { ...serialize(s, 0), v: 20 };
-    void decodeOn; void decoding; void decodeLeft;
-    expect(deserialize(v20).state).toMatchObject({ printed: [2], decodeOn: false, decoding: -1, decodeLeft: 0 });
+    Object.assign(s, { pages: 3, scrapsUsed: 12, decodeOn: true, decoding: 3, decodeLeft: 3.5 });
+    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state).toMatchObject({ pages: 3, scrapsUsed: 12, decodeOn: true, decoding: 3, decodeLeft: 3.5 });
+    const { pages, scrapsUsed, ...v24 } = { ...serialize(s, 0), v: 24, printed: [4, 9, 2], decoding: 7 };
+    void pages; void scrapsUsed;
+    expect(deserialize(v24).state).toMatchObject({ pages: 0, scrapsUsed: 0, legacyPrinted: 4, decoding: -1 });
+    const { pages: p2, scrapsUsed: u2, decodeOn, decoding, decodeLeft, ...v20 } = { ...serialize(newGame(5), 0), v: 20, printed: [2] };
+    void p2; void u2; void decodeOn; void decoding; void decodeLeft;
+    expect(deserialize(v20).state).toMatchObject({ pages: 0, legacyPrinted: 1, decodeOn: false, decoding: -1 });
   });
 
   it('keeps the metal detector, and a v21 save has none', () => {

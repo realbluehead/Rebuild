@@ -27,12 +27,14 @@
 // v23: the detector's upgrades (`detUps`, `detectDug`) and three times as many metal scraps on the map.
 // v24: the Library's sections (`library`): built for bluetreri, taking a while. Older saves have the sections with works
 //      made (or the Decoder used) built, the rest to build.
+// v25: the Decoder prints 20 sheets, each from more scraps (`pages`, `scrapsUsed`); the scraps printed before
+//      (`printed`) become sheets at today's prices once the world exists (`legacyPrinted`, `fromLegacyPrinted`).
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
-import { DETECTOR_UPS, WORKS_MAX } from '../content/collection';
+import { DETECTOR_UPS, PAGES_MAX, WORKS_MAX } from '../content/collection';
 import { SECTIONS } from '../content/library';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
@@ -41,7 +43,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 24;
+export const SAVE_VERSION = 25;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -78,7 +80,9 @@ export interface SaveData {
   works: Record<string, number>;
   goals: Record<string, number>;
   fetched: number[];
-  printed: number[];
+  pages: number;
+  scrapsUsed: number;
+  legacyPrinted?: number;
   decodeOn: boolean;
   decoding: number;
   decodeLeft: number;
@@ -227,6 +231,13 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     const decoder = (Array.isArray(s.printed) && s.printed.length > 0) || s.decodeOn === true || Number(s.decoding ?? -1) >= 0;
     return { ...s, v: 24, library: { shelf: used('book') ? 0 : -1, spiral: used('album') ? 0 : -1, jukebox: used('cd') ? 0 : -1, decoder: decoder ? 0 : -1 } };
   },
+  // v24 -> v25: the scraps printed one sheet each (and the one under way) become sheets once the world exists.
+  24: (s) => {
+    const had = (Array.isArray(s.printed) ? s.printed.length : 0) + (Number(s.decoding ?? -1) >= 0 ? 1 : 0);
+    const { printed, ...rest } = s;
+    void printed;
+    return { ...rest, v: 25, pages: 0, scrapsUsed: 0, legacyPrinted: had, decoding: -1, decodeLeft: 0 };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -250,7 +261,9 @@ export function serialize(s: GameState, now: number): SaveData {
     works: { ...s.works },
     goals: { ...s.goals },
     fetched: [...s.fetched],
-    printed: [...s.printed],
+    pages: s.pages,
+    scrapsUsed: s.scrapsUsed,
+    ...(s.legacyPrinted !== undefined ? { legacyPrinted: s.legacyPrinted } : {}),
     decodeOn: s.decodeOn,
     decoding: s.decoding,
     decodeLeft: s.decodeLeft,
@@ -299,9 +312,11 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.totalGold = D(data.totalGold ?? 0);
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
-  state.printed = Array.isArray(data.printed) ? [...new Set(data.printed.map((x) => Math.floor(num(x))))] : [];
+  state.pages = Math.min(PAGES_MAX, Math.floor(num(data.pages)));
+  state.scrapsUsed = Math.floor(num(data.scrapsUsed));
+  if (data.legacyPrinted !== undefined) state.legacyPrinted = Math.floor(num(data.legacyPrinted));
   state.decodeOn = data.decodeOn === true;
-  state.decoding = Number.isInteger(data.decoding) && data.decoding >= 0 && !state.printed.includes(data.decoding) ? data.decoding : -1;
+  state.decoding = data.decoding === state.pages && state.pages < PAGES_MAX ? state.pages : -1;
   state.decodeLeft = state.decoding >= 0 ? num(data.decodeLeft) : 0;
   state.detectFrom = Number.isInteger(data.detectFrom) && data.detectFrom >= 0 ? data.detectFrom : -1;
   state.metalBase = state.detectFrom >= 0 ? Math.floor(num(data.metalBase)) : 0;
