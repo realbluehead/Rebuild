@@ -509,6 +509,9 @@ button { font: inherit; color: inherit; }
 .part-row .buy .coin { width: 10px; height: 10px; }
 
 .routes-table .part-row { --cols: minmax(0, 1fr) 14px 40px 44px 70px; }
+.det-table .part-row { --cols: 68px 14px minmax(0, 1fr) 74px; }
+.det-info { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }
+.det-info[hidden] { display: none; }
 .goals-table .part-row { --cols: minmax(0, 1fr) 30px 34px 66px 46px; }
 .works-table .part-row { --cols: 52px 40px minmax(0, 1fr) 60px 58px; }
 .goals-table, .works-table { margin-bottom: 0; }

@@ -1,6 +1,6 @@
 import { D, Decimal } from './decimal';
 import { ROVER_STATS, UPGRADES, type RoverStat, type StatId } from '../content/upgrades';
-import { ITEMS, WORKS, type ItemId, type WorkId } from '../content/collection';
+import { ITEMS, WORKS, type DetectorUpId, type ItemId, type WorkId } from '../content/collection';
 import { randomSeed } from './rng';
 import type { StormId } from '../content/weather';
 import type { RouteId } from '../content/routes';
@@ -165,6 +165,10 @@ export interface GameState {
   detectFrom: number;
   /** Metal scraps that were already revealed and dug when the detector was bought (not counted as collected). */
   metalBase: number;
+  /** Cells the Miner had dug when the detector was fitted (the Sifter sifts what it digs after). */
+  detectDug: number;
+  /** Levels of the detector's upgrades (Coil, Sifter, Deep scan). */
+  detUps: Record<DetectorUpId, number>;
   /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
   doneAt?: number;
   /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
@@ -200,6 +204,8 @@ export function newGame(seed = randomSeed()): GameState {
     decodeLeft: 0,
     detectFrom: -1,
     metalBase: 0,
+    detectDug: 0,
+    detUps: { coil: 0, sift: 0, deep: 0 },
     weather: { epoch: 0, storms: [], nextId: 0 },
     routes: ['random'],
     route: 'random', // the starting route: it takes over when the first ring after camp starts

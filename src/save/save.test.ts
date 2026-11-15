@@ -122,6 +122,15 @@ describe('save', () => {
     expect(deserialize(v21).state).toMatchObject({ detectFrom: -1, metalBase: 0 });
   });
 
+  it('keeps the detector upgrades; a v22 save gets three times the scraps not counted and sifts all it dug', () => {
+    const s = newGame(5);
+    Object.assign(s, { detectFrom: 120, metalBase: 3, detectDug: 40, detUps: { coil: 2, sift: 1, deep: 1 } });
+    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state).toMatchObject({ detectDug: 40, detUps: { coil: 2, sift: 1, deep: 1 } });
+    const { detectDug, detUps, ...v22 } = { ...serialize(s, 0), v: 22 };
+    void detectDug; void detUps;
+    expect(deserialize(v22).state).toMatchObject({ metalBase: 9, detectDug: 0, detUps: { coil: 0, sift: 0, deep: 0 } });
+  });
+
   it('migrates a v7 save: the four directions are refunded and withdrawn, the plan still replays', () => {
     const v7 = {
       v: 7, savedAt: 9, seed: 3, ring: 30, ringRobots: 1, bots: [{ trip: 'explore', prog: 0, cargo: 0, travel: 0, travelLen: 0, target: -1 }],

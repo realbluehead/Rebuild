@@ -13,8 +13,8 @@ import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/content/
 import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
-import { DETECTOR_GOLD, WORKS_MAX } from '../src/content/collection';
-import { setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { DETECTOR_GOLD, DETECTOR_UPS, WORKS_MAX } from '../src/content/collection';
+import { buyDetectorUp, canBuyDetectorUp, detectorUpCost, setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { RateMeter } from '../src/core/rate';
@@ -117,6 +117,11 @@ for (let t = 0; t < hours * 3600; t += DT) {
   if (!s.decodeOn) setDecoder(s, w, true);
   // The Metal detector: bought with spare bluetreri (twice its price).
   if (!SKIP.has('detector') && canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { spend('detector', DETECTOR_GOLD); buyDetector(s, w); mark(t, 'Metal detector'); }
+  // Its upgrades, the same way.
+  for (const d of DETECTOR_UPS) {
+    const cost = detectorUpCost(s, d.id);
+    if (!SKIP.has('detector') && cost !== null && canBuyDetectorUp(s, d.id) && s.gold.gte(2 * cost)) { spend('detector', cost); buyDetectorUp(s, d.id); mark(t, `${d.name} lv${s.detUps[d.id]}`); }
+  }
   for (const id of ['book', 'cd', 'album'] as const) {
     while (!SKIP.has(id) && craft(s, w, id)) {
       if (process.env.WORKLOG) console.log(`  ${id} #${s.works[id]} at Lv ${levelOf(s, w)}`);

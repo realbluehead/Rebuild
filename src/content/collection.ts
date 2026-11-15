@@ -36,9 +36,23 @@ export const LORE: readonly LoreDef[] = [
 export const LORE_CHANCE = 1 / 1500;
 /** Metal scraps: one cell in METAL_CHANCE of solid ground (away from camp) hides one. They are only picked up once the
  *  Metal detector (I+D) is bought, from explorer level DETECTOR_LEVEL, for DETECTOR_GOLD bluetreri. */
-export const METAL_CHANCE = 1 / 150;
+export const METAL_CHANCE = 1 / 50;
 export const DETECTOR_LEVEL = 35;
 export const DETECTOR_GOLD = 400000;
+/** Upgrades of the Metal detector (I+D), once it is fitted: the Coil makes every scrap found count for more, the Sifter
+ *  has the Miner sift the ground it digs for small scraps, and the Deep scan picks up the scraps left in the ground dug
+ *  before the detector. Each level costs `gold` × `growth`^level bluetreri. */
+export type DetectorUpId = 'coil' | 'sift' | 'deep';
+export interface DetectorUpDef { id: DetectorUpId; name: string; desc: string; max: number; gold: number; growth: number }
+export const DETECTOR_UPS: readonly DetectorUpDef[] = [
+  { id: 'coil', name: 'Coil', desc: 'A wider coil: every metal scrap found counts for more.', max: 3, gold: 6e5, growth: 3 },
+  { id: 'sift', name: 'Sifter', desc: 'The Miner sifts the ground it digs for small scraps.', max: 3, gold: 8e5, growth: 3 },
+  { id: 'deep', name: 'Deep scan', desc: 'Picks up the scraps under the ground dug before the detector.', max: 1, gold: 1.5e6, growth: 1 },
+];
+/** Scraps each find counts for, by Coil level. */
+export const COIL_MULT = [1, 2, 3, 4];
+/** Cells the Miner digs (since the detector) for each scrap sifted, by Sifter level (0: no Sifter). */
+export const SIFT_EVERY = [0, 200, 100, 50];
 /** Seconds the Library's Decoder takes on the first scrap of the map and on the last one; in between each scrap takes a
  *  little longer than the one before (the same ratio all along: about 1 min by the 140th of 316; ~12.7 h for a whole map). */
 export const DECODE_SEC = 10;

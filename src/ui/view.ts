@@ -1,11 +1,11 @@
 // Interface: the map (canvas) and a DOM HUD. Built once; render() only updates texts.
 import { ROVER_KINDS, SCOUT_SHARE, UPGRADES, kindById, type DigOrder, type RoverKind, type StatId } from '../content/upgrades';
-import { DETECTOR_GOLD, ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
+import { COIL_MULT, DETECTOR_GOLD, DETECTOR_UPS, SIFT_EVERY, type DetectorUpId, ITEMS, LORE, loreText, WORKS, WORKS_MAX, workTitle, type ItemId, type WorkDef, type WorkId } from '../content/collection';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { partOffered, canBuyDetector, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -35,6 +35,8 @@ export interface ViewActions {
   craft(id: WorkId): void;
   /** Buys the Metal detector (I+D). */
   buyDetector(): void;
+  /** Buys the next level of a Metal detector upgrade. */
+  buyDetectorUp(id: DetectorUpId): void;
   /** Switches the Library's Decoder on or off. */
   decoder(on: boolean): void;
   zoom(delta: number): void;
@@ -451,17 +453,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       return { id, kind: k, btn };
     });
   routesList.append(rdPicker);
-  // The Metal detector: bought once (from its explorer level); then the rovers pick up the metal scraps on the map.
-  const detCard = h('div', 'upg px-box order-card');
-  const detHead = h('div', 'head');
-  detHead.append(h('span', 'name', 'Metal detector'));
-  const detDesc = h('div', 'eff');
-  const detCount = h('div', 'eff');
-  const detBtn = h('button', 'px-btn buy');
-  detBtn.addEventListener('click', () => actions.buyDetector());
-  const detKey = { btnKey: '' };
-  detCard.append(detHead, detDesc, detCount, detBtn);
-  routesList.append(detCard);
+  // The Metal detector: bought once (from its explorer level); then the rovers pick up the metal scraps on the map, and
+  // its upgrades (Coil, Sifter, Deep scan) get more of them. One row each, like the rover parts.
+  const detTable = table('det-table', ['Part', 'Lv', 'Effect', 'Cost']);
+  const detRow = (name: string, desc: string, buy: () => void) => {
+    const card = h('div', 'part-row');
+    card.title = `${name}: ${desc}`;
+    const lvl = h('span', 'lvl');
+    const eff = h('span', 'eff');
+    const btn = h('button', 'px-btn buy');
+    btn.addEventListener('click', buy);
+    card.append(h('span', 'name', name), lvl, eff, btn);
+    detTable.append(card);
+    return { lvl, eff, btn, btnKey: '' };
+  };
+  const detMain = detRow('Detector', 'Picks up metal scraps from the ground: the Scout as it explores, the Miner as it digs.', () => actions.buyDetector());
+  const detUps = DETECTOR_UPS.map((d) => ({ d, ...detRow(d.name, d.desc, () => actions.buyDetectorUp(d.id)) }));
+  const detInfo = h('p', 'info det-info');
+  routesList.append(detTable, detInfo);
   const routesTable = table('routes-table', ['Route', 'Lv', 'Pace', 'Use', 'Next']);
   routesList.append(routesTable);
   // One line per route: name, level, pace, a radio square for the route in use, and the next step (unlock or level) for
@@ -842,22 +851,36 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     for (const t of rdTabs) {
       t.btn.classList.toggle('on', t.id === rdTab);
       t.btn.classList.toggle('locked', t.id === 'detector' ? s.detectFrom < 0 && levelOf(s, world) < detectorLevelNeeded(world) : roverIndex(s, t.kind) < 0);
-      if (t.id === 'detector') t.btn.classList.toggle('alert', canBuyDetector(s, world));
+      if (t.id === 'detector') t.btn.classList.toggle('alert', canBuyDetector(s, world) || DETECTOR_UPS.some((d) => canBuyDetectorUp(s, d.id)));
     }
-    detCard.hidden = rdTab !== 'detector';
-    if (rdTab === 'detector') {
+    const det = rdTab === 'detector';
+    detTable.hidden = !det;
+    detInfo.hidden = !det;
+    if (det) {
       const owned = s.detectFrom >= 0;
-      set(detDesc, owned
-        ? 'Fitted. The Scout picks up the metal scraps it reveals, and the Miner the ones in ground revealed before.'
-        : 'Picks up metal scraps from the ground: the Scout as it explores, the Miner as it digs. They are kept for later.');
-      set(detCount, owned ? `Metal scraps: ${metalCollected(s, world)}` : '');
-      detCount.hidden = !owned;
-      detBtn.hidden = owned;
+      set(detInfo, owned
+        ? `Metal scraps: ${fmt(metalCollected(s, world))}, kept for later. Coil: scraps per find. Sifter: one more per so many cells dug.`
+        : 'Metal scraps lie all over the map. With the detector the rovers pick them up; they are kept for later.');
+      set(detMain.lvl, owned ? '1' : '0');
+      set(detMain.eff, owned ? 'fitted' : 'finds scraps');
       const need = detectorLevelNeeded(world);
-      if (!owned) {
-        if (levelOf(s, world) < need) label(detKey, 'btnKey', detBtn, `needs explorer Lv ${need}`);
-        else price(detKey, 'btnKey', detBtn, DETECTOR_GOLD, {}, 'Buy');
-        detBtn.classList.toggle('can', canBuyDetector(s, world));
+      if (owned) label(detMain, 'btnKey', detMain.btn, 'max');
+      else if (levelOf(s, world) < need) label(detMain, 'btnKey', detMain.btn, `explorer Lv ${need}`);
+      else price(detMain, 'btnKey', detMain.btn, DETECTOR_GOLD, {});
+      detMain.btn.classList.toggle('can', canBuyDetector(s, world));
+      for (const r of detUps) {
+        const lv = s.detUps[r.d.id];
+        set(r.lvl, `${lv}`);
+        const max = lv >= r.d.max;
+        const eff = (k: number) => r.d.id === 'coil' ? `×${COIL_MULT[k]}`
+          : r.d.id === 'sift' ? (SIFT_EVERY[k] ? `1/${SIFT_EVERY[k]}` : 'off')
+          : (k ? 'on' : 'off');
+        set(r.eff, max ? eff(lv) : `${eff(lv)} → ${eff(lv + 1)}`);
+        const cost = detectorUpCost(s, r.d.id);
+        if (cost === null) label(r, 'btnKey', r.btn, 'max');
+        else if (!owned) label(r, 'btnKey', r.btn, 'detector');
+        else price(r, 'btnKey', r.btn, cost, {});
+        r.btn.classList.toggle('can', canBuyDetectorUp(s, r.d.id));
       }
     }
     const routes = rdTab === 'routes';
@@ -1313,7 +1336,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         c.needs.hidden = !short;
         if (short) price(c, 'needKey', c.needs, 0, items, `${step} needs`, got);
       }
-      tabRoutes.classList.toggle('alert', canBuyDetector(s, world) || ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
+      tabRoutes.classList.toggle('alert', canBuyDetector(s, world) || DETECTOR_UPS.some((d) => canBuyDetectorUp(s, d.id)) || ROUTES.some((rd) => canUnlockRoute(s, world, rd.id) || canUpgradeRoute(s, world, rd.id)));
       for (const c of goalCards) {
         const id = c.g.id;
         const got = s.goals[id];

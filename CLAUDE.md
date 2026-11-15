@@ -42,12 +42,18 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   the rovers drive the rest (`rateParts`). Before, the estimate assumed nobody drove home once there was a Hauler, which
   made Hold look worthless (the Scout then drove home ~50% of the time). It now tracks what arrives within ~5%.
   The sim buys the best (upgrade, rover) pair (Hauler parts included), builds each rover as soon as it can and saves up for it and the next route; it keeps the Decoder on.
-- **Metal scraps** (save v22): `world.metalCells` (own draw `rand2(x, y, seed + 7013) < METAL_CHANCE` 1/150 on solid
+- **Metal scraps** (save v22; upgrades v23): `world.metalCells` (own draw `rand2(x, y, seed + 7013) < METAL_CHANCE` 1/50, ~10k a map; was 1/150 on solid
   ground away from camp with no deposit, item or lore). I+D › Detector sells the **Metal detector** from explorer Lv
   `DETECTOR_LEVEL` 35 for `DETECTOR_GOLD` 400k (`canBuyDetector`, `buyDetector`). Then the Scout picks up the scraps it
   reveals (ranks ≥ `s.detectFrom`, the end of the ring under way at purchase) and the Miner the ones in ground revealed
   before, as it digs them; `metalCollected` counts them (derived, cached; `s.metalBase` = those already revealed and dug
-  at purchase, not counted). Picked up on the spot (no hold, no trip). No use yet: only counted (Detector card; its Buy button is hidden once bought, `.upg .buy[hidden]`).
+  at purchase, not counted). Picked up on the spot (no hold, no trip). Upgrades once fitted (`DETECTOR_UPS`, `s.detUps`, `buyDetectorUp`, price `gold` × `growth`^lv): **Coil** (3 levels,
+  600k ×3) multiplies every find (`COIL_MULT` ×1–×4); **Sifter** (3 levels, 800k ×3) adds one scrap per `SIFT_EVERY`
+  200/100/50 cells dug since the detector (`s.detectDug`; v22 saves get 0, i.e. everything dug, and `metalBase` ×3 for
+  the denser map); **Deep scan** (one-off, 1.5M) drops `metalBase` (the ground dug before the detector counts too).
+  All derived and retroactive (a level re-values everything collected). I+D › Detector is a thin table (`.det-table`:
+  Detector + the three, Part/Lv/Effect/Cost) with the count in `.det-info` under it. Sim buys them with 2× spare: done
+  18 h 27 → 19 h 01, ~35k scraps (was ~2.5k). No use yet: only counted.
 - **Goals** (`content/goals.ts`, Goals tab, save v17 `s.goals`): Cartographer (cells explored), Tycoon (bluetreri earned),
   Collector (items found; hold ×1.2), Excavator (cells dug out; drill ×1.25), Engineer (part levels fitted; travel ×1.2), Archivist (lore found), Historian (sheets printed by the Decoder; rover speed ×1.08), 5 tiers each (multipliers raised in v0.36: at ×1.08/1.1/1.1/1.03 those four barely changed a game) (`per` cells/items: shares of
   the map, so small test maps scale). A reached tier is **claimed** by the player (`claimGoal`; never automatic, so stats only

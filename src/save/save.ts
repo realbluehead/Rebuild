@@ -24,12 +24,13 @@
 // v19: routes only ask for items collected and no longer spend them: items spent on routes are given back (recount).
 // v20: the Library's machine (`printed`: scraps of lore already printed).
 // v22: the Metal detector (`detectFrom`, `metalBase`).
+// v23: the detector's upgrades (`detUps`, `detectDug`) and three times as many metal scraps on the map.
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
-import { WORKS_MAX } from '../content/collection';
+import { DETECTOR_UPS, WORKS_MAX } from '../content/collection';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 import type { PlanEntry } from '../core/world';
@@ -37,7 +38,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -80,6 +81,8 @@ export interface SaveData {
   decodeLeft: number;
   detectFrom: number;
   metalBase: number;
+  detectDug?: number;
+  detUps?: Record<string, number>;
   routes: RouteId[];
   route: RouteId;
   routeLevels: Partial<Record<RouteId, number>>;
@@ -209,6 +212,10 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   20: (s) => ({ ...s, v: 21, decodeOn: false, decoding: -1, decodeLeft: 0 }),
   // v21 -> v22: no metal detector yet.
   21: (s) => ({ ...s, v: 22, detectFrom: -1, metalBase: 0 }),
+  // v22 -> v23: the map now hides three times as many metal scraps (METAL_CHANCE 1/150 -> 1/50, a superset of the old
+  // ones), so the scraps not counted grow alike; when the detector was fitted the Miner had dug an unknown amount, so
+  // the Sifter sifts everything dug.
+  22: (s) => ({ ...s, v: 23, metalBase: Math.round(3 * Number(s.metalBase ?? 0)), detectDug: 0, detUps: {} }),
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -238,6 +245,8 @@ export function serialize(s: GameState, now: number): SaveData {
     decodeLeft: s.decodeLeft,
     detectFrom: s.detectFrom,
     metalBase: s.metalBase,
+    detectDug: s.detectDug,
+    detUps: { ...s.detUps },
     routes: [...s.routes],
     route: s.route,
     routeLevels: { ...s.routeLevels },
@@ -284,6 +293,8 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.decodeLeft = state.decoding >= 0 ? num(data.decodeLeft) : 0;
   state.detectFrom = Number.isInteger(data.detectFrom) && data.detectFrom >= 0 ? data.detectFrom : -1;
   state.metalBase = state.detectFrom >= 0 ? Math.floor(num(data.metalBase)) : 0;
+  state.detectDug = state.detectFrom >= 0 ? Math.max(0, Math.floor(num(data.detectDug))) : 0;
+  for (const d of DETECTOR_UPS) state.detUps[d.id] = state.detectFrom >= 0 ? Math.max(0, Math.min(d.max, Math.floor(num(data.detUps?.[d.id])))) : 0;
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   if (data.recount) state.recount = true;
   if (data.kinds) state.kinds = true;

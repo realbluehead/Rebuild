@@ -1,11 +1,12 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { buyDetector, decode, setDecoder, carried, chooseDig, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buyDetector, buyDetectorUp, decode, setDecoder, carried, chooseDig, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
 import { fmt } from './core/format';
 import { ZOOMS } from './content/world';
 import { routeById } from './content/routes';
+import { DETECTOR_UPS } from './content/collection';
 import { kindById } from './content/upgrades';
 import { goalById } from './content/goals';
 import { applyOffline, type OfflineReport } from './save/offline';
@@ -115,6 +116,11 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     buyDetector: () => {
       if (!buyDetector(state, world)) return;
       view.toast('Metal detector fitted\nthe rovers pick up metal scraps');
+      void save();
+    },
+    buyDetectorUp: (id) => {
+      if (!buyDetectorUp(state, id)) return;
+      view.toast(`${DETECTOR_UPS.find((d) => d.id === id)!.name} Lv ${state.detUps[id]}\nmore metal scraps`);
       void save();
     },
     decoder: (on) => { if (setDecoder(state, world, on)) void save(); },

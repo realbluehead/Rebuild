@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { partOffered, buyDetector, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { partOffered, buyDetector, buyDetectorUp, detectorUpCost, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -125,6 +125,27 @@ describe('world', () => {
     }
     expect(before).toBeGreaterThan(0);
     expect(before).toBeLessThanOrEqual(world.metalCells.length);
+    // Upgrades: the Coil multiplies the finds, the Sifter adds a scrap per so many cells dug since the detector, the Deep
+    // scan counts the ground dug before it too; each only once the detector is fitted, for bluetreri.
+    const fresh = newGame(42);
+    fresh.gold = D(1e12);
+    expect(buyDetectorUp(fresh, 'coil')).toBe(false); // no detector yet
+    s.gold = D(1e12);
+    s.detectDug = 0;
+    s.dug = 1000;
+    const finds = metalCollected(s, world);
+    expect(detectorUpCost(s, 'coil')).toBe(6e5);
+    expect(buyDetectorUp(s, 'coil')).toBe(true);
+    expect(detectorUpCost(s, 'coil')).toBe(1.8e6);
+    expect(metalCollected(s, world)).toBe(2 * finds);
+    expect(buyDetectorUp(s, 'sift')).toBe(true);
+    expect(metalCollected(s, world)).toBe(2 * finds + 5); // 1000 cells dug, one scrap per 200
+    s.metalBase = 7;
+    const withBase = metalCollected(s, world);
+    expect(buyDetectorUp(s, 'deep')).toBe(true);
+    expect(buyDetectorUp(s, 'deep')).toBe(false); // one level only
+    expect(detectorUpCost(s, 'deep')).toBeNull();
+    expect(metalCollected(s, world)).toBe(withBase + 2 * 7);
   });
 
   it('the order is a permutation and starts at the centre', () => {
