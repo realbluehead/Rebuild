@@ -33,7 +33,9 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   (`.voyage ~ .modal` above it). The tap fades it out while `startPhase2(root, legacy, true)` saves the new phase II
   and fades its screen in (0.6 s); phase I's loop and saving stop.
 - `boot.ts`: `run` mounts the screen, runs the frame loop (play time; frames over 5 s are not counted), autosaves every
-  30 s and on going to the background, and owns the ≡ menu. `?phase2` in the address (on a phase I game) is a
+  30 s and on going to the background, and owns the ≡ menu. New versions (`offerUpdates`): booted straight into phase II,
+  it checks after the title tap and each time the game comes back to the foreground; entered from phase I, phase I's
+  boot keeps doing it. `?phase2` in the address (on a phase I game) is a
   **preview**: phase II from the current game's legacy, nothing saved, no Import/Restart.
 
 ## Screen (`ui/phase2.ts`, `showPhase2` → `render(state)`)

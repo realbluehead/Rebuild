@@ -27,9 +27,11 @@ export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolea
   if (!loaded) return false;
   title.progress(1);
   dropPhase1Map();
-  run(app, loaded.state, true);
+  // New versions: after the title tap and whenever the game comes back to the foreground (entered from phase I, its
+  // boot keeps doing this).
+  const checkWeb = offerUpdates(title.ready(), () => savePhase2(loaded.state));
+  run(app, loaded.state, true, checkWeb);
   app.append(title.el); // the screen went in under it: keep the title on top until the player taps
-  offerUpdates(title.ready(), () => savePhase2(loaded.state));
   return true;
 }
 
@@ -41,7 +43,7 @@ export function startPhase2(root: HTMLElement, legacy: Legacy, persist: boolean)
   run(root, state, persist);
 }
 
-function run(root: HTMLElement, state: P2State, persist: boolean): void {
+function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: () => void = () => {}): void {
   /** On restart or import this game must not be saved any more (pagehide would write it back). */
   let locked = !persist;
   const save = () => (locked ? Promise.resolve() : savePhase2(state));
@@ -85,5 +87,5 @@ function run(root: HTMLElement, state: P2State, persist: boolean): void {
   };
   requestAnimationFrame(frame);
   setInterval(() => void save(), AUTOSAVE_MS);
-  onBackground((hidden) => { if (hidden) void save(); });
+  onBackground((hidden) => { if (hidden) void save(); else onForeground(); });
 }
