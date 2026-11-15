@@ -581,6 +581,7 @@ describe('game', () => {
     const items = new Set<number>();
     let specials = 0;
     let gaveUp = 0;
+    let homeFrom = 0;
     let checked = false;
     for (let t = 0; t < 200000 && !isComplete(s, w); t += 0.25) {
       const before = s.bots.map((b) => [b.trip, b.target] as const);
@@ -593,7 +594,14 @@ describe('game', () => {
           // The item was picked up just before the hold filled, or it is left for later.
           const cell = w.order[w.itemRanks[before[j][1]]];
           if (!items.has(cell)) expect(s.fetched).not.toContain(before[j][1]);
+          // It drives home from where the detour left it (the map draws it from there, not from its arc). (It may also
+          // have finished the detour and filled up exploring within the tick: then it drives from its arc, from -1.)
+          if (b.from >= 0) {
+            expect(b.travelLen).toBe(Math.floor(w.road[w.order[b.from]]) + 1);
+            homeFrom++;
+          }
         }
+        if (before[j]?.[0] === 'home' && (b.trip === 'out' || b.trip === 'explore')) expect(b.from).toBe(-1);
         // A detour is as long as exploring its cells: one cell of rough ground costs more than one step.
         if (!checked && b.trip === 'detour') {
           const plan = detourPlan(w, stats(s).grip, b.from, b.target);
@@ -606,6 +614,7 @@ describe('game', () => {
     expect(isComplete(s, w)).toBe(true);
     expect(checked).toBe(true);
     expect(gaveUp).toBeGreaterThan(0);
+    expect(homeFrom).toBeGreaterThan(0);
     expect(s.mined).toEqual([]);
     // Every item and deposit exactly once, mined on detours or explored. Bluetreri is never counted twice; what does
     // not fit in a hold that fills on a detour is lost (the exact count, with no overflow, is in the routes tests).

@@ -802,7 +802,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           for (const i of pathCells(w, b.from, to)) max = Math.max(max, w.rank[i]);
           s.scouted.push(b.from, to, max);
           b.target = -1;
-          b.from = -1;
+          b.from = to; // (kept on the way home: where it drives back from, for the map)
           b.walked = 0;
           b.log.gaveUp++;
           goHome(s, w, b, to);
@@ -990,7 +990,7 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
           b.found = 0;
           // Back out (the same way), unless there is nothing left for it to do.
           b.trip = b.kind === 'hauler' ? 'idle' : 'out';
-          if (b.kind === 'hauler') b.from = -1;
+          b.from = -1;
           if (s.ring >= ringCount(w) && b.kind === 'scout') b.trip = 'explore';
           if (s.ring >= ringCount(w) && b.kind === 'miner' && s.dug >= n - EPS) b.trip = 'idle';
         } else if (b.trip === 'detour') {

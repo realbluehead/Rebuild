@@ -1216,8 +1216,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         rover: b.kind,
         f: b.trip === 'detour' ? detourShare(b) : b.travelLen > 0 ? b.travel / b.travelLen : 1,
         target: b.kind === 'scout' && b.target >= 0 ? world.itemRanks[b.target] : undefined,
-        from: b.kind === 'scout' && b.from >= 0 ? b.from : undefined,
-        at: b.kind === 'miner' ? digCell(world, digPath(s, world), s.dug) + (s.digOrder === 'follow' ? s.dug % 1 : 0.5) : b.kind === 'hauler' && b.from >= 0 ? b.from : undefined,
+        from: b.kind === 'scout' && b.trip === 'detour' && b.from >= 0 ? b.from : undefined,
+        // (the Scout drives home from where a detour left it, when its hold filled there)
+        at: b.kind === 'miner' ? digCell(world, digPath(s, world), s.dug) + (s.digOrder === 'follow' ? s.dug % 1 : 0.5) : (b.kind === 'hauler' || (b.kind === 'scout' && b.trip === 'home')) && b.from >= 0 ? b.from : undefined,
       }));
       if (selected >= 0 && selected >= totalCells(world)) selected = -1;
       const sel = roverIndex(s, kind);

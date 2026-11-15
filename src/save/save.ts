@@ -355,7 +355,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
     bot.cargo = num(b?.cargo);
     bot.travel = Math.min(bot.travelLen, num(b?.travel));
     bot.target = Number.isInteger(b?.target) ? b.target : -1;
-    bot.from = (bot.trip === 'detour' || kind === 'hauler') && Number.isInteger(b?.from) ? b.from : -1;
+    bot.from = (bot.trip === 'detour' || kind === 'hauler' || (kind === 'scout' && bot.trip === 'home')) && Number.isInteger(b?.from) ? b.from : -1;
     bot.bag = [0, 1, 2].map((q) => Math.floor(num(Array.isArray(b?.bag) ? b.bag[q] : 0)));
     bot.found = bot.bag.reduce((x, y) => x + y, 0);
     for (const id of ROVER_STATS) bot.up[id] = Math.floor(num(b?.up?.[id]));
