@@ -49,7 +49,8 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a blinking beacon; seven tentacles (tubes) on the sand with red
   probe tips; four floodlights (point lights, gently flickering). The camera sways: a bob of `BOB_UNITS` every `BOB_SEC`
   and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides
-  on a little after a flick (`spin`, `GLIDE_KEEP`). `VIEW` sets the zoom.
+  on a little after a flick (`spin`, `GLIDE_KEEP`). Two fingers (pinch) or the mouse wheel zoom out up to `ZOOM_MAX`
+  (4) times `VIEW` (the closest, and the start); the view eases to it (`shown`, `ZOOM_EASE`). Not saved.
 - Real so far: the metal count at the top and the Cargo tab's "Have" column (bluetreri, pages, notes, photos). Everything
   else is placeholder rows.
 

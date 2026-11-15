@@ -2,7 +2,8 @@
 // (orthographic) camera, at a low resolution scaled up with crisp pixels. Dunes, the obsidian bell half plated (the rest
 // still ribs) on four legs, its tentacles laid out on the sand, and floodlights casting warm pools. The camera sways
 // gently (a slow bob up and down and ±1° of turn) so the scene never looks frozen, and a finger dragged sideways turns
-// it round (only round: the height of the view never changes), with a little glide after letting go.
+// it round (only round: the height of the view never changes), with a little glide after letting go. Two fingers (or
+// the mouse wheel) zoom out, up to ZOOM_MAX times as much ground, and back in to the starting view.
 import {
   AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
@@ -23,6 +24,10 @@ const TURN_DEG = 1;
 /** Turn for a drag across the whole view (radians), and how fast the glide after a drag dies away (share kept per second). */
 const DRAG_TURN = Math.PI;
 const GLIDE_KEEP = 0.04;
+/** Furthest zoom out (times `VIEW`; 1 = the closest), wheel step, and how fast the view eases to the zoom picked (per second). */
+const ZOOM_MAX = 4;
+const WHEEL_ZOOM = 0.0015;
+const ZOOM_EASE = 12;
 
 const SAND = '#5a5a82';
 const OBSIDIAN = '#3a3c48';
@@ -189,30 +194,56 @@ export function createDesert(): Desert {
   const target = new Vector3(0, 6, 0);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const resize = () => {
+  /** Zoom picked (1..ZOOM_MAX) and the one shown, easing towards it. */
+  let zoom = 1, shown = 1;
+  const frustum = () => {
     const w = Math.max(1, el.clientWidth), h = Math.max(1, el.clientHeight);
-    renderer.setSize(Math.ceil(w / PX), Math.ceil(h / PX), false);
-    const half = VIEW / 2, aspect = h / w;
+    const half = (VIEW * shown) / 2, aspect = h / w;
     camera.left = -half; camera.right = half; camera.top = half * aspect; camera.bottom = -half * aspect;
     camera.updateProjectionMatrix();
+  };
+  const resize = () => {
+    renderer.setSize(Math.ceil(Math.max(1, el.clientWidth) / PX), Math.ceil(Math.max(1, el.clientHeight) / PX), false);
+    frustum();
   };
   const ro = new ResizeObserver(resize);
   ro.observe(el);
   resize();
 
-  // Drag sideways to turn the scene round its centre.
+  // One finger dragged sideways turns the scene round its centre; two fingers pinch the zoom (no turning meanwhile).
   let turn = 0, spin = 0, dragX: number | null = null, lastMove = 0, lastFrame = performance.now();
-  el.addEventListener('pointerdown', (e) => { dragX = e.clientX; spin = 0; lastMove = performance.now(); el.setPointerCapture(e.pointerId); });
+  const fingers = new Map<number, { x: number; y: number }>();
+  let pinch: { dist: number; zoom: number } | null = null;
+  const spread = () => { const [a, b] = [...fingers.values()]; return Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)); };
+  const setZoom = (z: number) => { zoom = Math.min(ZOOM_MAX, Math.max(1, z)); };
+  el.addEventListener('pointerdown', (e) => {
+    fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { el.setPointerCapture(e.pointerId); } catch { /* (a pointer the browser no longer tracks) */ }
+    spin = 0;
+    if (fingers.size === 2) { pinch = { dist: spread(), zoom }; dragX = null; return; }
+    if (fingers.size === 1) { dragX = e.clientX; lastMove = performance.now(); }
+  });
   el.addEventListener('pointermove', (e) => {
+    if (!fingers.has(e.pointerId)) return;
+    fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && fingers.size >= 2) { setZoom(pinch.zoom * (pinch.dist / spread())); return; }
     if (dragX === null) return;
     const now = performance.now(), d = ((e.clientX - dragX) / Math.max(1, el.clientWidth)) * DRAG_TURN;
     turn -= d;
     spin = -d / Math.max(0.008, (now - lastMove) / 1000); // radians per second, for the glide
     dragX = e.clientX; lastMove = now;
   });
-  const release = () => { if (dragX === null) return; dragX = null; if (performance.now() - lastMove > 80) spin = 0; };
+  const release = (e: PointerEvent) => {
+    fingers.delete(e.pointerId);
+    if (fingers.size < 2) pinch = null;
+    if (fingers.size === 1) { dragX = [...fingers.values()][0].x; lastMove = performance.now(); spin = 0; return; } // (a pinch ends: no glide)
+    if (dragX === null) return;
+    dragX = null;
+    if (performance.now() - lastMove > 80) spin = 0;
+  };
   el.addEventListener('pointerup', release);
   el.addEventListener('pointercancel', release);
+  el.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(zoom * Math.exp(e.deltaY * WHEEL_ZOOM)); }, { passive: false });
 
   let on = true;
   const frame = (ms: number) => {
@@ -221,6 +252,7 @@ export function createDesert(): Desert {
     // Isometric: 45° around, ~35° down; plus the sway.
     const dt = Math.min(0.1, (ms - lastFrame) / 1000);
     lastFrame = ms;
+    if (Math.abs(shown - zoom) > 0.001) { shown += (zoom - shown) * Math.min(1, ZOOM_EASE * dt); frustum(); }
     if (dragX === null && spin !== 0) { turn += spin * dt; spin *= Math.pow(GLIDE_KEEP, dt); if (Math.abs(spin) < 0.02) spin = 0; }
     const yaw = Math.PI / 4 + turn + (Math.sin((t / TURN_SEC) * Math.PI * 2) * TURN_DEG * Math.PI) / 180;
     const bob = Math.sin((t / BOB_SEC) * Math.PI * 2) * BOB_UNITS;
