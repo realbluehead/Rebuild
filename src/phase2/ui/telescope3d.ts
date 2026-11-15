@@ -4,9 +4,10 @@
 // and laser guide stars. Built in local units round the plot's centre, on the flat sand (y = 0).
 import {
   BoxGeometry, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PointLight, Quaternion,
-  SphereGeometry, TorusGeometry, Vector3, Color, type Material,
+  SphereGeometry, TorusGeometry, Vector3, Color, type Material, PlaneGeometry, CatmullRomCurve3, TubeGeometry, type Texture,
 } from 'three';
 import type { Telescope } from '../core/telescope';
+import { concreteTexture, metalTexture, repeated, SAND_LOW, SAND_TILE, sandTexture, shadowTexture } from './textures';
 
 const OBSIDIAN = '#3a3c48';
 const STEEL = '#4a4e58';
@@ -17,6 +18,9 @@ const LASER = '#ffb030';
 const LAMP = '#fff2b0';
 
 const lambert = (c: string) => new MeshLambertMaterial({ color: c, flatShading: true });
+/** A textured material: the texture (greys) is tinted by `c`, brightened to make up for the texture's darkening. */
+const textured = (c: string, map: Texture, side = false) =>
+  new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: true, side: side ? DoubleSide : undefined });
 const glow = (c: string | Color, opacity = 1) => new MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity });
 const UP = new Vector3(0, 1, 0);
 
@@ -37,7 +41,9 @@ const AZ = (135 * Math.PI) / 180;
 /** The telescope at its level, its foot at the origin (call `disposeTelescope` before dropping it). */
 export function buildTelescope(t: Telescope): Group {
   const g = new Group();
-  const steel = lambert(STEEL), bright = lambert(BRIGHT), obsidian = lambert(OBSIDIAN), red = glow(RED);
+  // Worn plating everywhere (rust on the older steel), concrete for the base.
+  const steel = textured(STEEL, metalTexture(0.7)), bright = textured(BRIGHT, metalTexture(0.3));
+  const obsidian = textured(OBSIDIAN, metalTexture(0.2)), red = glow(RED);
   const lens = glow(new Color('#28406a').lerp(new Color('#c8f6ff'), t.sharpness / 100));
   const r = 0.35 + Math.sqrt(t.aperture); // tube radius
   const L = 6 + r * 4; // tube length
@@ -51,7 +57,8 @@ export function buildTelescope(t: Telescope): Group {
   const Rw = Math.max(11, L * 0.7 + 2);
   if (t.platform) {
     const Rp = t.wall ? Rw : Math.max(7, L * 0.55);
-    const slab = new Mesh(new CylinderGeometry(Rp, Rp + 0.5, base, 20), lambert(CONCRETE));
+    const slab = new Mesh(new CylinderGeometry(Rp, Rp + 0.5, base, 20), textured(CONCRETE, repeated(concreteTexture(), Rp / 2, Rp / 2)));
+    // (its top face: the cylinder's caps take the texture's middle; tiles of ~6 units)
     slab.position.y = base / 2;
     g.add(slab);
     for (let k = 0; k < 12; k++) {
@@ -61,8 +68,7 @@ export function buildTelescope(t: Telescope): Group {
     }
   }
   if (t.wall) {
-    const wall = new Mesh(new CylinderGeometry(Rw, Rw, 4, 32, 1, true), obsidian);
-    (wall.material as Material).side = DoubleSide;
+    const wall = new Mesh(new CylinderGeometry(Rw, Rw, 4, 32, 1, true), textured(OBSIDIAN, repeated(metalTexture(0.4), Math.round(Rw), 0.5), true));
     wall.position.y = base + 2;
     const rim = new Mesh(new TorusGeometry(Rw, 0.35, 4, 32), steel);
     rim.rotation.x = Math.PI / 2;
@@ -76,8 +82,8 @@ export function buildTelescope(t: Telescope): Group {
   }
   if (t.dome) {
     // Half a dome behind (angles as three's sphere phi: direction (−cos, sin)): it covers azimuths 150°..330°.
-    const dome = new Mesh(new SphereGeometry(Rw, 24, 8, (7 * Math.PI) / 6, Math.PI, 0, Math.PI / 2), obsidian);
-    (dome.material as Material).side = DoubleSide;
+    const dome = new Mesh(new SphereGeometry(Rw, 24, 8, (7 * Math.PI) / 6, Math.PI, 0, Math.PI / 2),
+      textured(OBSIDIAN, repeated(metalTexture(0.25), Math.round(Rw / 2), 3), true));
     dome.position.y = base + 4;
     g.add(dome);
     for (let k = 0; k <= 4; k++) { // ribs
@@ -114,7 +120,7 @@ export function buildTelescope(t: Telescope): Group {
   const y0 = -L * back, y1 = L * (1 - back);
   const along = (y: number) => new Vector3(0, y, 0);
   if (t.tube === 'refractor') {
-    const body = new Mesh(new CylinderGeometry(r, r * 0.8, L, 10), steel);
+    const body = new Mesh(new CylinderGeometry(r, r * 0.8, L, 10), textured(STEEL, repeated(metalTexture(0.7), 1, Math.round(L / 3))));
     body.position.y = (y0 + y1) / 2;
     const shield = new Mesh(new CylinderGeometry(r * 1.15, r * 1.15, L * 0.18, 10, 1, true), obsidian);
     shield.position.y = y1 - L * 0.09;
@@ -123,8 +129,7 @@ export function buildTelescope(t: Telescope): Group {
     const eye = rod(along(y0), along(y0 - 0.8), r * 0.3, bright, 6);
     tube.add(body, shield, glass, eye);
   } else if (t.tube === 'reflector') {
-    const body = new Mesh(new CylinderGeometry(r, r, L, 14, 1, true), bright);
-    (body.material as Material).side = DoubleSide;
+    const body = new Mesh(new CylinderGeometry(r, r, L, 14, 1, true), textured(BRIGHT, repeated(metalTexture(0.3), 2, Math.round(L / 4)), true));
     body.position.y = (y0 + y1) / 2;
     const cap = new Mesh(new CylinderGeometry(r, r, 0.3, 14), steel);
     cap.position.y = y0;
@@ -194,6 +199,38 @@ export function buildTelescope(t: Telescope): Group {
     g.add(rod(mouth.clone().addScaledVector(side, (k - (t.lasers - 1) / 2) * r * 0.6), mouth.clone().addScaledVector(d, 140), 0.12, glow(LASER, 0.75), 4));
   }
 
+  // Settled in the sand: a soft shadow round its foot, sand drifted against its base (or heaped at its feet), and the
+  // site's clutter: crates of parts and the lamp's cable snaking over the sand.
+  const foot = t.wall ? Rw : t.platform ? Math.max(7, L * 0.55) : 1.6 + r;
+  const shade = new Mesh(new PlaneGeometry(foot * 2.8, foot * 2.8),
+    new MeshBasicMaterial({ color: '#000', alphaMap: shadowTexture(), transparent: true, opacity: 0.55, depthWrite: false }));
+  shade.rotation.x = -Math.PI / 2;
+  shade.position.y = 0.04;
+  g.add(shade);
+  const sand = (u: number, v: number) => textured(SAND_LOW, repeated(sandTexture(), u, v));
+  if (t.platform) {
+    const drift = new Mesh(new TorusGeometry(foot + 0.3, 1.3, 5, 36), sand((foot * 2 * Math.PI) / SAND_TILE, 0.4));
+    drift.rotation.x = Math.PI / 2;
+    drift.scale.z = 0.45; // (flattened: a low bank of sand)
+    g.add(drift);
+  } else {
+    const legs = t.mount === 'tripod' ? [0, 1, 2].map((k) => (k / 3) * Math.PI * 2 + 0.4) : [0];
+    for (const a of legs) {
+      const heap = new Mesh(new SphereGeometry(t.mount === 'tripod' ? 0.6 : 1.4 + r * 0.3, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), sand(0.5, 0.5));
+      heap.scale.y = 0.35;
+      const d = t.mount === 'tripod' ? 1.4 + r : 0;
+      heap.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+      g.add(heap);
+    }
+  }
+  const crates = textured('#5a4e40', metalTexture(1));
+  for (const [a, d, s] of [[AZ + 1.9, foot + 2.2, 1.4], [AZ + 2.05, foot + 3.6, 1], [AZ + 1.7, foot + 3.4, 0.8]]) {
+    const box = new Mesh(new BoxGeometry(s, s * 0.8, s), crates);
+    box.position.set(Math.cos(a) * d, s * 0.35, Math.sin(a) * d);
+    box.rotation.y = a * 3;
+    g.add(box);
+  }
+
   // A work lamp beside it.
   const lx = Math.cos(AZ + 2.4) * (Rw + 3), lz = Math.sin(AZ + 2.4) * (Rw + 3);
   g.add(rod(new Vector3(lx, 0, lz), new Vector3(lx, 11, lz), 0.25, steel, 4));
@@ -202,6 +239,12 @@ export function buildTelescope(t: Telescope): Group {
   const light = new PointLight(LAMP, 300, 26, 1.4);
   light.position.set(lx * 0.75, 10, lz * 0.75);
   g.add(lamp, light);
+  const pts: Vector3[] = [];
+  for (let k = 0; k <= 8; k++) {
+    const f = k / 8, x = lx * (1 - f) + Math.cos(AZ + 2.4) * foot * f, z = lz * (1 - f) + Math.sin(AZ + 2.4) * foot * f;
+    pts.push(new Vector3(x + Math.sin(f * 9) * 0.8, 0.12, z + Math.cos(f * 7) * 0.8));
+  }
+  g.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), 24, 0.12, 4), lambert('#1e1e26')));
   return g;
 }
 
@@ -210,7 +253,11 @@ export function disposeTelescope(g: Group): void {
   g.traverse((o) => {
     if (o instanceof Mesh) {
       o.geometry.dispose();
-      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: Material) => m.dispose());
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: Material) => {
+        const map = (m as MeshLambertMaterial).map;
+        if (map?.userData.copy) map.dispose(); // (the shared textures stay)
+        m.dispose();
+      });
     }
   });
 }

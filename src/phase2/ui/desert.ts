@@ -10,10 +10,11 @@ import {
   AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
   TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, type Material, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
-  BufferGeometry, Raycaster, Plane, Vector2,
+  BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
 import { telescopeAt, type Telescope } from '../core/telescope';
 import { buildTelescope, disposeTelescope } from './telescope3d';
+import { repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
  *  mock-up). Plots are numbered row by row (0..GRID²-1); the middle one is the dry dock. */
@@ -48,7 +49,6 @@ const ZOOM_MAX = 4;
 const WHEEL_ZOOM = 0.0015;
 const ZOOM_EASE = 12;
 
-const SAND = '#5a5a82';
 const OBSIDIAN = '#3a3c48';
 const STEEL = '#4a4e58';
 const RED = '#ff2a3a';
@@ -72,14 +72,30 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   const scene = new Scene();
   scene.fog = new Fog('#141a34', 230, 380);
 
-  // Ground: a slab with displaced dunes on top.
+  // Ground: a slab with displaced dunes on top, textured sand (grain, ripples) tinted per vertex: darker in the hollows,
+  // lighter on the crests, in broad patches, and trodden darker along the lanes between plots.
   const ground = new PlaneGeometry(SIZE, SIZE, SIZE, SIZE);
   ground.rotateX(-Math.PI / 2);
   const pos = ground.getAttribute('position') as BufferAttribute;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, duneHeight(pos.getX(i), pos.getZ(i)));
+  const uv = ground.getAttribute('uv') as BufferAttribute;
+  const colours: number[] = [];
+  const low = new Color(SAND_LOW), high = new Color(SAND_HIGH), laneC = new Color(SAND_LANE), c = new Color();
+  const local = (v: number) => Math.abs(((((v + SIZE / 2) % PLOT) + PLOT) % PLOT) - PLOT / 2);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i), y = duneHeight(x, z);
+    pos.setY(i, y);
+    uv.setXY(i, x / SAND_TILE, z / SAND_TILE); // (the texture repeats in world units)
+    const grain = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; // (a hash: a little speckle per vertex)
+    const patch = Math.sin(x / 9.7 + 0.6) * Math.cos(z / 12.3 - 1.1) * 0.7 + Math.sin((x - z) / 5.3) * 0.25 + (grain - Math.floor(grain) - 0.5) * 0.25;
+    c.copy(low).lerp(high, Math.max(0, Math.min(1, (y - 0.8) / 3 + patch * 0.35)));
+    const onLane = Math.max(0, Math.min(1, (Math.max(local(x), local(z)) - (PLOT / 2 - 1.6)) / 1.2));
+    c.lerp(laneC, onLane * 0.8);
+    colours.push(c.r, c.g, c.b);
+  }
+  ground.setAttribute('color', new Float32BufferAttribute(colours, 3));
   ground.computeVertexNormals();
-  scene.add(new Mesh(ground, lambert(SAND)));
-  const slab = new Mesh(new BoxGeometry(SIZE, 5, SIZE), lambert('#2e2e48'));
+  scene.add(new Mesh(ground, new MeshLambertMaterial({ map: sandTexture(), vertexColors: true, flatShading: true })));
+  const slab = new Mesh(new BoxGeometry(SIZE, 5, SIZE), new MeshLambertMaterial({ color: '#3a3a5a', map: repeated(sandTexture(), SIZE / SAND_TILE, 0.6) }));
   slab.position.y = 0.75 - 2.5; // (just under the flattest sand, so they never fight for the same pixels)
   scene.add(slab);
 
@@ -172,17 +188,12 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     lamps.push(light);
   }
 
-  // The plots' borders: a darker strip along each lane (on the flat sand), a red light where lanes cross. (Posts along
-  // the lanes looked like rain at the closest zoom.)
-  const lane = lambert('#3c3c5e');
+  // The plots' borders: the lanes are trodden darker sand (the ground's colours), with a red light where lanes cross.
+  // (Posts along the lanes looked like rain at the closest zoom; flat strips over the sand looked stuck on.)
   const crossings: [number, number][] = [];
   for (let i = 0; i <= GRID; i++) {
     const a = -SIZE / 2 + i * PLOT;
     for (let j = 0; j <= GRID; j++) crossings.push([a, -SIZE / 2 + j * PLOT]);
-    const along = new Mesh(new BoxGeometry(SIZE + 1.4, 0.1, 1.4), lane), across = new Mesh(new BoxGeometry(1.4, 0.1, SIZE + 1.4), lane);
-    along.position.set(0, 0.82, a);
-    across.position.set(a, 0.83, 0);
-    scene.add(along, across);
   }
   const place = (mesh: InstancedMesh, at: [number, number][], y: number) => {
     const o = new Object3D();
@@ -190,6 +201,26 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     scene.add(mesh);
   };
   place(new InstancedMesh(new BoxGeometry(0.7, 0.7, 0.7), red, crossings.length), crossings, 1.5);
+
+  // Rocks half sunk in the sand, scattered (none on the dock's or the telescope's sites).
+  const site = plotCentre(TELESCOPE_PLOT);
+  let seed = 23;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rocks = new InstancedMesh(new DodecahedronGeometry(1, 0), lambert('#4a4862'), 700);
+  const o = new Object3D();
+  let n = 0;
+  while (n < rocks.count) {
+    const x = (rnd() - 0.5) * (SIZE - 2), z = (rnd() - 0.5) * (SIZE - 2), s = 0.25 + Math.pow(rnd(), 3) * 1.1;
+    const rx = rnd(), ry = rnd(), sy = 0.5 + rnd() * 0.4;
+    const fromSite = Math.hypot(x - site.x, z - site.z);
+    if (Math.hypot(x, z) < 14 || fromSite < 4 || (fromSite < CLEARED + 2 && s > 0.45)) continue; // (small ones on the site: under its platform)
+    o.position.set(x, duneHeight(x, z) - s * 0.25, z);
+    o.rotation.set(rx * 3, ry * 6, 0);
+    o.scale.set(s, s * sy, s * (0.7 + rx * 0.5));
+    o.updateMatrix();
+    rocks.setMatrixAt(n++, o.matrix);
+  }
+  scene.add(rocks);
 
   // The selected plot's outline (shown while zoomed out).
   const e = PLOT / 2 - 0.8;

@@ -58,8 +58,13 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   `P2State` field (version bump, migration, test).
 - `buildTelescope(t)` draws it at its level round its plot's centre: the tube tilted 40° up, sideways to the starting
   view (so its length shows), on its mount; lens rings glow brighter with sharpness; platform with red lights, wind wall,
-  a half dome behind (open towards the view), hexagonal mirror segments, laser beams; a work lamp. `setTelescope`
-  swaps it (`disposeTelescope` frees the old one).
+  a half dome behind (open towards the view), hexagonal mirror segments, laser beams; a work lamp. Settled in the sand:
+  a soft shadow at its foot, a bank of sand against the platform (or heaps at the feet), crates and the lamp's cable.
+  `setTelescope` swaps it (`disposeTelescope` frees the old one and its texture copies, not the shared textures).
+- **Textures** (`ui/textures.ts`): small pixel canvases drawn once, nearest filtered, mostly greys tinted by the
+  material colour (`textured` brightens it to make up): sand (grain, wind ripples, pebbles; `SAND_TILE` units per
+  tile), metal plating (seams, rivets, scratches, rust streaks; more rust on the steel), cracked concrete, and a round
+  shadow alpha map. `repeated(map, x, y)` copies one with its own repeat for a face.
 
 ## The desert (`ui/desert.ts`, `createDesert(onPlot, start)` → `{ el, setTelescope, select, stop }`)
 - three.js, only in phase II's chunk (phase I imports `../phase2/boot` dynamically, never statically). A real 3D scene
@@ -68,8 +73,10 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
 - **Plots** (work areas): the ground is `GRID`×`GRID` (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1).
   `TELESCOPE_PLOT` (0, AREA 1, where the view starts) holds the telescope, its sand cleared flat within `CLEARED`;
   the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; the rest are empty for now. Each plot has its own dunes
-  (`duneHeight`, flat towards its edges), with flat lanes between (darker strips, red lights at crossings; posts along
-  them looked like rain); the slab top sits just under the flattest sand to avoid z-fighting. A tap (a short still
+  (`duneHeight`, flat towards its edges), with flat lanes between (trodden darker sand, red lights at crossings; posts
+  along them looked like rain, flat strips looked stuck on). The sand is textured and tinted per vertex (`SAND_LOW` in
+  the hollows to `SAND_HIGH` on the crests, in broad patches with a little speckle, `SAND_LANE` on the lanes), with
+  ~700 rocks half sunk in it (only small ones on the telescope's site, none on the dock's); the slab top sits just under the flattest sand to avoid z-fighting. A tap (a short still
   press) picks the plot under it (raycast onto the ground plane), zooms back in and the view glides to it (`focus`);
   `onPlot` reports it and the plate shows its name. Zooming out drifts the view to the ground's centre (all of it fits
   at `ZOOM_MAX`) and outlines the selected plot in yellow. Selection is view state, not saved.
