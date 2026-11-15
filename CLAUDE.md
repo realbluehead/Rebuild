@@ -45,8 +45,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - **Decoder sheets** (save v25): it prints `PAGES_MAX` 20 sheets (`s.pages`), each needing more scraps of lore
   **found** than the last (`pageNeed(w, k)`: cumulative steps growing by `PAGE_COST_GROWTH` 1.15, the last =
   `LORE_PAGE_SHARE` 0.9 of the map's scraps, steps ~3 → ~43 on a full map; scraps are never used up) and taking longer
-  (`decodeTime(n)`: 60 s → 30 min, ~3 h in all); `canPrintNext`. Left on it waits for scraps and starts each sheet when
-  enough are found; off after the last. Hopper count shows `found/needed` (dim `.short` when short; the heap fills
+  (`decodeTime(n)`: 60 s → 30 min, ~3 h in all); `canPrintNext`. Left on it prints sheet after sheet and switches itself
+  off when it cannot start the next (too few scraps found, or all done). Hopper count shows `found/needed` (dim `.short` when short; the heap fills
   between the last sheet's mark and the next), hidden once no sheet is left to start. Texts: `pageText(k)` (placeholder
   until written). Historian goal tiers are sheets: 1/3/8/14/20. v24 saves (one sheet per scrap): as many sheets as
   their scraps printed would open (`legacyPrinted`, `fromLegacyPrinted` in load.ts). Sim: all 20 by ~11 h 43.

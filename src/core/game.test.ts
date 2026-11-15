@@ -105,15 +105,15 @@ describe('world', () => {
     expect(decode(s, world, 0.5)).toEqual([0]);
     expect(goalValue(s, world, 'historian')).toBeGreaterThanOrEqual(1);
     expect(loreFound(s, world).length).toBe(found.length); // (nothing used up)
-    // Short of scraps found for the next sheet it waits, still on.
+    // Short of scraps found for the next sheet, it switches itself off (and cannot be switched on).
     setDecoder(s, world, false);
     decode(s, world, 1e6); // (a sheet that had started finishes)
     s.decodeOn = true;
-    const n = s.pages;
-    if (pageNeed(world, n) > found.length) {
-      expect(decode(s, world, 1e6)).toEqual([]);
-      expect(s.decodeOn).toBe(true);
-    }
+    decode(s, world, 1e9); // (it prints what the scraps found allow)
+    expect(s.pages).toBeLessThan(PAGES_MAX);
+    expect(pageNeed(world, s.pages)).toBeGreaterThan(found.length);
+    expect(s.decodeOn).toBe(false);
+    expect(setDecoder(s, world, true)).toBe(false);
     // On a whole map with every scrap found, the last sheet can be printed; then it turns itself off.
     const t = library(freshGame(7));
     Object.assign(t, { pages: PAGES_MAX - 1, decodeOn: true, ring: ringCount(big) });

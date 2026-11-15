@@ -32,7 +32,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'jukebox', name: 'Jukebox', work: 'cd', item: 'note', need: 6, level: 21, gold: 1500, sec: 360,
     help: 'Records are made from notes. Each one brings more bluetreri from every cell. Tap a title card to play the record.' },
   { id: 'decoder', name: 'Decoder', need: 3, level: 23, gold: 3000, sec: 480,
-    help: 'It reads the DNA left on the scraps of lore found and prints the planet\'s history: 20 sheets in all. Each sheet needs more scraps found than the last (they are not used up; the funnel shows the scraps found against what the next sheet needs) and takes a little longer to print. Left on, it starts each sheet as soon as enough scraps are found, also while you are away. The sheets go to the binder under it: tap it to open, the arrows turn the pages, tap a page to read it.' },
+    help: 'It reads the DNA left on the scraps of lore found and prints the planet\'s history: 20 sheets in all. Each sheet needs more scraps found than the last (they are not used up; the funnel shows the scraps found against what the next sheet needs) and takes a little longer to print. Left on, it prints one sheet after another, also while you are away, and switches itself off when it has too few scraps for the next. The sheets go to the binder under it: tap it to open, the arrows turn the pages, tap a page to read it.' },
 ];
 
 export const sectionById = (id: SectionId): SectionDef => SECTIONS.find((d) => d.id === id)!;

@@ -1230,23 +1230,23 @@ export const canPrintNext = (s: GameState, w: World): boolean =>
   s.decoding < 0 && s.pages < PAGES_MAX && loreFound(s, w).length >= pageNeed(w, s.pages);
 
 /** Turns the Decoder on (only once built, and with a sheet under way or enough scraps found for the next) or off (the sheet under
- *  way still finishes). Left on, it waits for scraps and starts each sheet as soon as it has them. */
+ *  way still finishes). It switches itself off when it cannot start the next sheet. */
 export function setDecoder(s: GameState, w: World, on: boolean): boolean {
   if (on && (!sectionBuilt(s, 'decoder') || (s.decoding < 0 && !canPrintNext(s, w)))) return false;
   s.decodeOn = on;
   return true;
 }
 
-/** The Decoder works for `dt` seconds: it finishes the sheet under way and, while on, starts the next one when enough
- *  scraps have been found for it (it switches off after the last sheet). Returns the sheets printed. */
+/** The Decoder works for `dt` seconds: it finishes the sheet under way and, while on, starts the next one if enough
+ *  scraps have been found for it; if not (or after the last sheet) it switches itself off. Returns the sheets printed. */
 export function decode(s: GameState, w: World, dt: number): number[] {
   const out: number[] = [];
   let left = dt;
   for (let guard = 0; guard < 1000; guard++) {
     if (s.decoding < 0) {
       if (!s.decodeOn) break;
-      if (s.pages >= PAGES_MAX) { s.decodeOn = false; break; }
-      if (!canPrintNext(s, w)) break;
+      // Nothing it can print now (all done, or too few scraps found for the next sheet): it switches itself off.
+      if (!canPrintNext(s, w)) { s.decodeOn = false; break; }
       s.decoding = s.pages;
       s.decodeLeft = decodeTime(s.pages);
     }
