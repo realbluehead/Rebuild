@@ -246,7 +246,7 @@ button { font: inherit; color: inherit; }
 
 /* Field notes that fill in: what is missing, and the ? button when there is something new */
 .help-body .locked { color: var(--muted); margin-top: 10px; }
-.menu-btn.alert { background: var(--gold); animation: blink 1s steps(2) infinite; }
+.menu-btn.alert { background: var(--gold); } /* (new field notes: lit, but no blinking) */
 .upg[hidden], .routes-more[hidden] { display: none; }
 .routes-more { grid-column: 1 / -1; margin: 2px 4px; color: var(--muted); }
 .rover-pick { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
@@ -507,6 +507,8 @@ button { font: inherit; color: inherit; }
   min-width: 0; font: 7px/1 var(--font-num); white-space: nowrap; overflow: hidden; }
 /* (a real 10px coin, not a scaled one: a transform keeps the full width and pushes past the button) */
 .part-row .buy .coin { width: 10px; height: 10px; }
+.part-row .buy .part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.part-row .gain .item-icon { width: 10px; height: 10px; margin-left: 2px; vertical-align: -1px; }
 
 .routes-table .part-row { --cols: minmax(0, 1fr) 14px 40px 44px 70px; }
 .det-table .part-row { --cols: 68px 14px minmax(0, 1fr) 74px; }

@@ -865,7 +865,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       set(detMain.eff, owned ? 'fitted' : 'finds scraps');
       const need = detectorLevelNeeded(world);
       if (owned) label(detMain, 'btnKey', detMain.btn, 'max');
-      else if (levelOf(s, world) < need) label(detMain, 'btnKey', detMain.btn, `explorer Lv ${need}`);
+      else if (levelOf(s, world) < need) label(detMain, 'btnKey', detMain.btn, `Lv ${need}`);
       else price(detMain, 'btnKey', detMain.btn, DETECTOR_GOLD, {});
       detMain.btn.classList.toggle('can', canBuyDetector(s, world));
       for (const r of detUps) {
@@ -934,7 +934,11 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       if (id === 'radar') {
         // The Radar brings items, not bluetreri: how many more it would have in reach right now.
         const more = itemsInReach(s, world, next.radar) - itemsInReach(s, world, cur.radar);
-        set(r.gain, `+${more} item${more === 1 ? '' : 's'}`);
+        // (a page icon after the number: the word would not fit the column)
+        if (r.gain.dataset.more !== `${more}`) {
+          r.gain.dataset.more = `${more}`;
+          r.gain.replaceChildren(document.createTextNode(`+${fmt(more)}`), itemIcon(0));
+        }
         r.gain.title = `Pages, notes and photos in reach now: ${itemsInReach(s, world, cur.radar)} → ${itemsInReach(s, world, next.radar)}`;
         continue;
       }
