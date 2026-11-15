@@ -2,6 +2,7 @@
 // routes taken since it was stored are applied (see `loadWorld`). It holds one map (tens of MB), and is tied to the build
 // that made it, since a new build may generate maps differently.
 import type { World } from '../core/world';
+import { WORLD_CACHE_DB } from '../../shared/keys';
 
 export interface CachedWorld {
   build: string;
@@ -12,7 +13,7 @@ export interface CachedWorld {
   world: World;
 }
 
-const DB = 'rebuild-world';
+const DB = WORLD_CACHE_DB;
 const STORE = 'world';
 const KEY = 'current';
 

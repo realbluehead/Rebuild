@@ -5,12 +5,18 @@ import { confirmModal, h, modal, textModal } from '../shared/ui/dom';
 import { encodeSave } from '../shared/codec';
 import { offerUpdates } from '../shared/updates';
 import { onBackground } from '../platform';
+import { WORLD_CACHE_DB } from '../shared/keys';
 import type { Legacy } from './core/legacy';
 import { newPhase2, type P2State } from './core/state';
 import { loadPhase2, savePhase2, serializeP2 } from './save';
 import { showPhase2 } from './ui/phase2';
 
 const AUTOSAVE_MS = 30_000;
+
+/** Phase I's built map is no use any more: frees its storage (a reload of phase I, after an import, builds it again). */
+function dropPhase1Map(): void {
+  try { indexedDB.deleteDatabase(WORLD_CACHE_DB); } catch { /* no IndexedDB */ }
+}
 /** A longer frame (a frozen tab) is not counted as play time. */
 const MAX_FRAME_SEC = 5;
 
@@ -20,6 +26,7 @@ export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolea
   const loaded = await loadPhase2();
   if (!loaded) return false;
   title.progress(1);
+  dropPhase1Map();
   run(app, loaded.state, true);
   app.append(title.el); // the screen went in under it: keep the title on top until the player taps
   offerUpdates(title.ready(), () => savePhase2(loaded.state));
@@ -30,7 +37,7 @@ export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolea
  *  (`?phase2`): nothing is saved and the menu cannot import or restart. */
 export function startPhase2(root: HTMLElement, legacy: Legacy, persist: boolean): void {
   const state = newPhase2(legacy);
-  if (persist) void savePhase2(state);
+  if (persist) { void savePhase2(state); dropPhase1Map(); }
   run(root, state, persist);
 }
 

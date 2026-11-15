@@ -16,7 +16,7 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
 - `src/main.ts`: puts the title screen up, then boots one phase: phase II if its save (`rebuild:p2`, src/shared/keys.ts)
   exists (phase I's code and world are then never loaded), else phase I.
 - `src/shared/`: what both phases use and that knows neither: `decimal.ts`, `format.ts`, `codec.ts` (export text),
-  `keys.ts`, `updates.ts` (new version offers), `ui/style.css` (base look; phase II re-themes it in its own css),
+  `keys.ts` (storage names main.ts or both phases need), `updates.ts` (new version offers), `ui/style.css` (base look; phase II re-themes it in its own css),
   `ui/title.ts`, `ui/dom.ts` (`h`, `modal`, `confirmModal`, `textModal`).
 - `src/platform/`: everything that differs between web and Android (storage, background, local notifications, APK updates).
 - `src/saves.ts`: the one module that knows both phases' saves (import of either kind of exported text, restart = wipe both).

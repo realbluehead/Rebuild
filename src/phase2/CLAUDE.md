@@ -19,7 +19,9 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
 - `save.ts`: own key `rebuild:p2` (+ backup), own `P2_SAVE_VERSION` and `MIGRATIONS` (independent of phase I's), JSON with
   `phase: 2` so exported texts tell the phases apart (`isPhase2Save`). **If `P2State` changes: bump the version, add the
   migration and a test** (`save.test.ts`).
-- Once this save exists, src/main.ts boots straight into phase II (`boot` here; if it cannot be read, phase I boots).
+- Once this save exists, src/main.ts boots straight into phase II (`boot` here; if it cannot be read, phase I boots):
+  none of phase I's code, save or map is loaded (check the network list when touching boot or imports), and phase I's
+  built map in IndexedDB (`WORLD_CACHE_DB`, tens of MB) is deleted on entering and on each boot (`dropPhase1Map`).
   Phase I's save is kept untouched. Menu: Export (this save), Import (either phase's text, via src/saves.ts), Restart
   (wipes both phases).
 
