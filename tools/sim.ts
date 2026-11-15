@@ -14,7 +14,8 @@ import { GOALS } from '../src/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/content/world';
 import { ROUTES } from '../src/content/routes';
 import { DETECTOR_GOLD, DETECTOR_UPS, WORKS_MAX } from '../src/content/collection';
-import { buyDetectorUp, canBuyDetectorUp, detectorUpCost, setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
+import { SECTIONS } from '../src/content/library';
+import { buildSection, canBuildSection, buyDetectorUp, canBuyDetectorUp, detectorUpCost, setDecoder, chooseDig, setHaul, buyDetector, canBuyDetector, metalCollected, carried, rateParts, itemsCollected, canClaim, claimGoal, build, buy, canBuild, canBuy, canUnlockRoute, canUpgradeRoute, chooseRoute, craft, hasPart, levelOf, levelOn, routeLevelNeeded, routeLevel, unlockRoute, upgradeRoute, costOf, explored, isComplete, fleetSpeed, plannedRate, stats, TICK_SEC, tick } from '../src/core/game';
 import { newGame } from '../src/core/state';
 import { fmt, fmtTime } from '../src/core/format';
 import { RateMeter } from '../src/core/rate';
@@ -113,7 +114,11 @@ for (let t = 0; t < hours * 3600; t += DT) {
       mark(t, `route ${s.route} lv${routeLevel(s, s.route)}`);
     }
   }
-  // The Decoder prints the scraps of lore whenever there are some waiting (it turns itself off when none are left).
+  // Library sections, as soon as they can be built (they hold the works and the Decoder).
+  for (const d of SECTIONS) {
+    if (!SKIP.has('library') && canBuildSection(s, w, d.id)) { spend('library', d.gold); buildSection(s, w, d.id); mark(t, `${d.name} started`); }
+  }
+    // The Decoder prints the scraps of lore whenever there are some waiting (it turns itself off when none are left).
   if (!s.decodeOn) setDecoder(s, w, true);
   // The Metal detector: bought with spare bluetreri (twice its price).
   if (!SKIP.has('detector') && canBuyDetector(s, w) && s.gold.gte(2 * DETECTOR_GOLD)) { spend('detector', DETECTOR_GOLD); buyDetector(s, w); mark(t, 'Metal detector'); }

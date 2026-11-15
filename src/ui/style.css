@@ -230,7 +230,8 @@ button { font: inherit; color: inherit; }
 .help-body p { margin: 0 0 6px; color: var(--text); font-size: 19px; line-height: 1.05; }
 
 /* Tabs of the bottom panel */
-.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; margin-bottom: 8px; }
+.tabs .tab[hidden] { display: none; } /* (the Library tab, until its explorer level) */
 .tab { font: 9px/1 var(--font-num); padding: 9px 2px; }
 .tab.on { background: var(--panel); color: var(--text); box-shadow: inset 0 var(--u) 0 var(--hi); }
 .tab.alert:not(.on) { color: var(--gold); animation: blink 1s steps(2) infinite; }
@@ -569,7 +570,7 @@ button { font: inherit; color: inherit; }
 .arrival-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a7a52; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
 
 /* The archive binder under the Decoder (ui/binder.ts): black velvet, silver clasp; a tap opens it and turns the pages. */
-.binder { flex: 0 1 auto; min-height: 100px; margin-top: 0; cursor: pointer; }
+.binder { flex: 0 1 auto; min-height: 84px; margin-top: 0; cursor: pointer; }
 .binder svg { display: block; width: 100%; height: 100%; max-width: 520px; margin: 0 auto; }
 .binder .bd-out-r, .binder .bd-out-l, .binder .bd-in-l, .binder .bd-in-r { transform-box: fill-box; }
 /* A page turn: the leaf folds up against the rings, then comes down on the other side (origins on the ring side). */
@@ -646,3 +647,27 @@ button { font: inherit; color: inherit; }
 .p2-scene svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .p2-dock { position: absolute; left: 8px; bottom: 8px; padding: 7px 10px; font: 8px/1.4 var(--font-num); color: #ff6a74; }
 .p2-table .part-row { --cols: minmax(0, 1fr) 40px minmax(0, 1.1fr) 62px; }
+
+/* Library sections not built yet: a locked plate in their place (padlock, name, what it asks for, Build or the time
+   left), and the magnifying glass that opens the Library's help. */
+.library-view > [hidden] { display: none; }
+.lib-lock { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px;
+  padding: 8px 12px; background: #0d1613e6; }
+.lib-lock .lock-head { display: flex; align-items: center; gap: 6px; font: 8px/1 var(--font-num); color: var(--text); }
+.lib-lock .lock-need { grid-column: 1; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-lock .lock-need.short { color: #c98a6a; }
+.lib-lock .buy { grid-column: 2; grid-row: 1 / 3; display: flex; align-items: center; gap: 4px; padding: 4px 8px; font: 8px/1 var(--font-num); white-space: nowrap; }
+.lib-lock .buy[hidden] { display: none; }
+.lib-lock .buy .part { display: inline-flex; align-items: center; gap: 4px; }
+.lib-lock .buy .coin { width: 10px; height: 10px; }
+.lib-lock .lock-bar { grid-column: 1 / -1; }
+/* A small brass padlock: the shackle on top, the body below. */
+.padlock { position: relative; width: 10px; height: 8px; margin-top: 5px; background: var(--rivet); box-shadow: inset 0 -2px 0 var(--gold-2); }
+.padlock::before { content: ''; position: absolute; left: 2px; top: -5px; width: 6px; height: 6px; box-sizing: border-box;
+  border: 2px solid var(--rivet); border-bottom: 0; }
+.lib-head { flex: none; display: flex; align-items: center; justify-content: space-between; margin: -4px 0 -6px;
+  font: 8px/1 var(--font-num); color: var(--rivet); letter-spacing: 1px; }
+.lib-help { position: relative; z-index: 7; width: 20px; height: 20px; padding: 0; display: grid; place-items: center; }
+/* The magnifying glass: a ring and its handle. */
+.lib-help .lens { position: relative; width: 10px; height: 10px; margin: -3px 0 0 -3px; border: 2px solid var(--text); border-radius: 50%; }
+.lib-help .lens::after { content: ''; position: absolute; left: 8px; top: 9px; width: 6px; height: 3px; background: var(--text); transform: rotate(45deg); transform-origin: left center; }

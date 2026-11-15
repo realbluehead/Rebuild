@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, scrapsToDecode, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -17,6 +17,7 @@ import { showVoyage } from './voyage';
 import { showPhase2 } from './phase2';
 import { createBinder } from './binder';
 import { createTimeline } from './timeline';
+import { SECTIONS, sectionOfWork, type SectionDef, type SectionId } from '../content/library';
 
 export interface ViewActions {
   unlockRoute(id: RouteId): void;
@@ -39,6 +40,8 @@ export interface ViewActions {
   buyDetectorUp(id: DetectorUpId): void;
   /** Switches the Library's Decoder on or off. */
   decoder(on: boolean): void;
+  /** Pays for a Library section and starts building it. */
+  buildSection(id: SectionId): void;
   zoom(delta: number): void;
   exportText(): string;
   importText(text: string): void;
@@ -560,6 +563,47 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const libView = h('div', 'library-view');
   libView.hidden = true;
   const libCaption = h('div', 'lib-caption px-box');
+  // Sections not built yet stand as a locked plate in their place: what they ask for (explorer level, items) and a Build
+  // button for bluetreri, then a bar with the time left while they are built.
+  interface Lock { d: SectionDef; el: HTMLElement; need: HTMLElement; btn: HTMLButtonElement; bar: HTMLElement; fill: HTMLElement; btnKey: string }
+  const locks = new Map<SectionId, Lock>(SECTIONS.map((d) => {
+    const el = h('div', 'lib-lock px-box');
+    const head = h('div', 'lock-head');
+    head.append(h('i', 'padlock'), h('span', 'name', d.name));
+    const need = h('div', 'lock-need');
+    const btn = h('button', 'px-btn buy');
+    btn.addEventListener('click', () => actions.buildSection(d.id));
+    const bar = h('div', 'bar slim lock-bar');
+    const fill = h('i');
+    bar.append(fill);
+    el.append(head, need, btn, bar);
+    return [d.id, { d, el, need, btn, bar, fill, btnKey: '' }];
+  }));
+  /** Updates the locked plates (every frame while the Library is open: the time left runs). */
+  function drawLocks(s: GameState) {
+    for (const k of locks.values()) {
+      const left = s.library[k.d.id];
+      if (left === 0) continue;
+      const what = k.d.item ? ITEMS.find((it) => it.id === k.d.item)!.plural : 'lore scraps';
+      const lvl = sectionLevelNeeded(world, k.d.id);
+      const have = Math.min(k.d.need, sectionHave(s, world, k.d.id));
+      const building = left > 0;
+      set(k.need, building ? `Building… ${clock(left)} left` : `Explorer Lv ${lvl} · ${what} ${have}/${k.d.need}`);
+      k.need.classList.toggle('short', !building && (levelOf(s, world) < lvl || have < k.d.need));
+      k.btn.hidden = building;
+      k.bar.hidden = !building;
+      if (building) k.fill.style.width = `${(100 * (1 - left / k.d.sec)).toFixed(1)}%`;
+      else {
+        price(k, 'btnKey', k.btn, k.d.gold, {}, 'Build');
+        k.btn.classList.toggle('can', canBuildSection(s, world, k.d.id));
+      }
+    }
+  }
+  // A magnifying glass over the Library: how it works, part by part (only the parts already built).
+  const libHelp = h('button', 'px-btn lib-help');
+  libHelp.title = 'How the Library works';
+  libHelp.append(h('i', 'lens'));
+  libHelp.addEventListener('click', () => openLibraryHelp());
   const shelvesEl = h('div', 'shelves');
   // The decoder, under the jukebox: switched on, it takes the scraps of lore found one by one. Each drops in the funnel
   // down to a flask, its DNA runs through the tubes to a monitor that reads it, and a printer gives out a sheet with its
@@ -612,7 +656,10 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const timelineRow = h('div', 'shelf-row album');
   const timelineLabel = h('div', 'shelf-label');
   timelineRow.append(timelineLabel, timeline.el);
-  libView.append(shelvesEl, machineEl, binder.el);
+  // A header: the Library's name and the magnifying glass for its help.
+  const libHead = h('div', 'lib-head');
+  libHead.append(h('span', '', 'THE LIBRARY'), libHelp);
+  libView.append(libHead, shelvesEl, machineEl, binder.el);
   const MC_TEXT: Record<string, string> = { idle: 'STANDBY_', drop: 'LOADING...', flow: 'READING DNA', print: 'PRINTING...' };
   /** The scrap last seen in the Decoder (to show it dropping in and in the caption when a new one starts). */
   let mcLast = -1;
@@ -700,7 +747,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   }
   function drawShelves(s: GameState) {
     const lore = loreFound(s, world);
-    const key = `${s.printed.length}|${s.decoding}|` + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
+    const key = `${s.printed.length}|${s.decoding}|` + SECTIONS.map((d) => (s.library[d.id] === 0 ? 1 : 0)).join('') + WORKS.map((wd) => s.works[wd.id]).join(',') + `|${levelOf(s, world)}|${picked}|${lore.length}`;
     if (key === shelfKey) return;
     shelfKey = key;
     shelvesEl.replaceChildren();
@@ -710,6 +757,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       const n = s.works[wd.id];
       const row = h('div', `shelf-row ${wd.id}`);
       const label = h('div', 'shelf-label', `${wd.name} ${n}/${WORKS_MAX}`);
+      const sec = sectionOfWork(wd.id).id;
+      if (!sectionBuilt(s, sec)) {
+        row.append(locks.get(sec)!.el);
+        if (wd.id === 'cd') lower.append(row);
+        else shelvesEl.append(row);
+        continue;
+      }
       if (wd.id === 'cd') {
         row.append(label, jukebox(wd, n));
         lower.append(row);
@@ -739,7 +793,13 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const nd = s.works.album;
     set(timelineLabel, `${ALBUM.name} ${nd}/${WORKS_MAX}`);
     timeline.update(nd, WORKS_MAX, picked.startsWith('album:') ? Number(picked.slice(6)) : -1);
-    shelvesEl.append(timelineRow, lower);
+    shelvesEl.append(sectionBuilt(s, 'spiral') ? timelineRow : locks.get('spiral')!.el, lower);
+    // The Decoder and its binder, or their plate.
+    const dec = sectionBuilt(s, 'decoder');
+    machineEl.hidden = binder.el.hidden = !dec;
+    const decLock = locks.get('decoder')!.el;
+    if (dec) decLock.remove();
+    else if (decLock.parentElement !== libView) libView.insertBefore(decLock, machineEl);
     // The decoder: how many scraps are printed, the pile in the tray, and the switch.
     const printed = lore.filter((k) => s.printed.includes(k)).length;
     set(mcLabel, `Decoder · printed ${printed}/${lore.length} · found ${lore.length}/${world.loreCells.length}`);
@@ -1070,9 +1130,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the great inventions of the old world, from fire to the internet). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'On the Library tab, switch the Decoder on: it takes the scraps found one by one (the funnel shows how many wait), reads the DNA left on them and prints a sheet of the planet\'s history for each. Each scrap takes longer than the last; the printer\'s counter shows the time left. It keeps working while you are away. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
+        'Once the Decoder is built in the Library, switch it on: it takes the scraps found one by one (the funnel shows how many wait), reads the DNA left on them and prints a sheet of the planet\'s history for each. Each scrap takes longer than the last; the printer\'s counter shows the time left. It keeps working while you are away. Tap the printer\'s tray to read the sheets. The switch works while there are scraps to decode. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
-        'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title.',
+        'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title. Each part of the Library is built first (the magnifying glass there explains them).',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around the Scout, reaching as many cells as its range. It detects pages, notes and photos in the dark around it: they light up as the needle passes.',
@@ -1145,6 +1205,25 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     helpSeen = unlocked + seenTerrain.size;
     try { localStorage.setItem(HELP_SEEN_KEY, String(helpSeen)); } catch { /* no storage */ }
     menuBtn.classList.remove('alert');
+    m.box.append(body);
+    m.addClose('Got it');
+  }
+
+  /** The Library's help (the magnifying glass): how it works, and what each part built does. */
+  function openLibraryHelp() {
+    const s = current;
+    const m = modal('help');
+    m.box.append(h('div', 'name', 'The Library'));
+    const body = h('div', 'help-body');
+    body.append(h('p', '', 'Each part of the Library is built once, for bluetreri, when you reach its explorer level and have found what it asks for (pages, notes, photos or scraps of lore: they are not spent). Building takes a while and goes on while you are away. Works are made on the Goals tab, once their part stands.'));
+    let built = 0;
+    for (const d of SECTIONS) {
+      if (!s || !sectionBuilt(s, d.id)) continue;
+      built++;
+      body.append(h('h3', '', d.name), h('p', '', d.help));
+    }
+    const left = SECTIONS.length - built;
+    if (left > 0) body.append(h('p', 'locked', `??? ${left} more ${left === 1 ? 'part' : 'parts'} to build.`));
     m.box.append(body);
     m.addClose('Got it');
   }
@@ -1261,7 +1340,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         }
       }
       loreSeen = lore.length;
-      if (!libView.hidden) { drawShelves(s); drawDecoder(s); }
+      if (!libView.hidden) { drawShelves(s); drawDecoder(s); drawLocks(s); }
 
       // The panel (tabs, cards, prices, alerts) changes slowly: refreshed PANEL_MS apart, or at once after a tap.
       if (now - panelAt < PANEL_MS) return;
@@ -1275,18 +1354,20 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       for (const x of works) {
         const n = s.works[x.wd.id];
         const need = workLevelNeeded(world, n);
-        const early = n < WORKS_MAX && myLevel < need;
+        const sec = sectionOfWork(x.wd.id);
+        const noSec = n < WORKS_MAX && !sectionBuilt(s, sec.id);
+        const early = n < WORKS_MAX && (noSec || myLevel < need);
         const have = s.items[x.wd.item];
         const price = n < WORKS_MAX ? nextWorkCost(s, world, x.wd.id) : 0;
         x.pipEls.forEach((p, k) => {
           p.className = k < n ? 'on' : k === n && !early && have >= price ? 'ready' : k === n ? 'next' : '';
           if (k === n) p.style.setProperty('--p', `${Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
         });
-        set(x.next, n >= WORKS_MAX ? 'Complete!' : early ? `??? · Lv ${need}` : workTitle(x.wd, n));
+        set(x.next, n >= WORKS_MAX ? 'Complete!' : noSec ? `needs the ${sec.name}` : early ? `??? · Lv ${need}` : workTitle(x.wd, n));
         set(x.gain, `${x.wd.effect === 'bluetreri' ? 'loot' : x.wd.effect} ×${fmt(x.wd.bonus ** n)}`);
         x.next.title = x.next.textContent ?? '';
         const plain = n >= WORKS_MAX || early;
-        set(x.cost, n >= WORKS_MAX ? 'done' : early ? `Lv ${need}` : `${have}/${price}`);
+        set(x.cost, n >= WORKS_MAX ? 'done' : noSec ? 'Library' : early ? `Lv ${need}` : `${have}/${price}`);
         x.tip = plain ? '' : `${x.wd.item}s ${have}/${price}`;
         if (tipOwner === x.btn) { if (x.tip) set(tipEl, x.tip); else hideTip(); }
         x.btn.classList.toggle('plain', plain);
@@ -1364,6 +1445,8 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         c.btn.title = `Each tier: ${c.g.rewardText} ×${c.g.mult}`;
         c.btn.classList.toggle('can', canClaim(s, world, id));
       }
+      tabLibrary.hidden = !libraryOpen(s, world);
+      tabLibrary.classList.toggle('alert', SECTIONS.some((d) => canBuildSection(s, world, d.id)));
       tabGoals.classList.toggle('alert', ready || GOALS.some((g) => canClaim(s, world, g.id)));
       fillGoalTab(s);
       sizePanel(s);

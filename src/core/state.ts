@@ -7,6 +7,7 @@ import type { RouteId } from '../content/routes';
 import type { DigOrder, HaulPick, RoverKind } from '../content/upgrades';
 import { GOALS, type GoalId } from '../content/goals';
 import type { PlanEntry } from './world';
+import type { SectionId } from '../content/library';
 
 /** What a rover is doing: working (the Scout exploring, the Miner digging), returning to camp to unload, heading back
  *  out (the Hauler: to the rover it picks up from), fetching an item the radar spotted (Scout), or parked at camp
@@ -169,6 +170,8 @@ export interface GameState {
   detectDug: number;
   /** Levels of the detector's upgrades (Coil, Sifter, Deep scan). */
   detUps: Record<DetectorUpId, number>;
+  /** The Library's sections: -1 locked (not started), above 0 the seconds of building left, 0 built. */
+  library: Record<SectionId, number>;
   /** Play time when the whole map was explored and every bluetreri was back at camp (unset until then). */
   doneAt?: number;
   /** Saves from before v9: items are recounted at today's prices once the world exists (`recountItems`). */
@@ -206,6 +209,7 @@ export function newGame(seed = randomSeed()): GameState {
     metalBase: 0,
     detectDug: 0,
     detUps: { coil: 0, sift: 0, deep: 0 },
+    library: { shelf: -1, spiral: -1, jukebox: -1, decoder: -1 },
     weather: { epoch: 0, storms: [], nextId: 0 },
     routes: ['random'],
     route: 'random', // the starting route: it takes over when the first ring after camp starts

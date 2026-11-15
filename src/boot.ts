@@ -1,5 +1,5 @@
 // The game proper, loaded by main.ts once the title screen is up.
-import { buyDetector, buyDetectorUp, decode, setDecoder, carried, chooseDig, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
+import { buildSection, buildSections, buyDetector, buyDetectorUp, decode, setDecoder, carried, chooseDig, claimGoal, goalBonus, build, buy, levelOn, chooseRoute, craft, routeLevel, unlockRoute, upgradeRoute, goldPerSec, setZoom, stats, TICK_SEC, tick } from './core/game';
 import type { GameState } from './core/state';
 import type { World } from './core/world';
 import { D } from './core/decimal';
@@ -7,6 +7,7 @@ import { fmt } from './core/format';
 import { ZOOMS } from './content/world';
 import { routeById } from './content/routes';
 import { DETECTOR_UPS } from './content/collection';
+import { sectionById } from './content/library';
 import { kindById } from './content/upgrades';
 import { goalById } from './content/goals';
 import { applyOffline, type OfflineReport } from './save/offline';
@@ -123,6 +124,11 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       view.toast(`${DETECTOR_UPS.find((d) => d.id === id)!.name} Lv ${state.detUps[id]}\nmore metal scraps`);
       void save();
     },
+    buildSection: (id) => {
+      if (!buildSection(state, world, id)) return;
+      view.toast(`${sectionById(id).name}\nbuilding…`);
+      void save();
+    },
     decoder: (on) => { if (setDecoder(state, world, on)) void save(); },
     zoom: (d) => { setZoom(state, state.zoom + d); },
     exportText: () => exportSave(serialize(state, Date.now())),
@@ -165,6 +171,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     for (const i of ev.specials) view.specialFound(i, fmt(world.value[i] * loot), now);
     for (const i of ev.items) view.itemFound(i, now);
     if (ev.deposited > 0) { view.deposited(fmt(ev.deposited), now); void save(); }
+    for (const id of ev.built ?? []) { view.toast(`${sectionById(id).name} built!\nin the Library`); void save(); }
     if (ev.completed) { finishedUnseen(state); view.showComplete(state); void save(); }
     if (ev.zoomUnlocked) {
       view.toast(`New zoom: ${ZOOMS[ev.zoomUnlocked - 1].name}!`);
@@ -184,6 +191,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       // and the Library's Decoder, which may still have scraps to print.
       acc = 0;
       if (state.decoding >= 0 || state.decodeOn) decode(state, world, Math.min(dt, 3600) * view.gameSpeed());
+      for (const id of buildSections(state, Math.min(dt, 3600) * view.gameSpeed())) { view.toast(`${sectionById(id).name} built!\nin the Library`); void save(); }
     } else if (dt > MAX_FRAME_SEC) {
       // The tab was frozen: simulate it in chunks, like offline time.
       const r = applyOffline(state, world, Date.now() - dt * 1000, Date.now());

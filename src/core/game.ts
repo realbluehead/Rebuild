@@ -14,6 +14,7 @@ import { newBot, type Bot, type GameState } from './state';
 import { ROVER_STATS, ARMOUR_MULT, BASE_CARGO, BASE_DRILL, BASE_SPEED, CARGO_MULT, DRILL_MULT, GRIP_MULT, HAUL_LEVELS, kindById, RICH_HOP, type DigOrder, type HaulPick, LOAD_DRAG, MINER_GAP, radarRange, ROVER_KINDS, SCOUT_SHARE, SPEED_MULT, TRAVEL_MULT, upgradeById, type RoverKind, type StatId, type UpgradeDef } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
 import { WEATHER_EPOCH, WEATHER_FROM_RING } from '../content/weather';
+import { LIBRARY_LEVEL, SECTIONS, sectionById, sectionOfWork, type SectionId } from '../content/library';
 import { COIL_MULT, DETECTOR_UPS, SIFT_EVERY, type DetectorUpId, DETECTOR_GOLD, DETECTOR_LEVEL, DECODE_MAX_SEC, DECODE_SEC, workById, ITEMS, LIBRARY_SHARE, WORK_LEVEL_FIRST, WORK_LEVEL_LAST, WORKS, WORKS_MAX, type ItemId, type WorkId } from '../content/collection';
 import { ROUTE_LEVEL_GROWTH, ROUTE_LEVEL_STEP, ROUTE_PACE_LEVEL, ROUTES, routeById, type RouteDef, type RouteId } from '../content/routes';
 import { arcOf, arcStarts, planEntry, planSectors, type Sector, cellsReached, forItemsNear, itemsBetween, nearestItem, pathCells, prefixAt, reorder, ringAt, ringCount, specialsBetween, stepsAt, stepsForReach, totalCells, unlockAt, type World } from './world';
@@ -479,6 +480,8 @@ export interface TickEvents {
   items: number[];
   /** Bluetreri unloaded at camp in this step (0 if none). */
   deposited: number;
+  /** Library sections finished building in this step. */
+  built?: SectionId[];
   /** Zoom unlocked in this step (number of levels), if any. */
   zoomUnlocked?: number;
   /** The whole map was explored and everything unloaded in this step. */
@@ -626,6 +629,8 @@ export function tick(s: GameState, w: World, dt: number): TickEvents {
   const ev: TickEvents = { specials: [], items: [], deposited: 0 };
   if (dt <= 0) return ev;
   decode(s, w, dt);
+  const built = buildSections(s, dt);
+  if (built.length) ev.built = built;
   let left = dt;
   let fetched = new Set(s.fetched);
   const minedSet = new Set(s.mined);
@@ -1147,7 +1152,7 @@ function pricesFor(w: World): Record<WorkId, number[]> {
 export const workCost = (w: World, id: WorkId, made: number): number => pricesFor(w)[id][Math.min(made, WORKS_MAX - 1)];
 
 export const canCraft = (s: GameState, w: World, id: WorkId): boolean =>
-  s.works[id] < WORKS_MAX && levelOf(s, w) >= workLevelNeeded(w, s.works[id]) && s.items[workById(id).item] >= nextWorkCost(s, w, id);
+  sectionBuilt(s, sectionOfWork(id).id) && s.works[id] < WORKS_MAX && levelOf(s, w) >= workLevelNeeded(w, s.works[id]) && s.items[workById(id).item] >= nextWorkCost(s, w, id);
 
 /** The player's explorer level right now. */
 export const levelOf = (s: GameState, w: World): number => explorerLevel(explorerXp(s, w), totalCells(w)).level;
@@ -1164,6 +1169,42 @@ export const routeLevelNeeded = (w: World, id: RouteId, k = 0): number =>
 export const libraryShare = (s: GameState, id?: WorkId): number =>
   id ? Math.min(1, s.works[id] / WORKS_MAX) : WORKS.reduce((a, wd) => a + Math.min(WORKS_MAX, s.works[wd.id]), 0) / (WORKS_MAX * WORKS.length);
 
+// The Library: the tab shows up at LIBRARY_LEVEL; each section is built for bluetreri (with its level and items) and
+// takes a while; a collection's works need its section built (content/library.ts).
+/** Explorer level that shows the Library tab. */
+export const libraryLevelNeeded = (w: World): number => capLevel(w, LIBRARY_LEVEL);
+/** Whether the Library tab is shown (it stays once a section has been started). */
+export const libraryOpen = (s: GameState, w: World): boolean =>
+  levelOf(s, w) >= libraryLevelNeeded(w) || SECTIONS.some((d) => s.library[d.id] >= 0);
+export const sectionLevelNeeded = (w: World, id: SectionId): number => capLevel(w, sectionById(id).level);
+export const sectionBuilt = (s: GameState, id: SectionId): boolean => s.library[id] === 0;
+/** What the section asks for that is there now: its items collected, or the scraps of lore found (Decoder). */
+export function sectionHave(s: GameState, w: World, id: SectionId): number {
+  const d = sectionById(id);
+  return d.item ? itemsCollected(s, w)[d.item] : loreFound(s, w).length;
+}
+export const canBuildSection = (s: GameState, w: World, id: SectionId): boolean =>
+  s.library[id] < 0 && levelOf(s, w) >= sectionLevelNeeded(w, id) && sectionHave(s, w, id) >= sectionById(id).need && s.gold.gte(sectionById(id).gold);
+/** Pays for section `id` and starts building it. */
+export function buildSection(s: GameState, w: World, id: SectionId): boolean {
+  if (!canBuildSection(s, w, id)) return false;
+  const d = sectionById(id);
+  s.gold = s.gold.sub(d.gold);
+  s.library[id] = d.sec;
+  return true;
+}
+/** Sections under construction work for `dt` seconds; returns those finished. */
+export function buildSections(s: GameState, dt: number): SectionId[] {
+  const out: SectionId[] = [];
+  for (const d of SECTIONS) {
+    const left = s.library[d.id];
+    if (left <= 0) continue;
+    s.library[d.id] = left > dt ? left - dt : 0;
+    if (s.library[d.id] === 0) out.push(d.id);
+  }
+  return out;
+}
+
 /** Crafts the next work (book, record or discovery) from the collected items. */
 /** Seconds the Decoder needs for the next scrap, after `n` printed: from DECODE_SEC for the first scrap of the map up to
  *  DECODE_MAX_SEC for the last, each one a little longer. */
@@ -1176,7 +1217,7 @@ export const scrapsToDecode = (s: GameState, w: World): number[] =>
 
 /** Turns the Decoder on (only with scraps waiting) or off (the scrap under way still finishes). */
 export function setDecoder(s: GameState, w: World, on: boolean): boolean {
-  if (on && !scrapsToDecode(s, w).length) return false;
+  if (on && (!sectionBuilt(s, 'decoder') || !scrapsToDecode(s, w).length)) return false;
   s.decodeOn = on;
   return true;
 }

@@ -122,6 +122,15 @@ describe('save', () => {
     expect(deserialize(v21).state).toMatchObject({ detectFrom: -1, metalBase: 0 });
   });
 
+  it('keeps the Library sections; a v23 save has those in use built and the rest locked', () => {
+    const s = newGame(5);
+    s.library = { shelf: 0, spiral: 37.5, jukebox: -1, decoder: -1 };
+    expect(deserialize(JSON.parse(JSON.stringify(serialize(s, 0)))).state.library).toEqual(s.library);
+    const { library, ...v23 } = { ...serialize(s, 0), v: 23, works: { book: 2, cd: 0, album: 0 }, printed: [1] };
+    void library;
+    expect(deserialize(v23).state.library).toEqual({ shelf: 0, spiral: -1, jukebox: -1, decoder: 0 });
+  });
+
   it('keeps the detector upgrades; a v22 save gets three times the scraps not counted and sifts all it dug', () => {
     const s = newGame(5);
     Object.assign(s, { detectFrom: 120, metalBase: 3, detectDug: 40, detUps: { coil: 2, sift: 1, deep: 1 } });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { SECTIONS } from '../content/library';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { partOffered, buyDetector, buyDetectorUp, detectorUpCost, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buildSection, buildSections, canBuildSection, libraryOpen, sectionBuilt, sectionHave, partOffered, buyDetector, buyDetectorUp, detectorUpCost, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -34,6 +35,12 @@ const crew = (s: GameState, ...kinds: RoverKind[]) => {
   return s;
 };
 
+/** Builds every Library section (most tests are not about building them). */
+const library = (s: GameState) => {
+  s.library = { shelf: 0, spiral: 0, jukebox: 0, decoder: 0 };
+  return s;
+};
+
 describe('world', () => {
   it('scatters pages, notes and photos by weight', () => {
     const counts = [0, 0, 0];
@@ -58,7 +65,7 @@ describe('world', () => {
       expect(big.lore[c]).toBeGreaterThan(0);
       expect(big.item[c] + big.special[c]).toBe(0);
     }
-    const s = newGame(42);
+    const s = library(newGame(42));
     expect(loreFound(s, world).length).toBe(0);
     Object.assign(s.upgrades, { speed: 14, cargo: 3 });
     let before = 0;
@@ -664,7 +671,7 @@ describe('game', () => {
   });
 
   it('with enough items a work is made, and the next costs more', () => {
-    const s = newGame(42);
+    const s = library(newGame(42));
     const big = fullWorld();
     expect(canCraft(s, big, 'book')).toBe(false);
     s.ring = ringCount(big); // every explorer level reached
@@ -693,7 +700,7 @@ describe('game', () => {
   });
 
   it('each collection ends at WORKS_MAX works, and the library share reaches 100%', () => {
-    const s = newGame(42);
+    const s = library(newGame(42));
     s.items = { page: 1e9, note: 1e9, photo: 1e9 };
     crew(s, 'miner'); // the top level needs the map explored and dug out
     s.ring = ringCount(world);
@@ -1006,9 +1013,40 @@ describe('routes', () => {
     expect(upgradeRoute(s, rw, 'trail')).toBe(false); // locked
   });
 
-  it('routes and works need an explorer level', () => {
+  it('the Library opens at its level; each section asks for its level and items, costs bluetreri and takes a while', () => {
     const w = createWorld(1, SIZE);
     const s = freshGame(1);
+    s.gold = D(1e12);
+    s.items = { page: 1e6, note: 1e6, photo: 1e6 };
+    expect(libraryOpen(s, w)).toBe(false);
+    expect(canBuildSection(s, w, 'shelf')).toBe(false);
+    s.ring = ringCount(w); // everything collected and found, the top level
+    expect(libraryOpen(s, w)).toBe(true);
+    expect(sectionHave(s, w, 'decoder')).toBe(loreFound(s, w).length);
+    expect(sectionHave(s, w, 'decoder')).toBeGreaterThanOrEqual(SECTIONS.find((d) => d.id === 'decoder')!.need);
+    // A collection's works, and the Decoder, need their section.
+    expect(canCraft(s, w, 'book')).toBe(false);
+    expect(setDecoder(s, w, true)).toBe(false);
+    const g0 = s.gold;
+    expect(buildSection(s, w, 'shelf')).toBe(true);
+    expect(s.gold.toNumber()).toBe(g0.toNumber() - SECTIONS[0].gold);
+    expect(buildSection(s, w, 'shelf')).toBe(false); // once
+    expect(canCraft(s, w, 'book')).toBe(false); // still building
+    expect(buildSections(s, 119)).toEqual([]);
+    expect(buildSections(s, 5)).toEqual(['shelf']);
+    expect(sectionBuilt(s, 'shelf')).toBe(true);
+    expect(canCraft(s, w, 'book')).toBe(true);
+    expect(canCraft(s, w, 'cd')).toBe(false);
+    // Without the items it asks for, a section cannot be built.
+    const t = freshGame(1);
+    t.gold = D(1e12);
+    t.ring = 1;
+    if (sectionHave(t, w, 'jukebox') < 6) expect(canBuildSection(t, w, 'jukebox')).toBe(false);
+  });
+
+  it('routes and works need an explorer level', () => {
+    const w = createWorld(1, SIZE);
+    const s = library(freshGame(1));
     s.gold = D(1e12);
     s.items = { page: 1e6, note: 1e6, photo: 1e6 };
     expect(levelOf(s, w)).toBe(0);

@@ -42,6 +42,17 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   the rovers drive the rest (`rateParts`). Before, the estimate assumed nobody drove home once there was a Hauler, which
   made Hold look worthless (the Scout then drove home ~50% of the time). It now tracks what arrives within ~5%.
   The sim buys the best (upgrade, rover) pair (Hauler parts included), builds each rover as soon as it can and saves up for it and the next route; it keeps the Decoder on.
+- **Library sections** (save v24, `content/library.ts`, `s.library`: -1 locked, >0 seconds left, 0 built): the Library
+  tab shows from explorer Lv `LIBRARY_LEVEL` 16 (`libraryOpen`; it stays once a section is started). Bookshelf (Lv 17,
+  10 pages, 300, 2 min), Spiral of ages (Lv 20, 10 photos, 800, 4 min), Jukebox (Lv 21, 6 notes, 1.5k, 6 min), Decoder
+  (Lv 23, 3 lore scraps found, 3k, 8 min): level + items collected (not spent) + bluetreri (`canBuildSection`,
+  `buildSection`), then game time (`buildSections` in `tick`, and in boot's finished-game branch; `ev.built` toasts).
+  `canCraft` needs the work's section (`sectionOfWork`), `setDecoder` the Decoder. v23 saves: sections with works made
+  (Decoder: printed/on/decoding) stand built. UI: a locked plate (`.lib-lock`, padlock, needs line, Build button, then a
+  time bar) in each section's place (`locks`, `drawLocks` every frame while open); the Decoder plate replaces the
+  machine and binder. A header (`.lib-head`: THE LIBRARY + magnifying glass `.lib-help`) opens `openLibraryHelp`:
+  intro + each built section's `help`. Works rows show `needs the X` / `Library` until built. Sim builds them as soon
+  as possible: done 19 h 01 → 19 h 39 (works start later). 375×667 still fits (binder min 84 px).
 - **Metal scraps** (save v22; upgrades v23): `world.metalCells` (own draw `rand2(x, y, seed + 7013) < METAL_CHANCE` 1/50, ~10k a map; was 1/150 on solid
   ground away from camp with no deposit, item or lore). I+D › Detector sells the **Metal detector** from explorer Lv
   `DETECTOR_LEVEL` 35 for `DETECTOR_GOLD` 400k (`canBuyDetector`, `buyDetector`). Then the Scout picks up the scraps it

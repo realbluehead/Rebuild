@@ -25,12 +25,15 @@
 // v20: the Library's machine (`printed`: scraps of lore already printed).
 // v22: the Metal detector (`detectFrom`, `metalBase`).
 // v23: the detector's upgrades (`detUps`, `detectDug`) and three times as many metal scraps on the map.
+// v24: the Library's sections (`library`): built for bluetreri, taking a while. Older saves have the sections with works
+//      made (or the Decoder used) built, the rest to build.
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
 import { D } from '../core/decimal';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
 import { DETECTOR_UPS, WORKS_MAX } from '../content/collection';
+import { SECTIONS } from '../content/library';
 import { LEGACY_ROUTES, ROUTE_MAX_LEVEL, ROUTES, type RouteId } from '../content/routes';
 import { ZOOMS } from '../content/world';
 import type { PlanEntry } from '../core/world';
@@ -38,7 +41,7 @@ import { HAUL_AT, HAUL_LEVELS, ROVER_KINDS, ROVER_STATS, UPGRADES, type DigOrder
 import { costOf } from '../core/game';
 import { GOAL_TIERS } from '../content/goals';
 
-export const SAVE_VERSION = 23;
+export const SAVE_VERSION = 24;
 
 /** The Rovers upgrade (one more rover per level) before v16, refunded then. */
 const V15_ROVERS = { baseCost: 1000, costGrowth: 10 };
@@ -83,6 +86,7 @@ export interface SaveData {
   metalBase: number;
   detectDug?: number;
   detUps?: Record<string, number>;
+  library?: Record<string, number>;
   routes: RouteId[];
   route: RouteId;
   routeLevels: Partial<Record<RouteId, number>>;
@@ -216,6 +220,13 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
   // ones), so the scraps not counted grow alike; when the detector was fitted the Miner had dug an unknown amount, so
   // the Sifter sifts everything dug.
   22: (s) => ({ ...s, v: 23, metalBase: Math.round(3 * Number(s.metalBase ?? 0)), detectDug: 0, detUps: {} }),
+  // v23 -> v24: sections already in use stand built (works made, or the Decoder used); the rest are to build.
+  23: (s) => {
+    const works = (s.works ?? {}) as Record<string, number>;
+    const used = (id: string) => Number(works[id] ?? 0) > 0;
+    const decoder = (Array.isArray(s.printed) && s.printed.length > 0) || s.decodeOn === true || Number(s.decoding ?? -1) >= 0;
+    return { ...s, v: 24, library: { shelf: used('book') ? 0 : -1, spiral: used('album') ? 0 : -1, jukebox: used('cd') ? 0 : -1, decoder: decoder ? 0 : -1 } };
+  },
 };
 
 export function serialize(s: GameState, now: number): SaveData {
@@ -247,6 +258,7 @@ export function serialize(s: GameState, now: number): SaveData {
     metalBase: s.metalBase,
     detectDug: s.detectDug,
     detUps: { ...s.detUps },
+    library: { ...s.library },
     routes: [...s.routes],
     route: s.route,
     routeLevels: { ...s.routeLevels },
@@ -294,6 +306,10 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.detectFrom = Number.isInteger(data.detectFrom) && data.detectFrom >= 0 ? data.detectFrom : -1;
   state.metalBase = state.detectFrom >= 0 ? Math.floor(num(data.metalBase)) : 0;
   state.detectDug = state.detectFrom >= 0 ? Math.max(0, Math.floor(num(data.detectDug))) : 0;
+  for (const d of SECTIONS) {
+    const v = Number(data.library?.[d.id]);
+    state.library[d.id] = Number.isFinite(v) && v >= 0 ? Math.min(v, d.sec) : -1;
+  }
   for (const d of DETECTOR_UPS) state.detUps[d.id] = state.detectFrom >= 0 ? Math.max(0, Math.min(d.max, Math.floor(num(data.detUps?.[d.id])))) : 0;
   if (data.doneAt !== undefined) state.doneAt = num(data.doneAt);
   if (data.recount) state.recount = true;
