@@ -37,10 +37,18 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   **preview**: phase II from the current game's legacy, nothing saved, no Import/Restart.
 
 ## Screen (`ui/phase2.ts`, `showPhase2` → `render(state)`)
-- Phase I's layout (top bar with metal scraps as the currency and ≡ menu, the Black siphon in dock in the middle via
-  `shipScene` from voyage.ts, tabs Shipyard / Fleet / Cargo / Launch) re-themed by overriding the colour variables on
+- Phase I's layout (top bar with metal scraps as the currency and ≡ menu, the 3D desert in the middle with a "DRY DOCK 1"
+  plate, tabs Shipyard / Fleet / Cargo / Launch) re-themed by overriding the colour variables on
   `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian plates, steel rivets, red for lights, bars and the
   active tab, yellow for buttons you can press and the currency. One panel height for every tab.
+- **The desert** (`ui/desert.ts`, `createDesert`, three.js, only in phase II's chunk: phase I imports `../phase2/boot` dynamically, never statically): a real 3D scene with an
+  orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (3) of the screen and scaled up with crisp
+  pixels over a pixel night sky (a canvas drawn once, CSS background). A 48-unit slab with dunes (`duneHeight`, flat
+  towards the edges; the slab top sits just under the flattest sand to avoid z-fighting), the Black siphon's bell on four
+  legs: obsidian plating over `plated` of it, the open sector (ribs and hoops) facing the camera (angles as three's sphere
+  `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a blinking beacon; seven tentacles (tubes) on the sand with red
+  probe tips; four floodlights (point lights, gently flickering). The camera sways: a bob of `BOB_UNITS` every `BOB_SEC`
+  and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with reduced motion). `VIEW` sets the zoom.
 - Real so far: the metal count at the top and the Cargo tab's "Have" column (bluetreri, pages, notes, photos). Everything
   else is placeholder rows.
 

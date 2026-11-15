@@ -6,7 +6,7 @@ import './phase2.css';
 import { fmt } from '../../shared/format';
 import { h } from '../../shared/ui/dom';
 import type { P2State } from '../core/state';
-import { shipScene } from './voyage';
+import { createDesert } from './desert';
 
 interface Row { name: string; lvl: string; eff: string; cost: string; can: boolean }
 
@@ -91,9 +91,9 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
   menu.addEventListener('click', openMenu);
   top.append(stats, menu);
 
-  // Middle: the Black siphon in its dock, over the stars.
+  // Middle: the Black siphon being built on the night desert (3D, isometric).
   const scene = h('section', 'p2-scene');
-  scene.append(shipScene('The Black siphon in dock', false).svg, h('div', 'p2-dock px-box', 'DRY DOCK 1 · Black siphon'));
+  scene.append(createDesert().el, h('div', 'p2-dock px-box', 'DRY DOCK 1 · Black siphon'));
 
   // Bottom panel: four tabs, each a placeholder table.
   const panel = h('aside', 'panel');

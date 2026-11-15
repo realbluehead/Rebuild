@@ -19,7 +19,6 @@ import { cancelReminders, onBackground, scheduleReminder } from '../platform';
 import { offerUpdates } from '../shared/updates';
 import { importAny, wipeAll } from '../saves';
 import { showVoyage } from '../phase2/ui/voyage';
-import { startPhase2 } from '../phase2/boot';
 import { legacyOf } from './legacy';
 import { createView } from './ui/view';
 import type { TitleScreen } from '../shared/ui/title';
@@ -81,7 +80,8 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       void save();
       over = true;
       locked = true;
-      startPhase2(app, legacyOf(state, world, Date.now()), true);
+      const legacy = legacyOf(state, world, Date.now());
+      void import('../phase2/boot').then(({ startPhase2 }) => startPhase2(app, legacy, true)); // (its own chunk, with three.js)
     });
   }
 
@@ -170,7 +170,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
     // (then, or straight away if it was seen before, "The voyage" covers the game: phase I is over)
-    if (new URLSearchParams(location.search).has('phase2')) startPhase2(app, legacyOf(state, world, Date.now()), false); // (a preview)
+    if (new URLSearchParams(location.search).has('phase2')) { const legacy = legacyOf(state, world, Date.now()); void import('../phase2/boot').then(({ startPhase2 }) => startPhase2(app, legacy, false)); } // (a preview)
     else if (!loaded.fresh && state.doneAt !== undefined) { if (finishedUnseen(state)) view.showComplete(state, voyage); else voyage(); }
   });
   await cancelReminders();
