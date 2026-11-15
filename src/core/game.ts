@@ -1210,27 +1210,26 @@ export function buildSections(s: GameState, dt: number): SectionId[] {
 export const decodeTime = (n: number): number =>
   DECODE_SEC * (DECODE_MAX_SEC / DECODE_SEC) ** Math.min(1, n / (PAGES_MAX - 1));
 
-/** Scraps of lore each sheet takes on this map: growing by PAGE_COST_GROWTH, all PAGES_MAX together LORE_PAGE_SHARE of
- *  the map's scraps (at least one each). */
-const pageCosts = new WeakMap<World, number[]>();
-export function pageCost(w: World, k: number): number {
-  let p = pageCosts.get(w);
+/** Scraps of lore found that sheet `k` (0-based) needs on this map: each sheet asks for more than the last (steps growing
+ *  by PAGE_COST_GROWTH; the last needs LORE_PAGE_SHARE of the map's scraps). They are not used up. */
+const pageNeeds = new WeakMap<World, number[]>();
+export function pageNeed(w: World, k: number): number {
+  let p = pageNeeds.get(w);
   if (!p) {
     const budget = Math.max(PAGES_MAX, LORE_PAGE_SHARE * w.loreCells.length);
     const shape = Array.from({ length: PAGES_MAX }, (_, q) => PAGE_COST_GROWTH ** q);
     const sum = shape.reduce((a, b) => a + b, 0);
-    p = shape.map((x) => Math.max(1, Math.floor((budget * x) / sum)));
-    pageCosts.set(w, p);
+    let total = 0;
+    p = shape.map((x) => (total += Math.max(1, Math.floor((budget * x) / sum))));
+    pageNeeds.set(w, p);
   }
   return p[Math.min(k, PAGES_MAX - 1)];
 }
-/** Scraps found that the Decoder has not taken yet. */
-export const scrapsWaiting = (s: GameState, w: World): number => Math.max(0, loreFound(s, w).length - s.scrapsUsed);
-/** Whether the Decoder, free, can start the next sheet (there is one left and the scraps for it). */
+/** Whether the Decoder, free, can start the next sheet (there is one left and enough scraps found for it). */
 export const canPrintNext = (s: GameState, w: World): boolean =>
-  s.decoding < 0 && s.pages < PAGES_MAX && scrapsWaiting(s, w) >= pageCost(w, s.pages);
+  s.decoding < 0 && s.pages < PAGES_MAX && loreFound(s, w).length >= pageNeed(w, s.pages);
 
-/** Turns the Decoder on (only once built, and with a sheet under way or the scraps for the next) or off (the sheet under
+/** Turns the Decoder on (only once built, and with a sheet under way or enough scraps found for the next) or off (the sheet under
  *  way still finishes). Left on, it waits for scraps and starts each sheet as soon as it has them. */
 export function setDecoder(s: GameState, w: World, on: boolean): boolean {
   if (on && (!sectionBuilt(s, 'decoder') || (s.decoding < 0 && !canPrintNext(s, w)))) return false;
@@ -1238,8 +1237,8 @@ export function setDecoder(s: GameState, w: World, on: boolean): boolean {
   return true;
 }
 
-/** The Decoder works for `dt` seconds: it finishes the sheet under way and, while on, starts the next one when it has the
- *  scraps for it (it switches off after the last sheet). Returns the sheets printed. */
+/** The Decoder works for `dt` seconds: it finishes the sheet under way and, while on, starts the next one when enough
+ *  scraps have been found for it (it switches off after the last sheet). Returns the sheets printed. */
 export function decode(s: GameState, w: World, dt: number): number[] {
   const out: number[] = [];
   let left = dt;
@@ -1248,7 +1247,6 @@ export function decode(s: GameState, w: World, dt: number): number[] {
       if (!s.decodeOn) break;
       if (s.pages >= PAGES_MAX) { s.decodeOn = false; break; }
       if (!canPrintNext(s, w)) break;
-      s.scrapsUsed += pageCost(w, s.pages);
       s.decoding = s.pages;
       s.decodeLeft = decodeTime(s.pages);
     }
@@ -1262,17 +1260,14 @@ export function decode(s: GameState, w: World, dt: number): number[] {
   return out;
 }
 
-/** Saves from before v25 printed one sheet per scrap: as many sheets as those scraps pay for at today's prices (the rest
- *  of the scraps wait in the Decoder). */
+/** Saves from before v25 printed one sheet per scrap: as many sheets as that many scraps would open today. */
 export function fromLegacyPrinted(s: GameState, w: World): void {
   if (s.legacyPrinted === undefined) return;
   const had = s.legacyPrinted;
   delete s.legacyPrinted;
   let n = 0;
-  let used = 0;
-  while (n < PAGES_MAX && used + pageCost(w, n) <= had) used += pageCost(w, n++);
+  while (n < PAGES_MAX && pageNeed(w, n) <= had) n++;
   s.pages = n;
-  s.scrapsUsed = used;
 }
 
 export function craft(s: GameState, w: World, id: WorkId): boolean {

@@ -156,8 +156,6 @@ export interface GameState {
   playTime: number;
   /** Sheets of history the Decoder has printed (0..PAGES_MAX, readable in the binder). */
   pages: number;
-  /** Scraps of lore the Decoder has taken (each sheet takes more: `pageCost`); the rest of those found wait for it. */
-  scrapsUsed: number;
   /** The Decoder's switch: while on, it starts the next sheet as soon as it is free and has the scraps for it. */
   decodeOn: boolean;
   /** The sheet being printed (= `pages`), or -1, and the seconds it still needs. */
@@ -207,7 +205,6 @@ export function newGame(seed = randomSeed()): GameState {
     goals: Object.fromEntries(GOALS.map((g) => [g.id, 0])) as Record<GoalId, number>,
     fetched: [],
     pages: 0,
-    scrapsUsed: 0,
     decodeOn: false,
     decoding: -1,
     decodeLeft: 0,

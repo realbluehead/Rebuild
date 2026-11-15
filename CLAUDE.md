@@ -42,14 +42,14 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   the rovers drive the rest (`rateParts`). Before, the estimate assumed nobody drove home once there was a Hauler, which
   made Hold look worthless (the Scout then drove home ~50% of the time). It now tracks what arrives within ~5%.
   The sim buys the best (upgrade, rover) pair (Hauler parts included), builds each rover as soon as it can and saves up for it and the next route; it keeps the Decoder on.
-- **Decoder sheets** (save v25): it prints `PAGES_MAX` 20 sheets (`s.pages`), each from more scraps of lore than the
-  last (`pageCost`: growth `PAGE_COST_GROWTH` 1.15, all 20 = `LORE_PAGE_SHARE` 0.9 of the map's scraps, ~3 → ~43 on a
-  full map) and longer (`decodeTime(n)`: 60 s → 30 min, ~3 h in all). `s.scrapsUsed` = scraps taken; `scrapsWaiting` =
-  found − used; `canPrintNext`. Left on it waits for scraps and starts each sheet when it has them; off after the
-  last. Hopper count shows `waiting/needed` (dim `.short` when short), hidden once all 20 are done. Texts: `pageText(k)`
-  (placeholder until written). Historian goal tiers are sheets: 1/3/8/14/20. v24 saves (one sheet per scrap): the
-  scraps printed become as many sheets as they pay for (`legacyPrinted`, `fromLegacyPrinted` in load.ts). Sim: all 20
-  by ~11 h 43.
+- **Decoder sheets** (save v25): it prints `PAGES_MAX` 20 sheets (`s.pages`), each needing more scraps of lore
+  **found** than the last (`pageNeed(w, k)`: cumulative steps growing by `PAGE_COST_GROWTH` 1.15, the last =
+  `LORE_PAGE_SHARE` 0.9 of the map's scraps, steps ~3 → ~43 on a full map; scraps are never used up) and taking longer
+  (`decodeTime(n)`: 60 s → 30 min, ~3 h in all); `canPrintNext`. Left on it waits for scraps and starts each sheet when
+  enough are found; off after the last. Hopper count shows `found/needed` (dim `.short` when short; the heap fills
+  between the last sheet's mark and the next), hidden once no sheet is left to start. Texts: `pageText(k)` (placeholder
+  until written). Historian goal tiers are sheets: 1/3/8/14/20. v24 saves (one sheet per scrap): as many sheets as
+  their scraps printed would open (`legacyPrinted`, `fromLegacyPrinted` in load.ts). Sim: all 20 by ~11 h 43.
 - **Library sections** (save v24, `content/library.ts`, `s.library`: -1 locked, >0 seconds left, 0 built): the Library
   tab shows from explorer Lv `LIBRARY_LEVEL` 16 (`libraryOpen`; it stays once a section is started). Bookshelf (Lv 17,
   10 pages, 300, 2 min), Spiral of ages (Lv 20, 10 photos, 800, 4 min), Jukebox (Lv 21, 6 notes, 1.5k, 6 min), Decoder

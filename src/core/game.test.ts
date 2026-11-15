@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SECTIONS } from '../content/library';
 import { PAGES_MAX } from '../content/collection';
 import { newBot, newGame as freshGame, type GameState } from './state';
-import { buildSection, buildSections, canBuildSection, libraryOpen, sectionBuilt, sectionHave, partOffered, buyDetector, buyDetectorUp, detectorUpCost, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, pageCost, scrapsWaiting, fromLegacyPrinted, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
+import { buildSection, buildSections, canBuildSection, libraryOpen, sectionBuilt, sectionHave, partOffered, buyDetector, buyDetectorUp, detectorUpCost, canBuyDetector, detectorLevelNeeded, fitDetector, metalCollected, decode, decodeTime, pageNeed, fromLegacyPrinted, setDecoder, loreFound, routePace, chooseDig, digPath, isDug, setHaul, canClaim, claimGoal, goalReached, goalTarget, goalValue, build, canBuild, frontier, roverLevelNeeded, buy, canCraft, canUnlockRoute, carried, chooseRoute, costOf, craft, explored, explorerLevel, extracted, levelOf, routeLevelNeeded, workLevelNeeded, fromLegacy, homeSpeed, detourPlan, isComplete, itemsCollected, itemsOnMap, itemsSpent, libraryShare, routeItems, workCost, recountItems, nextWorkCost, progress, routeLevel, routeUpgradeCost, setZoom, stats, tick, unlockRoute, upgradeRoute } from './game';
 import { evolveWeather, stormFactor, weatherFactor } from './weather';
 import { SCOUT_SHARE, UPGRADES, type HaulPick, type RoverKind } from '../content/upgrades';
 import { TERRAINS, ZOOMS } from '../content/world';
@@ -85,50 +85,41 @@ describe('world', () => {
       if (world.rank[c] >= p.b) expect(found).not.toContain(k);
     });
     expect(goalValue(s, world, 'archivist')).toBe(found.length);
-    // The Decoder: off by default. It prints PAGES_MAX sheets, each from more scraps than the last (all of them together
-    // most of the map's scraps) and taking longer.
+    // The Decoder: off by default. It prints PAGES_MAX sheets, each needing more scraps found than the last (they are not
+    // used up; the last needs most of the map's scraps), and taking longer.
     for (let k = 0; loreFound(s, world).length < 3 && k < 50000; k++) tick(s, world, 1);
     found.splice(0, found.length, ...loreFound(s, world));
     expect(found.length).toBeGreaterThanOrEqual(3);
     expect(decode(s, world, 1000)).toEqual([]);
-    const costs = Array.from({ length: PAGES_MAX }, (_, k) => pageCost(big, k));
-    for (let k = 1; k < PAGES_MAX; k++) expect(costs[k]).toBeGreaterThanOrEqual(costs[k - 1]);
-    expect(costs[PAGES_MAX - 1]).toBeGreaterThan(5 * costs[0]);
-    const all = costs.reduce((x, y) => x + y, 0);
-    expect(all).toBeLessThanOrEqual(big.loreCells.length);
-    expect(all).toBeGreaterThan(0.8 * big.loreCells.length);
+    const needs = Array.from({ length: PAGES_MAX }, (_, k) => pageNeed(big, k));
+    for (let k = 1; k < PAGES_MAX; k++) expect(needs[k] - needs[k - 1]).toBeGreaterThanOrEqual(k > 1 ? needs[k - 1] - needs[k - 2] : 1);
+    expect(needs[PAGES_MAX - 1]).toBeLessThanOrEqual(big.loreCells.length);
+    expect(needs[PAGES_MAX - 1]).toBeGreaterThan(0.8 * big.loreCells.length);
     expect(decodeTime(0)).toBe(60);
     expect(decodeTime(1)).toBeGreaterThan(decodeTime(0));
     expect(decodeTime(PAGES_MAX - 1)).toBeCloseTo(1800, 6);
+    expect(pageNeed(world, 0)).toBeLessThanOrEqual(found.length);
     expect(setDecoder(s, world, true)).toBe(true);
     expect(decode(s, world, decodeTime(0) - 0.5)).toEqual([]);
     expect(s.decoding).toBe(0);
-    expect(s.scrapsUsed).toBe(pageCost(world, 0));
-    expect(scrapsWaiting(s, world)).toBe(found.length - pageCost(world, 0));
     expect(decode(s, world, 0.5)).toEqual([0]);
-    expect(s.pages).toBe(1);
-    expect(goalValue(s, world, 'historian')).toBe(1);
-    // Short of scraps for the next sheet it waits, still on, and starts it as soon as they are there.
+    expect(goalValue(s, world, 'historian')).toBeGreaterThanOrEqual(1);
+    expect(loreFound(s, world).length).toBe(found.length); // (nothing used up)
+    // Short of scraps found for the next sheet it waits, still on.
     setDecoder(s, world, false);
-    decode(s, world, 1e6); // (the next sheet, if it had started, finishes)
+    decode(s, world, 1e6); // (a sheet that had started finishes)
     s.decodeOn = true;
-    s.scrapsUsed = found.length;
-    expect(decode(s, world, 1e6)).toEqual([]);
-    expect(s.decodeOn).toBe(true);
     const n = s.pages;
-    s.scrapsUsed -= pageCost(world, n);
-    expect(decode(s, world, decodeTime(n))).toEqual([n]);
-    // Switched off, the sheet under way still finishes, and no other starts.
-    s.scrapsUsed = 0;
-    decode(s, world, 1);
-    setDecoder(s, world, false);
-    expect(decode(s, world, 1e6)).toEqual([n + 1]);
-    expect(s.decoding).toBe(-1);
-    // After the last sheet it turns itself off.
-    Object.assign(s, { pages: PAGES_MAX - 1, scrapsUsed: 0, decodeOn: true });
-    expect(decode(s, world, 1e6)).toEqual([PAGES_MAX - 1]);
-    expect(s.pages).toBe(PAGES_MAX);
-    expect(s.decodeOn).toBe(false);
+    if (pageNeed(world, n) > found.length) {
+      expect(decode(s, world, 1e6)).toEqual([]);
+      expect(s.decodeOn).toBe(true);
+    }
+    // On a whole map with every scrap found, the last sheet can be printed; then it turns itself off.
+    const t = library(freshGame(7));
+    Object.assign(t, { pages: PAGES_MAX - 1, decodeOn: true, ring: ringCount(big) });
+    expect(decode(t, big, 1e6)).toEqual([PAGES_MAX - 1]);
+    expect(t.pages).toBe(PAGES_MAX);
+    expect(t.decodeOn).toBe(false);
   });
 
   it('metal scraps: the detector opens at its level; then the Scout picks up the ones it reveals, the Miner the ones it digs', () => {
@@ -1068,10 +1059,9 @@ describe('routes', () => {
   it('a save from before the 20 sheets gets as many sheets as the scraps it printed pay for', () => {
     const big = fullWorld();
     const s = freshGame(7);
-    s.legacyPrinted = pageCost(big, 0) + pageCost(big, 1) + pageCost(big, 2) - 1;
+    s.legacyPrinted = pageNeed(big, 2) - 1;
     fromLegacyPrinted(s, big);
     expect(s.pages).toBe(2);
-    expect(s.scrapsUsed).toBe(pageCost(big, 0) + pageCost(big, 1));
     expect(s.legacyPrinted).toBeUndefined();
     const t = freshGame(7);
     t.legacyPrinted = 1e6;

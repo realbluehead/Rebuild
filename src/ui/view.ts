@@ -5,7 +5,7 @@ import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
 import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, canPrintNext, pageCost, scrapsWaiting, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, canPrintNext, pageNeed, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../core/format';
 import type { Bot, GameState } from '../core/state';
@@ -670,14 +670,17 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   };
   /** The Decoder as the game has it (it works in game time, `decode` in core): stage, hopper, clock and switch. */
   function drawDecoder(s: GameState) {
-    // The hopper: the scraps waiting against what the next sheet takes (each sheet takes more).
-    const queue = scrapsWaiting(s, world);
-    const done20 = s.pages >= PAGES_MAX;
-    const need = done20 ? 0 : pageCost(world, s.pages + (s.decoding >= 0 ? 1 : 0));
-    set(mcCount, done20 || (s.decoding >= 0 && s.pages + 1 >= PAGES_MAX) ? String(queue) : `${queue}/${need}`);
-    mcCount.hidden = done20; // (all sheets printed: the scraps left over are of no use)
-    mcCount.classList.toggle('short', !done20 && queue < need);
-    mcHeap.style.height = `${queue && !done20 ? Math.round(16 + 84 * Math.min(1, queue / Math.max(1, need))) : 0}%`;
+    // The hopper: the scraps found against what the next sheet needs (each needs more; they are not used up). The heap
+    // fills from the last sheet's mark to the next one's.
+    const found = loreFound(s, world).length;
+    const next = s.pages + (s.decoding >= 0 ? 1 : 0);
+    const last = next >= PAGES_MAX;
+    const need = last ? 0 : pageNeed(world, next);
+    const from = next > 0 ? pageNeed(world, next - 1) : 0;
+    set(mcCount, `${found}/${need}`);
+    mcCount.hidden = last; // (no sheet left to start)
+    mcCount.classList.toggle('short', !last && found < need);
+    mcHeap.style.height = `${last ? 0 : Math.round(16 + 84 * Math.max(0, Math.min(1, (found - from) / Math.max(1, need - from))))}%`;
     if (s.decoding !== mcLast) {
       mcLast = s.decoding;
       if (s.decoding >= 0) {
@@ -692,7 +695,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       st = done < 0.7 ? 'drop' : s.decodeLeft < 1.2 ? 'print' : 'flow';
     }
     if (machineEl.dataset.stage !== st) { machineEl.dataset.stage = st; set(mcText, MC_TEXT[st]); }
-    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : !done20 ? clock(decodeTime(s.pages)) : '-:--');
+    set(mcClock, s.decoding >= 0 ? clock(s.decodeLeft) : s.pages < PAGES_MAX ? clock(decodeTime(s.pages)) : '-:--');
     mcClock.classList.toggle('next', s.decoding < 0);
     mcSwitch.disabled = !s.decodeOn && !canPrintNext(s, world);
     mcSwitch.classList.toggle('is-on', s.decodeOn);
@@ -1129,7 +1132,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'On the Goals tab you turn them into books (pages), records (notes) and discoveries (photos: pieced together, they show the great inventions of the old world, from fire to the internet). Each work costs more than the last.'] },
       { on: loreFound(s, world).length > 0, title: 'Scraps of the old world', lines: [
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
-        'Once the Decoder is built in the Library, switch it on: it reads the DNA left on the scraps found and prints the planet\'s history, 20 sheets in all. Each sheet takes more scraps than the last (the funnel shows the scraps waiting against what the next sheet needs) and a little longer; the printer\'s counter shows the time left. Left on, it starts each sheet as soon as it has the scraps, also while you are away. Tap the printer\'s tray to read the sheets. The Archivist goal counts every scrap found.'] },
+        'Once the Decoder is built in the Library, switch it on: it reads the DNA left on the scraps found and prints the planet\'s history, 20 sheets in all. Each sheet needs more scraps found than the last (they are not used up; the funnel shows the scraps found against what the next sheet needs) and takes a little longer; the printer\'s counter shows the time left. Left on, it starts each sheet as soon as enough scraps are found, also while you are away. Tap the printer\'s tray to read the sheets. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
         'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title. Each part of the Library is built first (the magnifying glass there explains them).',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },

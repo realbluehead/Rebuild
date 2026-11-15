@@ -54,7 +54,8 @@ export const COIL_MULT = [1, 2, 3, 4];
 /** Cells the Miner digs (since the detector) for each scrap sifted, by Sifter level (0: no Sifter). */
 export const SIFT_EVERY = [0, 200, 100, 50];
 /** The Library's Decoder prints PAGES_MAX sheets of the planet's history, each from more scraps of lore than the last
- *  (growing by PAGE_COST_GROWTH; all of them together take LORE_PAGE_SHARE of the map's scraps, `pageCost` in core).
+ *  (growing by PAGE_COST_GROWTH; all of them together LORE_PAGE_SHARE of the map's scraps, `pageNeed` in core). The
+ *  scraps are not used up: sheet k needs that many scraps found in all.
  *  A sheet takes DECODE_SEC to print, the last one DECODE_MAX_SEC, each a little longer (~3 h for all 20). */
 export const PAGES_MAX = 20;
 export const PAGE_COST_GROWTH = 1.15;

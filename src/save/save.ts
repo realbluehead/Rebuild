@@ -27,7 +27,7 @@
 // v23: the detector's upgrades (`detUps`, `detectDug`) and three times as many metal scraps on the map.
 // v24: the Library's sections (`library`): built for bluetreri, taking a while. Older saves have the sections with works
 //      made (or the Decoder used) built, the rest to build.
-// v25: the Decoder prints 20 sheets, each from more scraps (`pages`, `scrapsUsed`); the scraps printed before
+// v25: the Decoder prints 20 sheets, each needing more scraps found (`pages`); the scraps printed before
 //      (`printed`) become sheets at today's prices once the world exists (`legacyPrinted`, `fromLegacyPrinted`).
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
@@ -81,7 +81,6 @@ export interface SaveData {
   goals: Record<string, number>;
   fetched: number[];
   pages: number;
-  scrapsUsed: number;
   legacyPrinted?: number;
   decodeOn: boolean;
   decoding: number;
@@ -236,7 +235,7 @@ const MIGRATIONS: Record<number, (s: RawSave) => RawSave> = {
     const had = (Array.isArray(s.printed) ? s.printed.length : 0) + (Number(s.decoding ?? -1) >= 0 ? 1 : 0);
     const { printed, ...rest } = s;
     void printed;
-    return { ...rest, v: 25, pages: 0, scrapsUsed: 0, legacyPrinted: had, decoding: -1, decodeLeft: 0 };
+    return { ...rest, v: 25, pages: 0, legacyPrinted: had, decoding: -1, decodeLeft: 0 };
   },
 };
 
@@ -262,7 +261,6 @@ export function serialize(s: GameState, now: number): SaveData {
     goals: { ...s.goals },
     fetched: [...s.fetched],
     pages: s.pages,
-    scrapsUsed: s.scrapsUsed,
     ...(s.legacyPrinted !== undefined ? { legacyPrinted: s.legacyPrinted } : {}),
     decodeOn: s.decodeOn,
     decoding: s.decoding,
@@ -313,7 +311,6 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
   state.pages = Math.min(PAGES_MAX, Math.floor(num(data.pages)));
-  state.scrapsUsed = Math.floor(num(data.scrapsUsed));
   if (data.legacyPrinted !== undefined) state.legacyPrinted = Math.floor(num(data.legacyPrinted));
   state.decodeOn = data.decodeOn === true;
   state.decoding = data.decoding === state.pages && state.pages < PAGES_MAX ? state.pages : -1;
