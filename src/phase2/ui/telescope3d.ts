@@ -3,11 +3,11 @@
 // a turntable), lens rings that glow brighter as it gets sharper, and as it grows a platform, a wind wall, a half dome
 // and laser guide stars. Built in local units round the plot's centre, on the flat sand (y = 0).
 import {
-  BoxGeometry, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PointLight, Quaternion,
-  SphereGeometry, TorusGeometry, Vector3, Color, type Material, PlaneGeometry, CatmullRomCurve3, TubeGeometry, type Texture,
+  BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PointLight, Quaternion,
+  SphereGeometry, TorusGeometry, Vector3, Color, type Material, PlaneGeometry, CatmullRomCurve3, TubeGeometry,
 } from 'three';
 import type { Telescope } from '../core/telescope';
-import { concreteTexture, metalTexture, repeated, SAND_LOW, SAND_TILE, sandTexture, shadowTexture } from './textures';
+import { concreteTexture, metalTexture, repeated, SAND_LOW, SAND_TILE, sandTexture, shadowTexture, textured } from './textures';
 
 const OBSIDIAN = '#3a3c48';
 const STEEL = '#4a4e58';
@@ -18,9 +18,6 @@ const LASER = '#ffb030';
 const LAMP = '#fff2b0';
 
 const lambert = (c: string) => new MeshLambertMaterial({ color: c, flatShading: true });
-/** A textured material: the texture (greys) is tinted by `c`, brightened to make up for the texture's darkening. */
-const textured = (c: string, map: Texture, side = false) =>
-  new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: true, side: side ? DoubleSide : undefined });
 const glow = (c: string | Color, opacity = 1) => new MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity });
 const UP = new Vector3(0, 1, 0);
 

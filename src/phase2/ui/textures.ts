@@ -2,7 +2,7 @@
 // squares like the rest of the low-resolution render): sand with grain and wind ripples, metal plates with seams,
 // rivets and rust streaks, cracked concrete, and a soft round shadow for where things meet the sand. Mostly greys, so
 // a material's colour (or the ground's vertex colours) tints them.
-import { CanvasTexture, NearestFilter, NearestMipmapNearestFilter, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
+import { CanvasTexture, Color, DoubleSide, MeshLambertMaterial, NearestFilter, NearestMipmapNearestFilter, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
 
 /** A seeded random number generator (the same texture every time). */
 function random(seed: number): () => number {
@@ -102,3 +102,7 @@ export const shadowTexture = () => once('shadow', () => canvasTexture(64, (g) =>
   grad.addColorStop(0, '#fff'); grad.addColorStop(0.55, '#999'); grad.addColorStop(1, '#000');
   g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
 }, 1, false));
+
+/** A textured material: the texture (greys) is tinted by `c`, brightened to make up for the texture's darkening. */
+export const textured = (c: string, map: Texture, side = false, flat = true) =>
+  new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: flat, side: side ? DoubleSide : undefined });

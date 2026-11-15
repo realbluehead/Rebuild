@@ -14,7 +14,7 @@ import {
 } from 'three';
 import { telescopeAt, type Telescope } from '../core/telescope';
 import { buildTelescope, disposeTelescope } from './telescope3d';
-import { repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture } from './textures';
+import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
  *  mock-up). Plots are numbered row by row (0..GRID²-1); the middle one is the dry dock. */
@@ -90,6 +90,8 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     c.copy(low).lerp(high, Math.max(0, Math.min(1, (y - 0.8) / 3 + patch * 0.35)));
     const onLane = Math.max(0, Math.min(1, (Math.max(local(x), local(z)) - (PLOT / 2 - 1.6)) / 1.2));
     c.lerp(laneC, onLane * 0.8);
+    // The ship's shade on the sand under its bell (darkest at the middle).
+    c.multiplyScalar(0.5 + 0.5 * Math.max(0, Math.min(1, (Math.hypot(x, z) - 5) / 8)));
     colours.push(c.r, c.g, c.b);
   }
   ground.setAttribute('color', new Float32BufferAttribute(colours, 3));
@@ -104,7 +106,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   const base = 8;
   ship.position.y = duneHeight(0, 0) + base;
   for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-    const leg = new Mesh(new CylinderGeometry(0.35, 0.35, base + 2, 5), lambert(STEEL));
+    const leg = new Mesh(new CylinderGeometry(0.35, 0.35, base + 2, 5), textured(STEEL, metalTexture(0.7)));
     leg.position.set(x, -base / 2 - 1, z);
     ship.add(leg);
   }
@@ -114,10 +116,10 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   const at = (phi: number, r: number, y: number) => new Vector3(-Math.cos(phi) * r, y, Math.sin(phi) * r);
   const plateFrom = Math.PI, plated = Math.PI * 1.25; // the sector already plated
   const openFrom = plateFrom + plated - Math.PI * 2, open = Math.PI * 2 - plated;
-  const shell = new Mesh(new SphereGeometry(R, 20, 8, plateFrom, plated, 0, Math.PI / 2), lambert(OBSIDIAN));
+  const shell = new Mesh(new SphereGeometry(R, 20, 8, plateFrom, plated, 0, Math.PI / 2), textured(OBSIDIAN, repeated(metalTexture(0.25), 6, 3)));
   (shell.material as Material).side = DoubleSide;
   ship.add(shell);
-  const steel = lambert(STEEL);
+  const steel = textured(STEEL, metalTexture(0.6));
   for (let k = 0; k <= 6; k++) { // meridian ribs over the open sector
     const rib = new Mesh(new TorusGeometry(R, 0.18, 4, 12, Math.PI / 2), steel);
     rib.rotation.y = openFrom + (k / 6) * open + Math.PI; // (the torus arc starts at +x and rises to +y)
@@ -132,7 +134,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     turn.add(hoop);
     ship.add(turn);
   }
-  const rim = new Mesh(new TorusGeometry(R + 0.6, 0.6, 5, 32), lambert('#3a3e48'));
+  const rim = new Mesh(new TorusGeometry(R + 0.6, 0.6, 5, 32), textured('#3a3e48', repeated(metalTexture(0.5), 1, 10)));
   rim.rotation.x = Math.PI / 2;
   ship.add(rim);
   const red = glow(RED);
@@ -157,7 +159,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   scene.add(ship);
 
   // Tentacles laid out on the sand, each ending in a glowing probe.
-  const tentacle = lambert('#2c2f37', false);
+  const tentacle = textured('#2c2f37', repeated(metalTexture(0.4), 10, 1), false, false); // (segment plates along it)
   for (let k = 0; k < 7; k++) {
     const a = (k / 7) * Math.PI * 2 + 0.3;
     const pts: Vector3[] = [];
@@ -165,13 +167,36 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
       const r = 8 + t, w = Math.sin(t / 2.5 + k) * 1.6;
       const x = Math.cos(a) * r - Math.sin(a) * w, z = Math.sin(a) * r + Math.cos(a) * w;
       if (Math.abs(x) > PLOT / 2 - 2 || Math.abs(z) > PLOT / 2 - 2) break; // (they stay inside the dock's plot)
-      pts.push(new Vector3(x, duneHeight(x, z) + 0.45, z));
+      pts.push(new Vector3(x, duneHeight(x, z) + 0.25, z)); // (half sunk in the sand)
     }
     if (pts.length < 3) continue;
     scene.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 3, 0.45, 5), tentacle));
     const tip = new Mesh(new SphereGeometry(0.6, 6, 4), red);
     tip.position.copy(pts[pts.length - 1]);
     scene.add(tip);
+  }
+
+  // Settled in the sand: heaps drifted against its feet, crates of parts and a stack of spare plates by the dock.
+  const sandHeap = textured(SAND_LOW, repeated(sandTexture(), 0.4, 0.4));
+  for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
+    const heap = new Mesh(new SphereGeometry(1.2, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), sandHeap);
+    heap.scale.y = 0.4;
+    heap.position.set(x, duneHeight(x, z) - 0.1, z);
+    scene.add(heap);
+  }
+  const crate = textured('#5a4e40', metalTexture(1));
+  for (const [x, z, s, a] of [[-15, 1, 1.6, 0.3], [-16.5, 2.6, 1.1, 1.1], [-14.4, 3, 0.9, 0.7], [3, 15, 1.4, 0.2], [4.6, 16, 1, 0.9]]) {
+    const box = new Mesh(new BoxGeometry(s, s * 0.8, s), crate);
+    box.position.set(x, duneHeight(x, z) + s * 0.3, z);
+    box.rotation.y = a;
+    scene.add(box);
+  }
+  const plates = textured(OBSIDIAN, metalTexture(0.25));
+  for (let k = 0; k < 5; k++) {
+    const plate = new Mesh(new BoxGeometry(3.2, 0.22, 2.2), plates);
+    plate.position.set(15 + k * 0.12, duneHeight(15, 2) + 0.15 + k * 0.24, 2 + k * 0.1);
+    plate.rotation.y = 0.4 + k * 0.08;
+    scene.add(plate);
   }
 
   // Floodlights: a pole, a lamp and the warm pool it casts.

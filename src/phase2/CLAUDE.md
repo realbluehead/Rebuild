@@ -62,7 +62,7 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   a soft shadow at its foot, a bank of sand against the platform (or heaps at the feet), crates and the lamp's cable.
   `setTelescope` swaps it (`disposeTelescope` frees the old one and its texture copies, not the shared textures).
 - **Textures** (`ui/textures.ts`): small pixel canvases drawn once, nearest filtered, mostly greys tinted by the
-  material colour (`textured` brightens it to make up): sand (grain, wind ripples, pebbles; `SAND_TILE` units per
+  material colour (`textured`, also here, brightens it to make up): sand (grain, wind ripples, pebbles; `SAND_TILE` units per
   tile), metal plating (seams, rivets, scratches, rust streaks; more rust on the steel), cracked concrete, and a round
   shadow alpha map. `repeated(map, x, y)` copies one with its own repeat for a face.
 
@@ -82,8 +82,10 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   at `ZOOM_MAX`) and outlines the selected plot in yellow. Selection is view state, not saved.
 - In the dock plot: the Black siphon's bell on four legs: obsidian plating over `plated` of it, the open sector (ribs
   and hoops) facing the camera (angles as three's sphere `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a
-  blinking beacon; seven tentacles (tubes) on the sand with red probe tips; four floodlights (point lights, gently
-  flickering).
+  blinking beacon; seven tentacles (tubes, half sunk in the sand) with red probe tips; four floodlights (point lights,
+  gently flickering). Textured like the telescope (plating with rivets and rust, plated segments along the tentacles)
+  and settled in: the sand darkened under the bell (baked into the ground's vertex colours), heaps at its feet, crates
+  and a stack of spare plates.
 - The camera sways: a bob of `BOB_UNITS` every `BOB_SEC` and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with
   reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides on a little
   after a flick (`spin`, `GLIDE_KEEP`). Two fingers (pinch) or the mouse wheel zoom out up to `ZOOM_MAX` (4) times
