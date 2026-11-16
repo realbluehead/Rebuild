@@ -1,6 +1,7 @@
 // The bluetreri refinery (fuel, AREA 6): phase I's bluetreri crushed, filtered and cooked in vats into ship fuel;
 // later distilled in columns and pressed in a pressure core. 20 levels, one upgrade each (core/facility.ts).
-import { facilityCost, specAt, type Facility, type Upgrade } from './facility';
+import { refineryLpm, upgradeMetal } from './curves';
+import { specAt, type Facility, type Upgrade } from './facility';
 
 export interface Refinery {
   level: number;
@@ -43,13 +44,12 @@ export const REFINERY_UPGRADES: Upgrade<Refinery>[] = [
   { part: 'Ore', name: 'Second ore line', note: '2 hoppers', apply: (r) => { r.hoppers = 2; } },
   { part: 'Column', name: 'Second column', note: '2 columns', apply: (r) => { r.columns = 2; } },
   { part: 'Purity', name: 'Vacuum still', note: 'purity 95%', apply: (r) => { r.purity = 95; } },
-  { part: 'Core', name: 'Pressure core', note: 'fuel ×2', apply: (r) => { r.core = 1; } },
+  { part: 'Core', name: 'Pressure core', note: 'presses more fuel', apply: (r) => { r.core = 1; } },
   { part: 'Core', name: 'Core overdrive', note: 'purity 99%', apply: (r) => { r.core = 2; r.purity = 99; } },
 ];
 
 /** Fuel made, in litres per minute. */
-export const refineryOutput = (r: Refinery): number =>
-  Math.round(r.vats * (r.bigVats ? 2 : 1) * (r.burners ? 2 : 1) * (1 + r.columns * 0.5) * (r.core ? r.core + 1 : 1) * (r.purity / 100) * 12);
+export const refineryOutput = (r: Refinery): number => Math.round(refineryLpm(r.level));
 
 export const REFINERY: Facility<Refinery> = {
   upgrades: REFINERY_UPGRADES,
@@ -58,4 +58,4 @@ export const REFINERY: Facility<Refinery> = {
   gauge: (r) => refineryOutput(r) / refineryOutput(specAt(REFINERY, 20)),
 };
 
-export const refineryCost = (level: number): number => facilityCost(level, 1.1);
+export const refineryCost = (level: number): number => Math.round(upgradeMetal('refinery', level));

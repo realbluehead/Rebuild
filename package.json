@@ -1,7 +1,7 @@
 {
   "name": "rebuild",
   "private": true,
-  "version": "0.68.0",
+  "version": "0.69.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "sim": "vite-node tools/sim.ts",
+    "sim2": "vite-node tools/sim2.ts",
     "android:sync": "npm run build && cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "release": "tools/release.sh",

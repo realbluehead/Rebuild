@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ANTENNA } from './antenna';
-import { FACILITY_MAX, facilityCost, maxLevel, specAt, type Facility } from './facility';
+import { BUILDING_IDS, TOP_LEVEL, upgradeMetal } from './curves';
+import { FACILITY_MAX, maxLevel, specAt, type Facility } from './facility';
 import { POWER } from './power';
 import { PROBES } from './probes';
 import { REFINERY } from './refinery';
@@ -38,6 +39,7 @@ describe.each(ALL)('%s', (_, f, levels) => {
   });
 });
 
-it('costs grow with the level', () => {
-  for (let lv = 3; lv <= FACILITY_MAX; lv++) expect(facilityCost(lv)).toBeGreaterThan(facilityCost(lv - 1));
+it('the economy agrees on each top level, and costs grow with the level', () => {
+  expect(ALL.map(([id, f]) => [id, maxLevel(f)])).toEqual(BUILDING_IDS.map((id) => [id, TOP_LEVEL[id]]));
+  for (const id of BUILDING_IDS) for (let lv = 3; lv <= TOP_LEVEL[id]; lv++) expect(upgradeMetal(id, lv)).toBeGreaterThan(upgradeMetal(id, lv - 1));
 });

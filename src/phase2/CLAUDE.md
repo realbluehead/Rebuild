@@ -1,9 +1,65 @@
 # Rebuild · phase II (the voyage)
 
-Phase II: build a fleet of ships to carry what phase I gathered to a new planet. **Its rules are still to be designed**
-(decide them with the user); for now the screen simulates the base's buildings (telescope, power, fuel, fuel storage: 20 levels each; antenna and
-probes: 15 each). Paths below are relative to
-`src/phase2/` unless they start with `src/`.
+Phase II: build the ship that carries the expedition to a new planet. Its **core rules are in** (`core/`, below: the
+base's economy, the star map, attributes, research, the ship, exact time); **the screens for them are not yet**: the
+screen still steps the buildings' levels freely as a simulation (telescope, power, fuel, fuel storage: 20 levels each;
+antenna and probes: 15 each), while the economy runs underneath. Paths below are relative to `src/phase2/` unless they
+start with `src/`.
+
+## Decided with the user (2026-11-16)
+- **Approach: the base is the economy, probes explore a star map.** The base's buildings (power → fuel → storage,
+  telescope, antenna, probes, the dry dock) feed each other; probes visit star systems on a small **star map, its own
+  screen** (not in the 3D desert), and **come back on their own** with what they found.
+- **Length: about three times phase I** (phase I ends at ~19 h of play, so ~55–60 h).
+- **It ends when the ship is complete and launched into space**; a **phase III** follows (on the new planet).
+- **It runs while the player is away** (offline progress, like phase I): the simulation must be exact for any time
+  step from the start (events: probe arrivals, storage full, builds done).
+- **Phase I's works are points the player spends** (every finished phase I has all 45: 15 books, 15 records, 15
+  discoveries): like levelling a character, each player chooses which of the base's attributes they raise with them.
+  Not all at once: an **expedition level** (XP from building upgrades, probes back, systems studied, ship modules,
+  research; each level ×1.1 dearer, the last of 45 points around 50 h) gives **one point per level**: the player picks
+  which work to use (of those left) and which attribute it raises. Locked works show greyed with a padlock.
+  **Six attributes**, each fed by one kind of work: books → **Intelligence** (research speed) or **Perception**
+  (telescope and antenna range); records → **Strength** (production: power, refinery, scrap) or **Endurance** (tank
+  capacity, probe endurance and reach); discoveries → **Speed** (probe travel, builds) or **Ingenuity** (metal costs).
+  Diminishing returns per point (so spreading pays); every path must end in a similar time (check with the sim).
+  **Points are never redistributed** (a choice is for good).
+- Then implemented as below (the numbers are a first pass from the simulator, to tune once it can be played).
+
+## The economy (`core/`, pure; `economy.ts` holds the rules)
+- **Buildings** start at level 1. What each level is worth is a smooth curve per building (`curves.ts`: every level
+  counts; the facility files' upgrades are only what the level looks like, and their tab stats show these numbers):
+  tower MW, refinery L/min, tanks L, telescope sight ly, antenna hearing ly and data factor, probe reach ly, launches an
+  hour, speed ly/h, fuel a launch. An upgrade costs metal (`upgradeMetal`, ×`COST_GROWTH` 1.6 a level) and **crew**
+  time (`upgradeSeconds`); **one crew** builds one thing at a time (building levels and ship modules). Every building
+  but the tower draws power (`demandMW`, a share of the tower's curve): short of power, metal, fuel and launches slow
+  down by the share covered (`rates().power`).
+- **Resources**: metal (the currency; the rovers brought over salvage it, ×research, ×Strength, +4% per study of a
+  system, +2% per building level, ×power); **bluetreri** in the siphon's sump (all phase I brought up: the larger of
+  `bluetreri`/`totalBluetreri`), refined 1:1 into **fuel**, held in the tanks (up to their capacity); **data** from
+  the probes; **samples** (5 kinds) from the probes; the **items** brought over (pages, notes, photos) for research.
+- **Star map** (`starmap.ts`, from the legacy's seed, never saved): 16 systems in 4 rings (4–7, 10–20, 25–45, 50–90
+  ly), each with a star, a sample kind (all five within the first three rings) and one habitable far system (ring 4):
+  the destination. A system can be targeted if the telescope sees it (or it was studied) and probes reach it.
+- **Probes**: the player sets a target; the hangar launches by itself every `launchEvery` while the tanks have the
+  launch fuel; each probe flies out and back (`tripSeconds`) and brings back data (by ring, ×antenna, ×research,
+  ×Endurance, and only the part the antenna hears if it is farther than its range), a study (1: star and kind; 2 and on:
+  samples, ×Endurance, fractional; 3: whether it can be lived on) and XP.
+- **Research** (`research.ts`): 20 techs in 5 tiers (4 done open the next tier), one at a time in the lab: data
+  (`TIER_DATA`) plus a share of the items of one kind brought over (`TIER_ITEM_SHARE`, so it never locks a player who
+  kept few), lab time (`TIER_SECONDS`, ×Intelligence, ×research). Each multiplies one rate (`Effect`).
+- **The ship** (`ship.ts`): 8 modules (metal, data, samples, crew time); once all are built, the destination is
+  studied 3 times and the tanks hold `LAUNCH_FUEL`, `launchShip` ends phase II (`launchedAt`).
+- **Attributes** (`attributes.ts`): XP from levels built, research, probes back, studies and modules
+  (`XP` in economy.ts) gives expedition levels (`xpToNext`, `XP_BASE` ×1.1 a level); each level a point, spent on an
+  attribute with a work of its kind (`spendPoint`, `worksLeft`), for good. `attrFactor(points, a)`: each point keeps
+  `POINT_KEEP` of the one before, the first worth `POINT_GAIN[a]` (weighed per attribute so paths end close).
+- **Time** (`advance.ts`, `advance(s, dt)`): exact for any step. Between events every rate is constant, so it jumps
+  from one event to the next (crew or lab done, a probe back, a launch, the tanks full, the fuel for a launch, the sump
+  empty); one long step ends where many short ones do (tested). The frame loop and the time away on boot both call it.
+- **Balance** (`npm run sim2 -- <hours>`, tools/sim2.ts): a greedy bot plays from the sample legacy. `STRAT=all`
+  prints one SUMMARY per strategy (balanced, or all points it can into one attribute). First pass: balanced launches
+  at ~61 h with its 45 points at ~49 h; one attribute pushed to 15 (its pair at 0) takes 61–78 h (spreading pays).
 
 ## Starting point: the legacy
 - Phase II starts **only** from `Legacy` (`core/legacy.ts`): what phase I achieved, frozen when the player enters phase
@@ -13,15 +69,17 @@ probes: 15 each). Paths below are relative to
 - Phase I builds it (`legacyOf` in src/phase1/legacy.ts, tested there). **Never import src/phase1/** from here (ESLint
   fails): if phase II needs something more from phase I, add a field to `Legacy` and fill it in `legacyOf` (a phase II
   save made before has it missing: give it a default in a migration).
-- `P2State` (`core/state.ts`): `legacy` (never changed), `metal` (phase II's currency, a Decimal), `bluetreri`, `items`
-  (brought over, to spend), `playTime`. `newPhase2(legacy)` starts with phase I's resources at hand.
+- `P2State` (`core/state.ts`): `legacy` (never changed), `metal` (phase II's currency, a Decimal), `bluetreri` (the
+  sump), `items` (brought over, to spend), `playTime`, and the economy: `levels`, `crew`, `lab`, `researched`,
+  `modules`, `fuel`, `data`, `samples`, `studies` (per system), `target`, `launchWait`, `probes` out, `xp`, `attrs`,
+  `launchedAt`. Times are countdowns in seconds. `newPhase2(legacy)` starts with phase I's resources at hand.
 
 ## Save
 - `save.ts`: own key `rebuild:p2` (+ backup), own `P2_SAVE_VERSION` and `MIGRATIONS` (independent of phase I's), JSON with
   `phase: 2` so exported texts tell the phases apart (`isPhase2Save`). Reading one back checks every field (`cleanLegacy`,
   `cleanItems` in core/legacy.ts, `amount` in src/shared/decimal.ts): a broken field gets a harmless default, only a
   save with no version or no legacy seed is refused. Writes and wipes go through one queue, in the order asked (an
-  overlapping save could undo a wipe). The menu's Import locks saving before it writes (and unlocks if it fails). **If `P2State` changes: bump the version, add the
+  overlapping save could undo a wipe). v2 added the economy (v1 → v2: every building at level 1, the sump filled). The menu's Import locks saving before it writes (and unlocks if it fails). **If `P2State` changes: bump the version, add the
   migration and a test** (`save.test.ts`).
 - Once this save exists, src/main.ts boots straight into phase II (`boot` here; if it cannot be read, phase I boots):
   none of phase I's code, save or map is loaded (check the network list when touching boot or imports), and phase I's
@@ -38,7 +96,7 @@ probes: 15 each). Paths below are relative to
   II's chunk, with three.js, loads meanwhile) saves the new phase II and fades its screen in over the black; only then
   does the splash go, so nothing of phase I shows in between. Phase I's loop and saving stop. (`?phase2` covers phase
   I's view in black, `.p2-cover`, for the same reason.)
-- `boot.ts`: `run` mounts the screen, runs the frame loop (play time; frames over 5 s are not counted), autosaves every
+- `boot.ts`: `run` mounts the screen, runs the frame loop (`advance` by each frame's time; on boot, by the time away since the save), autosaves every
   30 s and on going to the background, and owns the ≡ menu. New versions (`offerUpdates`): booted straight into phase II,
   it checks after the title tap and each time the game comes back to the foreground; entered from phase I, phase I's
   boot keeps doing it. `?phase2` in the address (on a phase I game) is a
@@ -63,20 +121,19 @@ probes: 15 each). Paths below are relative to
 
 ## Facilities (`core/facility.ts`)
 - A building is a `Facility<S>`: `upgrades` (one per level: 20, or 15 for the antenna and probes; `maxLevel(f)`; part, name, note, `apply`), `base()`, `stats`,
-  `gauge` (0..1 of its best); `specAt(f, level)` folds the upgrades; `facilityCost(level, scale)` suggests costs.
-  Tested for all of them in `facility.test.ts` (20 upgrades, clamping, gauge never drops and ends full). **Their rules
-  (real costs, saving levels, what each gives the base) are still to be decided with the user**; saving levels means a
-  `P2State` field (version bump, migration, test).
+  `gauge` (0..1 of its best); `specAt(f, level)` folds the upgrades; their numbers, costs (`powerCost`…) and build
+  times come from `curves.ts`. Tested for all of them in `facility.test.ts` (upgrade counts agree with `TOP_LEVEL`,
+  clamping, gauge never drops and ends full).
 - `core/power.ts` (`POWER`, the mirror tower: mirrors, reflectivity, tower height, receiver heat, tracking, salt
   tanks, exchanger, power line, crown; output MW, night store MWh), `core/refinery.ts` (`REFINERY`, the bluetreri
   refinery: hoppers, conveyor, crusher, vats, big vats, burners, purity, centrifuge, columns, pipe rack, pressure core;
   L/min), `core/tanks.ts` (`TANKS`, the tank farm: barrels, upright tanks, spheres, gauges, bund wall, pipe rack,
   hydrants, pump house, filling arms, dock pipeline, cladding, beacon; capacity kL), `core/antenna.ts` (`ANTENNA`, the
   telecommunications antenna, 15 levels: dishes 2 → 12 → 25 m, guy wires, feed horn, lattice mast 15/30 m, relay drums,
-  transmitter hut, tracking, aircraft lights, phased array, laser link; range AU, kbit/s), `core/probes.ts` (`PROBES`,
+  transmitter hut, tracking, aircraft lights, phased array, laser link; hearing ly, data factor), `core/probes.ts` (`PROBES`,
   the probe hangar, 15 levels: hangar frame → roof → sliding doors, bays 1–3, crane; the probe's solar wings, radio, ion
-  engine, instruments, nuclear battery; launcher rail → tower → pad, booster, 3 probes a launch; reach AU, probes a
-  day), and the telescope below.
+  engine, instruments, nuclear battery; launcher rail → tower → pad, booster, 3 probes a launch; reach ly, launches an
+  hour), and the telescope below.
 
 ## Buildings in 3D (`ui/kit3d.ts`, `ui/*3d.ts`)
 - Each builder takes the building at its level and returns a `Group` round its plot's centre on the flat sand
@@ -135,9 +192,8 @@ probes: 15 each). Paths below are relative to
 - 20 levels, one upgrade each (`UPGRADES`: part Size / Lenses / Sharpness / Mount / Dome / Mirror / Laser);
   `telescopeAt(level)` folds them into a `Telescope` (aperture, lenses, sharpness, mount tripod → pier → fork, tube
   refractor → reflector → truss, finder, platform, wall, dome, mirror segments 0/7/19, lasers 0/1/3);
-  `telescopeRange` (ly) and `upgradeCost` (metal, a suggestion) for the tab. Tested in `telescope.test.ts`. **Its rules
-  (real costs, saving the level, what it is for) are still to be decided with the user**; saving the level means a
-  `P2State` field (version bump, migration, test).
+  `telescopeRange` (ly, `curves.ts`: what it sees on the star map) and `upgradeCost` (metal) for the tab. Tested in
+  `telescope.test.ts`.
 - `buildTelescope(t)` draws it at its level round its plot's centre: the tube tilted 40° up, sideways to the starting
   view (so its length shows), on its mount; lens rings glow brighter with sharpness; platform with red lights, wind wall,
   a half dome behind (open towards the view), hexagonal mirror segments, laser beams; a work lamp. Settled in the sand:

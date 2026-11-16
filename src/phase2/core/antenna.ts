@@ -1,6 +1,7 @@
 // The telecommunications antenna (AREA 2): from a salvaged dish on a pole to a deep-space array that talks to the
 // probes far out in space. 15 levels, one upgrade each (core/facility.ts).
-import { facilityCost, specAt, type Facility, type Upgrade } from './facility';
+import { antennaData, antennaLy, upgradeMetal } from './curves';
+import { specAt, type Facility, type Upgrade } from './facility';
 
 export interface Antenna {
   level: number;
@@ -30,7 +31,7 @@ export interface Antenna {
 export const ANTENNA_UPGRADES: Upgrade<Antenna>[] = [
   { part: 'Base', name: 'Scrap dish', note: 'a 2 m dish on a pole', apply: () => {} },
   { part: 'Mast', name: 'Guy wires', note: 'steady in the wind', apply: (a) => { a.guyWires = true; } },
-  { part: 'Dish', name: 'Feed horn', note: 'signal ×1.5', apply: (a) => { a.feedHorn = true; } },
+  { part: 'Dish', name: 'Feed horn', note: 'a cleaner signal', apply: (a) => { a.feedHorn = true; } },
   { part: 'Mast', name: 'Lattice mast', note: 'mast 15 m', apply: (a) => { a.mast = 15; a.lattice = true; } },
   { part: 'Relay', name: 'Microwave relays', note: '2 relay drums', apply: (a) => { a.relays = 2; } },
   { part: 'Dish', name: 'Second dish', note: '2 dishes', apply: (a) => { a.dishes = 2; } },
@@ -45,14 +46,10 @@ export const ANTENNA_UPGRADES: Upgrade<Antenna>[] = [
   { part: 'Laser', name: 'Laser link', note: 'light-speed data', apply: (a) => { a.laser = true; } },
 ];
 
-/** How far it hears a probe, in AU (astronomical units). */
-export const antennaRange = (a: Antenna): number => {
-  const area = a.dishSize * a.dishSize * (1 + 0.3 * (a.dishes - 1)) * (a.feedHorn ? 1.5 : 1) * (a.tracking ? 1.6 : 1);
-  return Math.round(area * (1 + a.mast / 30) * (a.laser ? 2 : 1) * (1 + 0.15 * a.panels) * 10) / 100;
-};
-/** Data it carries, in kbit/s. */
-export const antennaRate = (a: Antenna): number =>
-  Math.round(2 * a.dishes * (1 + a.relays) * (a.hut ? 2 : 1) * (1 + a.panels) * (a.laser ? 10 : 1) * (a.feedHorn ? 1.5 : 1));
+/** How far it hears a probe, in light years (core/curves.ts). */
+export const antennaRange = (a: Antenna): number => Math.round(antennaLy(a.level) * 10) / 10;
+/** Data it brings in from a probe, as a factor. */
+export const antennaRate = (a: Antenna): number => Math.round(antennaData(a.level) * 10) / 10;
 
 export const ANTENNA: Facility<Antenna> = {
   upgrades: ANTENNA_UPGRADES,
@@ -60,8 +57,8 @@ export const ANTENNA: Facility<Antenna> = {
     level: 0, dishes: 1, dishSize: 2, mast: 6, lattice: false, guyWires: false, feedHorn: false, relays: 0, hut: false,
     tracking: false, beacons: false, panels: 0, laser: false,
   }),
-  stats: (a) => [`Range ${antennaRange(a)} AU`, `${antennaRate(a)} kbit/s`, `${a.dishes} dish${a.dishes > 1 ? 'es' : ''} · ${a.dishSize} m · mast ${a.mast} m`],
+  stats: (a) => [`Hears ${antennaRange(a)} ly`, `Data ×${antennaRate(a)}`, `${a.dishes} dish${a.dishes > 1 ? 'es' : ''} · ${a.dishSize} m · mast ${a.mast} m`],
   gauge: (a) => antennaRange(a) / antennaRange(specAt(ANTENNA, ANTENNA_UPGRADES.length)),
 };
 
-export const antennaCost = (level: number): number => facilityCost(level, 1.1);
+export const antennaCost = (level: number): number => Math.round(upgradeMetal('antenna', level));

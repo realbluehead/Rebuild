@@ -7,6 +7,7 @@ import { offerUpdates } from '../shared/updates';
 import { onBackground } from '../platform';
 import { WORLD_CACHE_DB } from '../shared/keys';
 import type { Legacy } from './core/legacy';
+import { advance } from './core/advance';
 import { newPhase2, type P2State } from './core/state';
 import { loadPhase2, savePhase2, serializeP2 } from './save';
 import { showPhase2 } from './ui/phase2';
@@ -17,14 +18,14 @@ const AUTOSAVE_MS = 30_000;
 function dropPhase1Map(): void {
   try { indexedDB.deleteDatabase(WORLD_CACHE_DB); } catch { /* no IndexedDB */ }
 }
-/** A longer frame (a frozen tab) is not counted as play time. */
-const MAX_FRAME_SEC = 5;
 
 /** Boots straight into phase II (main.ts, a phase II save exists). Returns false if no save could be read, so main.ts
  *  falls back to phase I (its save is still there). */
 export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolean> {
   const loaded = await loadPhase2();
   if (!loaded) return false;
+  // Time away runs exactly (core/advance.ts).
+  advance(loaded.state, Math.max(0, (Date.now() - loaded.savedAt) / 1000));
   title.progress(1);
   dropPhase1Map();
   // New versions: after the title tap and whenever the game comes back to the foreground (entered from phase I, its
@@ -92,7 +93,7 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
   const frame = (now: number) => {
     const dt = (now - last) / 1000;
     last = now;
-    if (dt < MAX_FRAME_SEC) state.playTime += dt;
+    advance(state, dt); // (a frozen or hidden tab catches up on the next frame)
     screen.render(state);
     requestAnimationFrame(frame);
   };

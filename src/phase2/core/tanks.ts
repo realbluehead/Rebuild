@@ -1,6 +1,7 @@
 // The tank farm (fuel storage, AREA 9): from a stack of barrels to upright tanks and spheres inside a bund wall, a
 // pump house, and filling arms that fuel the ships. 20 levels, one upgrade each (core/facility.ts).
-import { facilityCost, specAt, type Facility, type Upgrade } from './facility';
+import { tanksL, upgradeMetal } from './curves';
+import { specAt, type Facility, type Upgrade } from './facility';
 
 export interface Tanks {
   level: number;
@@ -38,8 +39,8 @@ export const TANKS_UPGRADES: Upgrade<Tanks>[] = [
   { part: 'Safety', name: 'Foam hydrants', note: 'no fires', apply: (t) => { t.safety = true; } },
   { part: 'Tanks', name: 'Second sphere', note: '2 spheres', apply: (t) => { t.spheres = 2; } },
   { part: 'Tanks', name: 'Fourth tank', note: '4 tanks', apply: (t) => { t.uprights = 4; } },
-  { part: 'Pump', name: 'Pump house', note: 'fills ×2 faster', apply: (t) => { t.pumpHouse = true; } },
-  { part: 'Tanks', name: 'Big spheres', note: 'spheres ×2', apply: (t) => { t.bigSpheres = true; } },
+  { part: 'Pump', name: 'Pump house', note: 'fills faster', apply: (t) => { t.pumpHouse = true; } },
+  { part: 'Tanks', name: 'Big spheres', note: 'bigger spheres', apply: (t) => { t.bigSpheres = true; } },
   { part: 'Tanks', name: 'Tank row', note: '6 tanks', apply: (t) => { t.uprights = 6; } },
   { part: 'Arm', name: 'Filling arm', note: 'fuels a ship', apply: (t) => { t.arms = 1; } },
   { part: 'Tanks', name: 'Third sphere', note: '3 spheres', apply: (t) => { t.spheres = 3; } },
@@ -50,8 +51,7 @@ export const TANKS_UPGRADES: Upgrade<Tanks>[] = [
 ];
 
 /** What it holds, in kilolitres. */
-export const tanksCapacity = (t: Tanks): number =>
-  Math.round(((t.barrels && !t.uprights ? 1.6 : 0) + t.uprights * 60 + t.spheres * (t.bigSpheres ? 400 : 200)) * (t.cladding ? 1.2 : 1));
+export const tanksCapacity = (t: Tanks): number => Math.round(tanksL(t.level) / 100) / 10;
 
 export const TANKS: Facility<Tanks> = {
   upgrades: TANKS_UPGRADES,
@@ -63,4 +63,4 @@ export const TANKS: Facility<Tanks> = {
   gauge: (t) => tanksCapacity(t) / tanksCapacity(specAt(TANKS, 20)),
 };
 
-export const tanksCost = (level: number): number => facilityCost(level, 0.9);
+export const tanksCost = (level: number): number => Math.round(upgradeMetal('tanks', level));

@@ -40,7 +40,8 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
 - `npm test`, `npm run lint` (the whole repo: src, tools, configs), `npm run typecheck`.
 - `node tools/icon.mjs` (macOS): draws the app icon (`public/icon.svg`, 32×32 pixel art, full bleed so it is also the
   maskable one) and writes its PNGs (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) with `sips`.
-- `npm run sim -- <hours>`: phase I's balance simulator (see src/phase1/CLAUDE.md).
+- `npm run sim -- <hours>`: phase I's balance simulator (see src/phase1/CLAUDE.md); `npm run sim2 -- <hours>`: phase
+  II's (see src/phase2/CLAUDE.md).
 - `npm run android:apk`: debug APK in `android/app/build/outputs/apk/debug/`. Needs `JAVA_HOME` from Android Studio's JDK:
   `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` (the system Java does not work with Gradle).
 - **Versioning** (semver, `npm version <part> --no-git-tag-version` in the same commit; no tag, so no APK): a bug fix bumps the patch, any other change that is not a game-rules change bumps the minor. Rule changes are decided with the user.

@@ -3,7 +3,8 @@
 // `telescopeAt(level)` folds them into the telescope as it stands, which the 3D scene draws and the Telescope tab lists.
 // For now this is a simulation: levels are stepped freely, nothing is spent or saved (its rules are still to be decided).
 
-import { FACILITY_MAX, facilityCost, specAt, type Facility } from './facility';
+import { telescopeLy, upgradeMetal } from './curves';
+import { FACILITY_MAX, specAt, type Facility } from './facility';
 
 export const TELESCOPE_MAX = FACILITY_MAX;
 
@@ -76,8 +77,8 @@ export const TELESCOPE: Facility<Telescope> = {
 /** The telescope at `level` (1..TELESCOPE_MAX, clamped). */
 export const telescopeAt = (level: number): Telescope => specAt(TELESCOPE, level);
 
-/** How far it sees, in light years (grows with the aperture and the sharpness). */
-export const telescopeRange = (t: Telescope): number => Math.round(10 * Math.pow(t.aperture * 10, 1.6) * (t.sharpness / 100));
+/** How far it sees, in light years (core/curves.ts). */
+export const telescopeRange = (t: Telescope): number => Math.round(telescopeLy(t.level) * 10) / 10;
 
 /** Metal scraps for the upgrade that reaches `level` (2..TELESCOPE_MAX): a suggestion for the simulation. */
-export const upgradeCost = (level: number): number => facilityCost(level);
+export const upgradeCost = (level: number): number => Math.round(upgradeMetal('telescope', level));

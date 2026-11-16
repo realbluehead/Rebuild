@@ -1,6 +1,7 @@
 // The mirror tower (power for the whole base, AREA 3): rings of mirrors beam the sun onto a receiver at the top of a
 // tower; molten salt in tanks keeps the heat for the night. 20 levels, one upgrade each (core/facility.ts).
-import { facilityCost, specAt, type Facility, type Upgrade } from './facility';
+import { powerMW, upgradeMetal } from './curves';
+import { specAt, type Facility, type Upgrade } from './facility';
 
 export interface Power {
   level: number;
@@ -46,8 +47,8 @@ export const POWER_UPGRADES: Upgrade<Power>[] = [
   { part: 'Receiver', name: 'Sun core', note: '1200 °C', apply: (p) => { p.heat = 1200; } },
 ];
 
-/** Output, in MW: what the mirrors gather, times how hot the receiver runs. */
-export const powerOutput = (p: Power): number => Math.round(p.mirrors * (p.reflect / 100) * (p.heat / 500) * 1.5 * 10) / 10;
+/** Output, in MW (core/curves.ts). */
+export const powerOutput = (p: Power): number => Math.round(powerMW(p.level) * 10) / 10;
 /** Night storage, in MWh. */
 export const powerStorage = (p: Power): number => p.saltTanks * 40 * (p.exchanger ? 1.5 : 1);
 
@@ -58,4 +59,4 @@ export const POWER: Facility<Power> = {
   gauge: (p) => powerOutput(p) / powerOutput(specAt(POWER, 20)),
 };
 
-export const powerCost = (level: number): number => facilityCost(level, 1.2);
+export const powerCost = (level: number): number => Math.round(upgradeMetal('power', level));

@@ -1,7 +1,6 @@
 // What every building of the base shares: levels, one upgrade each (20 for most, 15 for the antenna and the probes), folded into the building as it stands. The
 // telescope, the mirror tower (power), the bluetreri refinery (fuel) and the tank farm (fuel storage) are facilities.
-// For now they are a simulation: levels are stepped freely, nothing is spent or saved (their rules are still to be
-// decided with the user).
+// What a level is worth, costs and build times are in core/curves.ts; the economy in core/economy.ts.
 
 /** Levels of the first buildings (telescope, mirror tower, refinery, tank farm); a facility has as many levels as upgrades. */
 export const FACILITY_MAX = 20;
@@ -37,7 +36,3 @@ export function specAt<S extends { level: number }>(f: Facility<S>, level: numbe
   s.level = lv;
   return s;
 }
-
-/** Metal scraps for the upgrade that reaches `level` (2..its top level): a suggestion for the simulation; `scale` sets
- *  how dear a building is. */
-export const facilityCost = (level: number, scale = 1): number => Math.round(40 * scale * Math.pow(1.8, level - 2));
