@@ -20,7 +20,8 @@ export interface OfflineReport {
 
 /** Simulates the time the player was away. Returns null if it is too little to be worth showing. */
 export function applyOffline(s: GameState, w: World, savedAt: number, now: number): OfflineReport | null {
-  const seconds = Math.min(Math.max(0, (now - savedAt) / 1000), OFFLINE_CAP_SEC);
+  const away = (now - savedAt) / 1000; // (a clock set back, or a broken save time: nothing to simulate)
+  const seconds = Number.isFinite(away) ? Math.min(Math.max(0, away), OFFLINE_CAP_SEC) : 0;
   if (seconds < 10) {
     tick(s, w, seconds);
     return null;

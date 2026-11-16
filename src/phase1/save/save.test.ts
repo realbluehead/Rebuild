@@ -216,6 +216,14 @@ describe('save', () => {
     expect(state.zoomUnlocked).toBe(4);
     expect(state.zoom).toBe(3);
   });
+
+  it('reads broken amounts and save times as harmless defaults', () => {
+    const data = { ...serialize(newGame(1), 0), gold: '-50', totalGold: 'lots', savedAt: 'soon' };
+    const { state, savedAt } = deserialize(data as unknown as Parameters<typeof deserialize>[0]);
+    expect(state.gold.toNumber()).toBe(0);
+    expect(state.totalGold.toNumber()).toBe(0);
+    expect(savedAt).toBe(0);
+  });
 });
 
 describe('offline', () => {
@@ -237,6 +245,12 @@ describe('offline', () => {
   it('ignores clocks that went backwards', () => {
     const s = newGame(7);
     expect(applyOffline(s, world, 10_000, 0)).toBeNull();
+    expect(s.bots[0].prog).toBe(0);
+  });
+
+  it('ignores a broken save time', () => {
+    const s = newGame(7);
+    expect(applyOffline(s, world, NaN, 600_000)).toBeNull();
     expect(s.bots[0].prog).toBe(0);
   });
 });

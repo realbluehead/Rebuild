@@ -233,7 +233,11 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
 - `core/`: **pure** simulation (no DOM, clock or storage). All new logic goes here, with tests.
   Big numbers always with `Decimal` from `src/shared/decimal.ts`. Fixed-step loop (`TICK_RATE`).
 - `content/`: game data (upgrades, terrain, collections…). Adding content should not touch the core.
-- `save/`: `save.ts` versioned format + migrations; `offline.ts` progress while away (in chunks, capped); `persist.ts` saving with a backup.
+- `save/`: `save.ts` versioned format + migrations (amounts read with `amount`: garbage or negative is 0; a broken
+  `savedAt` reads 0 and `applyOffline` ignores non-finite time); `offline.ts` progress while away (in chunks, capped);
+  `persist.ts` saving with a backup, every write and wipe queued in the order asked. A frozen tab's catch-up (boot.ts)
+  saves and reports like offline time (report from 10 min, new zoom, the end). The load worker posts `failed` if
+  loading throws (the page then loads inline; if that throws too, main.ts shows the retry note).
   **If `GameState` changes: bump `SAVE_VERSION`, add the migration and a test.** Players' saves must never break.
   Saves from v3 or earlier carry `legacyWalked` (total steps) and `fromLegacy()` turns it into a ring + rovers once the world exists (in `load.ts`).
 - `ui/`: plain DOM; built once, `render()` only updates texts. Each frame it draws the map and the top bar; the panel (tabs, cards, prices, alerts) is refreshed `PANEL_MS` (100 ms) apart, or on the next frame after any tap (`pointerup` on the root), as it calls many core checks. Derived counts that walk the whole map are cached on what they depend on (`itemsCollected`, `loreFound`, `metalCollected`: per world version and state key); keep new ones the same way if the panel asks for them.

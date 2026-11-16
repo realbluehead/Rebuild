@@ -6,9 +6,17 @@ import { worldCache } from './save/worldCache';
 
 self.onmessage = async (e: MessageEvent<{ save: SaveData | null; now: number }>) => {
   const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(msg, transfer);
+  let out: ReturnType<typeof loadWorld>;
   const cache = worldCache(__APP_BUILD__);
-  const cached = await cache?.get().catch(() => undefined);
-  const out = loadWorld(e.data.save, e.data.now, (p) => post({ progress: p }), cached, __APP_BUILD__);
+  try {
+    const cached = await cache?.get().catch(() => undefined);
+    out = loadWorld(e.data.save, e.data.now, (p) => post({ progress: p }), cached, __APP_BUILD__);
+  } catch (err) {
+    // (an async handler's error never reaches the page's onerror: say so, and the page loads on its own thread)
+    post({ failed: String(err) });
+    self.close();
+    return;
+  }
   const entry = out.cache;
   // Copy the map into the cache first: after the hand-over below its buffers belong to the page.
   const written = entry && cache ? await cache.put(entry).catch(() => null) : null;

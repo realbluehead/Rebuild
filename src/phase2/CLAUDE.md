@@ -17,7 +17,10 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
 
 ## Save
 - `save.ts`: own key `rebuild:p2` (+ backup), own `P2_SAVE_VERSION` and `MIGRATIONS` (independent of phase I's), JSON with
-  `phase: 2` so exported texts tell the phases apart (`isPhase2Save`). **If `P2State` changes: bump the version, add the
+  `phase: 2` so exported texts tell the phases apart (`isPhase2Save`). Reading one back checks every field (`cleanLegacy`,
+  `cleanItems` in core/legacy.ts, `amount` in src/shared/decimal.ts): a broken field gets a harmless default, only a
+  save with no version or no legacy seed is refused. Writes and wipes go through one queue, in the order asked (an
+  overlapping save could undo a wipe). The menu's Import locks saving before it writes (and unlocks if it fails). **If `P2State` changes: bump the version, add the
   migration and a test** (`save.test.ts`).
 - Once this save exists, src/main.ts boots straight into phase II (`boot` here; if it cannot be read, phase I boots):
   none of phase I's code, save or map is loaded (check the network list when touching boot or imports), and phase I's

@@ -60,9 +60,10 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
     item('Export game', '', () => textModal('Copy this text to save your game:', encodeSave(serializeP2(state, Date.now())), true));
     if (persist) {
       item('Import game', '', () => textModal('Paste an exported game:', '', false, (text) => {
+        locked = true; // (no autosave may land on top of the imported game)
         void import('../saves').then(({ importAny }) => importAny(text)).then(
-          () => reloadAfter(Promise.resolve()),
-          () => { const e = modal(); e.box.append(h('div', '', 'That text is not a valid game.')); e.addClose('OK'); },
+          () => location.reload(),
+          () => { locked = false; const e = modal(); e.box.append(h('div', '', 'That text is not a valid game.')); e.addClose('OK'); },
         );
       }));
       item('Restart (new map)', 'danger', () => confirmModal('Erase this game (both phases) and start a new map?', 'Erase and restart', () => {

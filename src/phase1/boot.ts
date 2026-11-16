@@ -42,8 +42,8 @@ function finishedUnseen(s: GameState): boolean {
 
 /** Runs `loadWorld` in a worker, so the title keeps animating (falls back to this thread if workers fail). */
 function loadInWorker(save: SaveData | null, now: number, progress: (p: number) => void): Promise<Loaded> {
-  return new Promise((resolve) => {
-    const inline = () => resolve(loadWorld(save, now, progress));
+  return new Promise((resolve, reject) => {
+    const inline = () => { try { resolve(loadWorld(save, now, progress)); } catch (e) { reject(e); } };
     let worker: Worker;
     try {
       worker = new Worker(new URL('./load.worker.ts', import.meta.url), { type: 'module' });
@@ -51,9 +51,10 @@ function loadInWorker(save: SaveData | null, now: number, progress: (p: number) 
       inline();
       return;
     }
-    worker.onmessage = (e: MessageEvent<{ progress?: number; done?: Loaded }>) => {
+    worker.onmessage = (e: MessageEvent<{ progress?: number; done?: Loaded; failed?: string }>) => {
       if (e.data.progress !== undefined) progress(e.data.progress);
       if (e.data.done) resolve(e.data.done); // the worker closes itself once the map is stored
+      if (e.data.failed) { console.error('Load worker failed', e.data.failed); inline(); }
     };
     worker.onerror = (e) => { e.preventDefault(); worker.terminate(); inline(); };
     worker.postMessage({ save, now });
@@ -153,7 +154,8 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     exportText: () => exportSave(serialize(state, Date.now())),
     importText: (text) => {
       // Save and reload: the imported game may have a different map (seed), or be a phase II game.
-      importAny(text).then(() => { locked = true; location.reload(); }, () => view.toast('That text is not a valid game.'));
+      locked = true; // (no autosave may land on top of the imported game)
+      importAny(text).then(() => location.reload(), () => { locked = false; view.toast('That text is not a valid game.'); });
     },
     reset: () => { locked = true; void wipeAll().then(() => location.reload()); },
   });
@@ -207,9 +209,14 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       if (state.decoding >= 0 || state.decodeOn) decode(state, world, Math.min(dt, 3600) * view.gameSpeed());
       for (const id of buildSections(state, Math.min(dt, 3600) * view.gameSpeed())) { view.toast(`${sectionById(id).name} built!\nin the Library`); void save(); }
     } else if (dt > MAX_FRAME_SEC) {
-      // The tab was frozen: simulate it in chunks, like offline time.
+      // The tab was frozen: simulate it in chunks, like offline time, and tell what happened meanwhile (the ticks'
+      // events are not seen one by one here).
       const r = applyOffline(state, world, Date.now() - dt * 1000, Date.now());
       meter.reset(r && r.seconds >= 600 ? r.gold.toNumber() / r.seconds : meter.rate, carried(state));
+      if (r && r.seconds >= 600) view.showOffline(r);
+      if (r?.zoomUnlocked) setZoom(state, r.zoomUnlocked - 1);
+      if (state.doneAt !== undefined) { finishedUnseen(state); view.showComplete(state, voyage); }
+      void save();
     } else {
       // Test multiplier: game time runs faster (with longer ticks if needed, since the simulation is exact
       // per chunk and there is no need for thousands of ticks per frame).

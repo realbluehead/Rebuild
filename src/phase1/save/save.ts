@@ -31,7 +31,7 @@
 //      (`printed`) become sheets at today's prices once the world exists (`legacyPrinted`, `fromLegacyPrinted`).
 // v21: the Decoder runs in game time (`decodeOn`, `decoding`, `decodeLeft`), each scrap taking longer.
 // v18: Miner dig order (`digOrder`, `digPick`) and Hauler policy (`haulAt`, `haulPick`); missing = the old behaviour.
-import { D } from '../../shared/decimal';
+import { amount, D } from '../../shared/decimal';
 import { decodeSave, encodeSave } from '../../shared/codec';
 import { newBot, newGame, newLog, type Bot, type GameState, type Storm, type Trip } from '../core/state';
 import { STORMS } from '../content/weather';
@@ -307,8 +307,8 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   if (typeof data.seed !== 'number') throw new Error('Save has no seed');
   const state = newGame(data.seed);
   state.ring = Math.floor(num(data.ring));
-  state.gold = D(data.gold ?? 0);
-  state.totalGold = D(data.totalGold ?? 0);
+  state.gold = amount(data.gold);
+  state.totalGold = amount(data.totalGold);
   state.playTime = num(data.playTime);
   state.fetched = Array.isArray(data.fetched) ? [...new Set(data.fetched.map((x) => Math.floor(num(x))))] : [];
   state.pages = Math.min(PAGES_MAX, Math.floor(num(data.pages)));
@@ -413,7 +413,7 @@ export function deserialize(raw: RawSave): { state: GameState; savedAt: number }
   for (const id of Object.keys(state.items) as (keyof GameState['items'])[]) state.items[id] = num(data.items?.[id]);
   for (const id of Object.keys(state.works) as (keyof GameState['works'])[]) state.works[id] = Math.min(WORKS_MAX, Math.floor(num(data.works?.[id])));
   for (const id of Object.keys(state.goals) as (keyof GameState['goals'])[]) state.goals[id] = Math.min(GOAL_TIERS, Math.floor(num(data.goals?.[id])));
-  return { state, savedAt: data.savedAt };
+  return { state, savedAt: num(data.savedAt) };
 }
 
 /** Text for manual export/import (copy and paste). */
