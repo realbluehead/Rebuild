@@ -319,7 +319,8 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   const el = document.createElement('div');
   el.className = 'p2-desert';
   el.style.backgroundImage = `url(${skyBackground()})`;
-  const renderer = new WebGLRenderer({ antialias: false, alpha: true });
+  // Multisampled: edges get in-between colours at the low resolution, so they no longer crawl as the view sways.
+  const renderer = new WebGLRenderer({ antialias: true, alpha: true });
   if (import.meta.env.DEV) (window as unknown as { __renderer: WebGLRenderer }).__renderer = renderer; // (draw calls, in the console)
   renderer.setPixelRatio(1);
   renderer.setClearColor(new Color('#000000'), 0);
@@ -332,6 +333,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   let plot = start;
   const focus = plotCentre(plot).clone();
   const target = new Vector3();
+  const right = new Vector3(), up = new Vector3();
   const buildings = new Map<number, Group>();
   const pools = new Map(BUILDING_PLOTS.map((k) => [k, Array.from({ length: LIGHTS_PER_BUILDING }, () => {
     const l = new PointLight('#ffffff', 0);
@@ -430,6 +432,16 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     const d = 200;
     camera.position.set(target.x + Math.sin(yaw) * d * 0.8165, target.y + d * 0.5774 + bob, target.z + Math.cos(yaw) * d * 0.8165);
     camera.lookAt(target.x, target.y + bob, target.z);
+    // Pixel snap: slide the camera across its view so the scene moves by whole low-res pixels (a moving view at a
+    // fraction of a pixel makes every edge shimmer). Only turning (yaw) is left unsnapped.
+    camera.updateMatrixWorld();
+    const unit = (camera.right - camera.left) / Math.max(1, renderer.domElement.width);
+    right.setFromMatrixColumn(camera.matrixWorld, 0);
+    up.setFromMatrixColumn(camera.matrixWorld, 1);
+    const snap = (v: number) => Math.round(v / unit) * unit - v;
+    const p = camera.position;
+    p.addScaledVector(right, snap(p.dot(right))).addScaledVector(up, snap(p.dot(up)));
+    camera.updateMatrixWorld();
     beacon.visible = Math.floor(ms / 800) % 2 === 0;
     for (const [k, l] of lamps.entries()) l.intensity = 260 + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 15);
     renderer.render(scene, camera);

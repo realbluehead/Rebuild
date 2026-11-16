@@ -122,7 +122,9 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
 ## The desert (`ui/desert.ts`, `createDesert(onPlot, start)` → `{ el, setBuilding, select, stop }`)
 - three.js, only in phase II's chunk (phase I imports `../phase2/boot` dynamically, never statically). A real 3D scene
   with an orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (2) of the screen and scaled up with
-  crisp pixels over a pixel night sky (a canvas drawn once, CSS background).
+  crisp pixels over a pixel night sky (a canvas drawn once, CSS background). Multisampled (`antialias`, 4×) so
+  edges get in-between colours and do not crawl as the view sways, and pixel-snapped: each frame the camera slides
+  across its view to whole low-res pixels (bob, glide and zoom move in pixel steps; only the turn is unsnapped).
 - **Plots** (work areas): the ground is `GRID`×`GRID` (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1).
   The buildings' plots (`TELESCOPE_PLOT` 0 = AREA 1, where the view starts; `POWER_PLOT` 2 = AREA 3; `REFINERY_PLOT`
   5 = AREA 6; `TANKS_PLOT` 8 = AREA 9, by the dock) have their sand cleared flat within `CLEARED`;
