@@ -5,8 +5,8 @@
 import { BoxGeometry, ConeGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, TorusGeometry } from 'three';
 import type { Tanks } from '../core/tanks';
 import {
-  at, barrel, bright, cable, crate, glow, hazard, heap, ladder, lamp, lambert, pipeRack, railing, rod, shadow, steel, v3,
-  warning, CONCRETE,
+  at, barrel, bright, cable, crate, glow, groundPipe, hazard, heap, ladder, lamp, lambert, pipeRack, railing, rod, shadow,
+  steel, v3, warning, CONCRETE, FUEL_PIPE,
 } from './kit3d';
 import { concreteTexture, metalTexture, repeated, textured } from './textures';
 
@@ -71,12 +71,27 @@ export function buildTanks(t: Tanks): Group {
     if (t.gauges) g.add(at(new Mesh(new BoxGeometry(0.8, 0.5, 0.1), glow(FUEL)), x + R * 0.75, y - 0.4, z + R * 0.66).rotateY(Math.PI / 4));
   }
 
-  // Pipes: the rack in from the refinery, a header along the tanks.
+  // The fuel line in from the refinery (always there; it meets the refinery's at x = 17 on the lane): on sleepers over
+  // the sand, or on the pipe rack once there is one, to a junction by the tanks; from there a header to the upright
+  // tanks, a trunk past the spheres to the filling arms, or (before any tank) a line to the barrels.
   if (t.pipes) {
-    pipeRack(g, 17, -20, 17, -7, 2.4, 3, '#4a7a9a');
-    g.add(rod(v3(17, 1, -7), v3(-12, 1, -7.9), 0.25, textured('#7a7e88', metalTexture(0.5)), 6));
-    for (let k = 0; k < Math.min(3, t.uprights); k++) g.add(rod(v3(UPRIGHTS[k][0], 1, -7.9), v3(UPRIGHTS[k][0], 1, UPRIGHTS[k][1] + 2.2), 0.18, steel(), 5));
+    pipeRack(g, 17, -20, 17, -7, 2.4, 3, FUEL_PIPE);
+    g.add(rod(v3(17, 2.4, -7), v3(17, 0.5, -7), 0.22, steel(), 6));
+  } else groundPipe(g, [[17, -20], [17, -7]]);
+  const J: [number, number] = [6.6, -7];
+  groundPipe(g, [[17, -7], J]);
+  g.add(at(new Mesh(new BoxGeometry(0.8, 1, 0.8), bright()), J[0], 0.5, J[1])); // (the junction's valve box)
+  if (t.uprights) {
+    const left = Math.min(...UPRIGHTS.slice(0, t.uprights).map(([x]) => x));
+    groundPipe(g, [J, [J[0], -8.25], [left, -8.25]], 1.4);
+    g.add(rod(v3(J[0], 0.5, J[1]), v3(J[0], 1.4, J[1]), 0.22, steel(), 6));
   }
+  if (t.barrels) groundPipe(g, [J, [J[0], 4], [-4.2, 5.5]]);
+  const south = Math.max(t.spheres ? SPHERES[Math.min(t.spheres, 3) - 1][1] : J[1], t.arms ? 14.5 : J[1], t.spheres > 3 ? 2 : J[1], t.pumpHouse ? 10 : J[1]);
+  if (south > J[1]) groundPipe(g, [J, [J[0], south]]);
+  for (let k = 0; k < Math.min(3, t.spheres); k++) groundPipe(g, [[J[0], SPHERES[k][1]], [SPHERES[k][0] - (t.bigSpheres ? 3.5 : 2.8), SPHERES[k][1]]]);
+  if (t.spheres > 3) groundPipe(g, [[J[0], 2], [SPHERES[3][0], 2], [SPHERES[3][0], 6 - (t.bigSpheres ? 3.5 : 2.8)]]);
+  if (t.arms) groundPipe(g, [[J[0], 14.5], [5 + (t.arms - 1) * 7, 14.5]]);
   if (t.safety) {
     for (const [x, z] of [[-14, 1], [6, -15], [16, 12], [-2, 2]]) {
       g.add(at(new Mesh(new CylinderGeometry(0.25, 0.3, 1, 8), lambert('#c8282a')), x, 0.5, z));
@@ -93,7 +108,7 @@ export function buildTanks(t: Tanks): Group {
     for (let k = 0; k < 3; k++) g.add(at(new Mesh(new BoxGeometry(0.8, 0.15, 0.1), lambert('#1a1a20')), x - 1.2, 1.6 + k * 0.3, z + 2.02));
     g.add(rod(v3(x + 1.5, 3.3, z - 1), v3(x + 1.5, 5, z - 1), 0.25, steel(), 6));
     heap(g, x, z, 3.4);
-    if (t.pipes) g.add(rod(v3(x + 2.5, 1, z - 1), v3(-12, 1, -7.9), 0.22, steel(), 5));
+    groundPipe(g, [[x + 2.5, z - 1], [6.6, z - 1]]); // (to the trunk from the tanks)
   }
 
   // Filling arms for the ships: a post with hazard stripes, a boom, a hose hanging down.

@@ -141,3 +141,22 @@ export function disposeGroup(g: Group): void {
     }
   });
 }
+
+/** The fuel line's colour (refinery → tank farm → dock). */
+export const FUEL_PIPE = '#4a7a9a';
+
+/** A pipe through `pts` at height `y`, on low sleepers every few units, with an elbow at each bend. */
+export function groundPipe(g: Group, pts: [number, number][], y = 0.5, colour = FUEL_PIPE, r = 0.22): void {
+  const pipe = textured(colour, metalTexture(0.5)), sleeper = lambert('#3a3030'), elbow = steel();
+  for (let k = 1; k < pts.length; k++) {
+    const [x0, z0] = pts[k - 1], [x1, z1] = pts[k], d = Math.hypot(x1 - x0, z1 - z0);
+    if (d < 0.01) continue;
+    g.add(rod(v3(x0, y, z0), v3(x1, y, z1), r, pipe, 6));
+    for (let t = 1.5; t < d; t += 3) {
+      const s = new Mesh(new BoxGeometry(0.35, y, 0.9), sleeper);
+      s.lookAt(x1 - x0, 0, z1 - z0);
+      g.add(at(s, x0 + ((x1 - x0) * t) / d, y / 2, z0 + ((z1 - z0) * t) / d));
+    }
+    if (k < pts.length - 1) g.add(at(new Mesh(new SphereGeometry(r * 1.4, 6, 4), elbow), x1, y, z1));
+  }
+}

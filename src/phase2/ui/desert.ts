@@ -13,6 +13,7 @@ import {
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
 import { disposeGroup } from './kit3d';
+import { buildGrid } from './grid3d';
 import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
@@ -249,6 +250,18 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     rocks.setMatrixAt(n++, o.matrix);
   }
   scene.add(rocks);
+
+  // The power grid: poles along the lanes, a transformer on every plot and a cable into its building.
+  scene.add(buildGrid({
+    plots: GRID, side: PLOT, centre: plotCentre, height: duneHeight, source: POWER_PLOT,
+    sites: {
+      [TELESCOPE_PLOT]: { path: [[18, 18], [13, 12], [6, 5], [0, 0]] },
+      [POWER_PLOT]: { path: [[-18, 18], [-12, 9], [-6, 1], [-3, -3]] },
+      [REFINERY_PLOT]: { path: [[-18, -18], [-6, -17], [-2, -8], [-2, -2]] },
+      [TANKS_PLOT]: { path: [[-18.5, -12], [-17.5, 0], [-15, 7]], cabinet: true },
+      [DOCK_PLOT]: { path: [[18, -18], [12, -12], [6, -6]] },
+    },
+  }));
 
   // The selected plot's outline (shown while zoomed out).
   const e = PLOT / 2 - 0.8;

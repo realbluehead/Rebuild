@@ -5,8 +5,8 @@
 import { BoxGeometry, ConeGeometry, CylinderGeometry, Group, Mesh, PointLight, SphereGeometry, TorusGeometry } from 'three';
 import type { Refinery } from '../core/refinery';
 import {
-  at, bright, crate, glow, hazard, heap, ladder, lamp, lambert, pipeRack, railing, rod, shadow, steel, v3, warning,
-  CONCRETE, OBSIDIAN,
+  at, bright, crate, glow, groundPipe, hazard, heap, ladder, lamp, lambert, pipeRack, railing, rod, shadow, steel, v3, warning,
+  CONCRETE, FUEL_PIPE, OBSIDIAN,
 } from './kit3d';
 import { concreteTexture, metalTexture, repeated, sackTexture, textured } from './textures';
 
@@ -127,7 +127,7 @@ export function buildRefinery(r: Refinery): Group {
 
   // The pressure core: a glowing sphere on a plinth, caged in rings between four pillars.
   if (r.core) {
-    const x = 5, z = 12, big = r.core > 1;
+    const x = 4, z = 13.2, big = r.core > 1;
     g.add(at(new Mesh(new CylinderGeometry(3.6, 4, 1.2, 16), textured(CONCRETE, repeated(concreteTexture(), 2, 2))), x, 0.6, z));
     g.add(at(new Mesh(new BoxGeometry(7.6, 0.2, 0.6), hazard()), x, 1.25, z + 3.6));
     g.add(at(new Mesh(new SphereGeometry(big ? 2.3 : 1.9, 16, 12), glow(BLUE, 0.85)), x, 4.4, z));
@@ -145,7 +145,18 @@ export function buildRefinery(r: Refinery): Group {
     g.add(at(new PointLight(BLUE, big ? 600 : 380, 30, 1.2), x, 5, z));
   }
 
-  if (r.pipes) pipeRack(g, 17, 9, 17, 20, 2.4, 3, '#4a7a9a');
+  // The fuel line out to the tank farm (always there; it meets the farm's at x = 17 on the lane): from the first vat,
+  // round the vats and along the front, then on sleepers over the sand, or up onto the pipe rack once there is one.
+  const out: [number, number][] = [[VATS[0][0] - R, VATS[0][1]], [-4.7, VATS[0][1]], [-4.7, 8.5], [17, 8.5]];
+  if (r.pipes) {
+    groundPipe(g, [...out, [17, 9]]);
+    g.add(rod(v3(17, 0.5, 9), v3(17, 2.4, 9), 0.22, steel(), 6));
+    pipeRack(g, 17, 9, 17, 20, 2.4, 3, FUEL_PIPE);
+  } else {
+    groundPipe(g, [...out, [17, 20]]);
+  }
+  g.add(at(new Mesh(new BoxGeometry(0.7, 0.9, 0.7), bright()), 11, 0.45, 8.5)); // (a valve on the line)
+  g.add(at(new Mesh(new TorusGeometry(0.35, 0.08, 3, 8), lambert('#c8282a')), 11, 1.05, 8.5));
   // Clutter: crates, spare barrels, a lamp.
   crate(g, -15, 15, 1.4, 0.2); crate(g, -13.5, 15.8, 1, 0.9); crate(g, -14.4, 13.8, 0.9, 0.5);
   for (const [x, z] of [[-9, 15], [-8, 15.6]]) g.add(at(new Mesh(new CylinderGeometry(0.55, 0.55, 1.3, 8), textured('#2a5a7a', metalTexture(1))), x, 0.65, z));

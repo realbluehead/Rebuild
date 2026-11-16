@@ -69,6 +69,15 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   pieces: materials (`steel`, `bright`, `obsidian`, `hazard`, `glow`), `rod`, and the details that settle a building in
   the desert: `shadow`, `heap` (sand drifted against it), `crate`, `barrel`, `ladder`, `railing`, `cable`, `warning`
   lights, work `lamp`, `pipeRack` on H-frames. Keep new buildings textured and detailed the same way.
+- **Always connected, at every level**: the fuel line runs refinery → tank farm at every level (on sleepers over the
+  sand, `groundPipe`, then on the pipe rack once built; both plots' lines meet at local x = 17 on the lane between
+  them), reaching the vats on one side and, on the other, a junction feeding the barrels / the upright tanks' header /
+  the spheres / the filling arms / the pump house. The **power grid** (`ui/grid3d.ts`, `buildGrid`, added by the
+  desert in world units) is there for every plot whatever the levels: poles between the crossings along the inner
+  lanes with two wires (one direction higher so wires never meet), and on each plot a transformer by an inner lane
+  (orange light on the mirror tower's plot, the source; green elsewhere) with a drop wire from the nearest pole and a
+  cable over the sand into its building (`sites` in desert.ts; empty plots get a cabinet). When a building moves or
+  grows, keep its hookup path clear of it.
 - `power3d.ts`: mirrors on posts in rings round a tower (steel lattice under 10 m, then concrete with bands, a lit door
   and a ladder), a railed grating deck, the receiver glowing by its heat (red → white) with a light, a mast; once
   tracking, each mirror aims between the receiver and the sun (otherwise all face up), and from 900 °C beams show; salt
