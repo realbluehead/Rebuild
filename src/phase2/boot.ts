@@ -35,6 +35,16 @@ export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolea
   return true;
 }
 
+/** `/phase2` in the address (main.ts): phase II straight away from a sample legacy (`dev/sample-legacy.json`, the end
+ *  of a whole simulated game: `LEGACY=… npm run sim`), to try it without playing phase I. A preview: nothing is saved
+ *  and no save is read or touched (phase I's map cache included). */
+export async function bootSample(app: HTMLElement, title: TitleScreen): Promise<void> {
+  const { default: sample } = await import('./dev/sample-legacy.json');
+  title.progress(1);
+  run(app, newPhase2({ ...(sample as Legacy), at: Date.now() }), false);
+  app.append(title.el); // (on top until the player taps)
+}
+
 /** Phase I's player enters phase II (from "The voyage"): it starts from `legacy`. `persist` false is a preview
  *  (`?phase2`): nothing is saved and the menu cannot import or restart. */
 export function startPhase2(root: HTMLElement, legacy: Legacy, persist: boolean): void {

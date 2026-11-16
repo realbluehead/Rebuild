@@ -82,7 +82,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       over = true;
       locked = true;
       const legacy = legacyOf(state, world, Date.now());
-      void import('../phase2/boot').then(({ startPhase2 }) => startPhase2(app, legacy, true)); // (its own chunk, with three.js)
+      return import('../phase2/boot').then(({ startPhase2 }) => startPhase2(app, legacy, true)); // (its own chunk, with three.js)
     });
   }
 
@@ -159,6 +159,9 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     },
     reset: () => { locked = true; void wipeAll().then(() => location.reload()); },
   });
+  // ?phase2 preview: black over phase I's view, so the title's tap goes straight to phase II fading in.
+  const preview = new URLSearchParams(location.search).has('phase2');
+  if (preview) { const cover = document.createElement('div'); cover.className = 'p2-cover'; app.append(cover); }
   app.append(title.el); // the view replaced the page: keep the title on top until the player taps
 
   title.progress(1);
@@ -172,7 +175,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     // Finished while away (or a save that was finished before the message existed): the tick that ends the map
     // sets `doneAt` without anyone to tell.
     // (then, or straight away if it was seen before, "The voyage" covers the game: phase I is over)
-    if (new URLSearchParams(location.search).has('phase2')) { const legacy = legacyOf(state, world, Date.now()); void import('../phase2/boot').then(({ startPhase2 }) => startPhase2(app, legacy, false)); } // (a preview)
+    if (preview) { const legacy = legacyOf(state, world, Date.now()); void import('../phase2/boot').then(({ startPhase2 }) => startPhase2(app, legacy, false)); } // (a preview)
     else if (!loaded.fresh && state.doneAt !== undefined) { if (finishedUnseen(state)) view.showComplete(state, voyage); else voyage(); }
   });
   await cancelReminders();

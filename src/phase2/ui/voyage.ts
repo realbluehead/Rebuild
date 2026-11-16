@@ -162,9 +162,9 @@ export function shipScene(label: string, titled = true): { svg: SVGSVGElement; s
 }
 
 /** Shows the splash over `root` (the phone), fading in. `openMenu` opens the game's ≡ menu (its dialogs open over the
- *  splash). A tap elsewhere (after the first second) calls `onEnter` (which fades the phase II screen in over it) and
- *  fades the splash out. */
-export function showVoyage(root: HTMLElement, openMenu: () => void, onEnter: () => void): void {
+ *  splash). A tap elsewhere (after the first second) fades the ship to black and calls `onEnter`, which mounts the phase
+ *  II screen (fading in over the black); the splash goes only once that is done, so nothing of phase I shows between. */
+export function showVoyage(root: HTMLElement, openMenu: () => void, onEnter: () => Promise<void>): void {
   const el = document.createElement('div');
   el.className = 'voyage';
   const { svg, stop } = shipScene('The voyage');
@@ -181,9 +181,11 @@ export function showVoyage(root: HTMLElement, openMenu: () => void, onEnter: () 
   requestAnimationFrame(() => el.classList.add('in'));
   const shown = performance.now();
   el.addEventListener('click', () => {
-    if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('out')) return;
-    el.classList.add('out');
-    onEnter();
-    setTimeout(() => { stop(); el.remove(); }, FADE_MS);
+    if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('leaving')) return;
+    el.classList.add('leaving'); // (the ship fades out; the black stays)
+    void onEnter().then(
+      () => setTimeout(() => { stop(); el.remove(); }, FADE_MS), // (once phase II has faded in over it)
+      (e: unknown) => { console.error('Phase II could not start', e); el.classList.remove('leaving'); },
+    );
   });
 }

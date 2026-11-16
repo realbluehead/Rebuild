@@ -24,8 +24,10 @@ const failed = (e: unknown) => {
   note.addEventListener('click', () => location.reload());
   title.el.append(note);
 };
+// `/phase2` at the end of the address: phase II from a sample game (a preview; no save is read or written).
+if (/\/phase2\/?$/.test(location.pathname)) void import('./phase2/boot').then(({ bootSample }) => bootSample(app, title)).catch(failed);
 // Phase II if either of its saves is there (main or backup); if it cannot boot, phase I (its save is untouched).
-void import('./platform')
+else void import('./platform')
   .then(async ({ store }) => (await store.get(PHASE2_KEY)) ?? (await store.get(PHASE2_BACKUP_KEY)))
   .then((p2) => (p2 ? import('./phase2/boot').then(({ boot }) => boot(app, title)) : false))
   .catch((e: unknown) => { console.error('Phase II could not boot', e); return false; })

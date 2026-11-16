@@ -6,9 +6,11 @@
 // costs under that share of the bluetreri at hand (the greedy score cannot see items, nor Hold once there is a Hauler). DIG=rich, HAUL=0.3|0.5|0.8, HAULPICK=scout|miner|auto.
 // Ends with a SUMMARY line (times of the big milestones, bluetreri earned and where it was spent).
 // DUMP=<file> writes the final state as a save (JSON) to try that point of the game in the UI: put it in localStorage
-// 'rebuild:save' on a test origin (never the real game's).
+// 'rebuild:save' on a test origin (never the real game's). LEGACY=<file> writes what it hands over to phase II
+// (`legacyOf`): src/phase2/dev/sample-legacy.json, the game /phase2 starts from, comes from a whole game here.
 import { writeFileSync } from 'node:fs';
 import { serialize } from '../src/phase1/save/save';
+import { legacyOf } from '../src/phase1/legacy';
 import { SCOUT_SHARE, ROVER_KINDS, UPGRADES, type StatId } from '../src/phase1/content/upgrades';
 import { GOALS } from '../src/phase1/content/goals';
 import { T, TERRAINS, ZOOMS } from '../src/phase1/content/world';
@@ -246,3 +248,4 @@ console.log(`SUMMARY ${process.env.SKIP ? `skip ${process.env.SKIP}` : ''}${RADA
   + ` | spent ${Object.entries(spent).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${((100 * v) / total).toFixed(1)}%`).join(', ')}`);
 
 if (process.env.DUMP) writeFileSync(process.env.DUMP, JSON.stringify(serialize(s, Date.now())));
+if (process.env.LEGACY) writeFileSync(process.env.LEGACY, `${JSON.stringify(legacyOf(s, w, 0), null, 2)}\n`);

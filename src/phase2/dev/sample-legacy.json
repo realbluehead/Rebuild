@@ -1,0 +1,33 @@
+{
+  "seed": 12345,
+  "version": "0.65.0",
+  "at": 0,
+  "playTime": 67046.99999942495,
+  "doneAt": 67046.49999942492,
+  "bluetreri": "660178.3926708678",
+  "totalBluetreri": "23170491.99079618",
+  "metal": 34702,
+  "items": {
+    "page": 1155,
+    "note": 570,
+    "photo": 911
+  },
+  "collected": {
+    "page": 5185,
+    "note": 2421,
+    "photo": 4126
+  },
+  "works": {
+    "book": 15,
+    "cd": 15,
+    "album": 15
+  },
+  "sheets": 20,
+  "lore": 349,
+  "cells": 1048576,
+  "rovers": [
+    "scout",
+    "miner",
+    "hauler"
+  ]
+}
