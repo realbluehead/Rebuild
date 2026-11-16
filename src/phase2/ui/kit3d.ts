@@ -6,6 +6,7 @@ import {
   BoxGeometry, CatmullRomCurve3, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PlaneGeometry,
   PointLight, SphereGeometry, TorusGeometry, TubeGeometry, Vector3, type Material,
 } from 'three';
+import { mergeByMaterial } from './merge3d';
 import { hazardTexture, metalTexture, repeated, SAND_LOW, sandTexture, shadowTexture, shared, textured } from './textures';
 
 export const STEEL = '#4a4e58';
@@ -158,3 +159,24 @@ export function groundPipe(g: Group, pts: [number, number][], y = 0.5, colour = 
     if (k < pts.length - 1) g.add(at(new Mesh(new SphereGeometry(r * 1.4, 6, 4), elbow), x1, y, z1));
   }
 }
+
+/** How an animated part moves: called every frame with the part and the time in seconds (0, and once, with reduced
+ *  motion). Change only transforms (position, rotation, scale), `visible`, or an InstancedMesh's matrices: materials
+ *  are shared (see `shared` in textures.ts). */
+export type Anim = (o: Group, t: number) => void;
+
+/** A part that moves: `part` is built round its pivot (the origin), drawn merged by material, and placed at (x, y, z)
+ *  in the building (`o.userData.at`, a Vector3, keeps that rest position); `anim` moves it every frame. The desert keeps it apart when it merges the rest (`userData.live`).
+ *  Each animated part costs its own draw calls (one per material in it): animate whole groups together where they
+ *  move as one, and use an InstancedMesh (inside `part`, updated in `anim`) for many copies moving each on its own. */
+export function animated(part: Group, x: number, y: number, z: number, anim: Anim): Group {
+  const g = mergeByMaterial(part);
+  g.position.set(x, y, z);
+  g.userData.at = g.position.clone(); // (where it rests: an anim that moves it adds to this)
+  g.userData.live = true;
+  g.userData.anim = anim;
+  return g;
+}
+
+/** Time `t` folded into 0..1 every `period` seconds, shifted by `phase` (0..1). */
+export const cycle = (t: number, period: number, phase = 0): number => (((t / period + phase) % 1) + 1) % 1;

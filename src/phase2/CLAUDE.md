@@ -86,6 +86,14 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   lights: each building plot has a fixed pool of `LIGHTS_PER_BUILDING` (2) lights that take its builder's brightest
   ones (unused ones unlit), so the scene's light count never changes (that recompiles every shader). About 70 draw calls
   with everything at Lv 20 (it was ~1,700); in dev, `__renderer.info.render` in the console.
+- **Every upgrade animates** (each builder maps its 20 upgrades to what moves, in a comment above it): moving parts
+  are `animated(part, x, y, z, anim)` (kit3d: `part` built round its pivot, merged by material, kept apart from the
+  building's merge as `userData.live`; `o.userData.at` is its rest position; `cycle(t, period, phase)`). The desert
+  calls each `anim(o, t)` every frame (t in seconds), and once with t = 0 under reduced motion, so t = 0 is the rest
+  pose. Anims change only transforms, `visible` or InstancedMesh matrices, never materials (shared). Many copies
+  moving each on its own (mirror panels, bubbles, ore lumps, gauges, pulses along pipes) are one InstancedMesh. About
+  15 extra draw calls per building at Lv 20: ~110 in a building's view, ~180 zoomed out, 60 fps. After merging, an anim
+  turning a part more than 90° must set all three angles (`rotation.set`).
 - **Always connected, at every level**: the fuel line runs refinery → tank farm at every level (on sleepers over the
   sand, `groundPipe`, then on the pipe rack once built; both plots' lines meet at local x = 17 on the lane between
   them), reaching the vats on one side and, on the other, a junction feeding the barrels / the upright tanks' header /

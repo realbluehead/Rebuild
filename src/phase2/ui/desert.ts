@@ -12,7 +12,7 @@ import {
   TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
-import { disposeGroup } from './kit3d';
+import { disposeGroup, type Anim } from './kit3d';
 import { buildGrid } from './grid3d';
 import { mergeByMaterial } from './merge3d';
 import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, shared, textured } from './textures';
@@ -335,6 +335,8 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   const target = new Vector3();
   const right = new Vector3(), up = new Vector3();
   const buildings = new Map<number, Group>();
+  /** Each building's animated parts. */
+  const moving = new Map<number, Group[]>();
   const pools = new Map(BUILDING_PLOTS.map((k) => [k, Array.from({ length: LIGHTS_PER_BUILDING }, () => {
     const l = new PointLight('#ffffff', 0);
     scene.add(l);
@@ -443,6 +445,8 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     p.addScaledVector(right, snap(p.dot(right))).addScaledVector(up, snap(p.dot(up)));
     camera.updateMatrixWorld();
     beacon.visible = Math.floor(ms / 800) % 2 === 0;
+    // The buildings' moving parts (`animated` in kit3d); with reduced motion they were posed once, at t = 0.
+    if (!reduced) for (const parts of moving.values()) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
     for (const [k, l] of lamps.entries()) l.intensity = 260 + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 15);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
@@ -471,6 +475,10 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
       });
       scene.add(merged);
       buildings.set(k, merged);
+      const parts: Group[] = [];
+      merged.traverse((o) => { if (o.userData.anim) parts.push(o as Group); });
+      parts.forEach((o) => (o.userData.anim as Anim)(o, 0));
+      moving.set(k, parts);
     },
     select(k) { plot = k; zoom = 1; spin = 0; },
     stop: () => { on = false; ro.disconnect(); renderer.dispose(); },
