@@ -2,11 +2,11 @@ apply plugin: 'com.android.application'
 
 import groovy.json.JsonSlurper
 
-// La versió surt de package.json (font única). 1.2.3 → versionCode 10203.
+// The version comes from package.json (single source). 1.2.3 → versionCode 10203.
 def pkgVersion = new JsonSlurper().parse(file('../../package.json')).version
 def (vMajor, vMinor, vPatch) = pkgVersion.tokenize('.').collect { it.toInteger() }
 
-// Signatura de release: variables d'entorn (CI) o android/keystore.properties (local). Mai al repo.
+// Release signing: environment variables (CI) or android/keystore.properties (local). Never in the repo.
 def ksProps = new Properties()
 def ksFile = rootProject.file('keystore.properties')
 if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }

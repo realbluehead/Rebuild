@@ -59,7 +59,8 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
 - Web: push to `main` → `.github/workflows/web.yml` (lint, typecheck, test, build with `BASE_PATH=/<repo>/`) → GitHub Pages.
   Runs on main queue (one deploy at a time, never cancelled halfway); a newer push to a PR cancels its older run.
 - Android: tag `v*` → `.github/workflows/android.yml` (lint, test, Gradle cached) → signed APK on GitHub Releases; run
-  by hand it keeps the APK as the run's artifact (14 days) instead. `npm run release` lints, typechecks and tests first. The installed app checks
+  by hand it keeps the APK as the run's artifact (14 days) instead (a debug APK while the signing secrets are not set;
+  a tag then fails with a clear error). `npm run release` lints, typechecks and tests first. The installed app checks
   the latest release and offers to download it. `versionCode` is derived from the `package.json` version (1.2.3 → 10203).
 - Signing key: `tools/new-keystore.sh` (once). Kept outside the repo; secrets `ANDROID_KEYSTORE_BASE64`,
   `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. If it is lost, phones will not be able to update.

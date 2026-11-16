@@ -31,9 +31,24 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
       - run: npm run build && npx cap sync android
+      # Without the signing key (secrets not set yet: tools/new-keystore.sh) a tag fails here, and a run by hand builds
+      # a debug APK instead.
       - name: Signing key
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
-      - name: Build the APK
+        id: key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "::error::No signing key (secret ANDROID_KEYSTORE_BASE64): run tools/new-keystore.sh and set the secrets." >&2
+            exit 1
+          else
+            echo "::warning::No signing key: building a debug APK."
+          fi
+      - name: Build the APK (signed)
+        if: steps.key.outputs.signed == 'true'
         working-directory: android
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
@@ -41,6 +56,10 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
+      - name: Build the APK (debug)
+        if: steps.key.outputs.signed != 'true'
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
       - name: Publish to Releases
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -53,5 +72,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rebuild-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/*/*.apk
           retention-days: 14
