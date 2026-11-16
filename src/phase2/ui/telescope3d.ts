@@ -35,7 +35,7 @@ function rod(a: Vector3, b: Vector3, r: number, mat: Material, sides = 5): Mesh 
 const ALT = (40 * Math.PI) / 180;
 const AZ = (135 * Math.PI) / 180;
 
-/** The telescope at its level, its foot at the origin (call `disposeTelescope` before dropping it). */
+/** The telescope at its level, its foot at the origin (the desert frees it with `disposeGroup` when replaced). */
 export function buildTelescope(t: Telescope): Group {
   const g = new Group();
   // Worn plating everywhere (rust on the older steel), concrete for the base.
