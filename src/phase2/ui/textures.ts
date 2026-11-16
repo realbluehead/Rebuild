@@ -2,7 +2,7 @@
 // squares like the rest of the low-resolution render): sand with grain and wind ripples, metal plates with seams,
 // rivets and rust streaks, cracked concrete, and a soft round shadow for where things meet the sand. Mostly greys, so
 // a material's colour (or the ground's vertex colours) tints them.
-import { CanvasTexture, Color, DoubleSide, FrontSide, MeshLambertMaterial, NearestFilter, NearestMipmapNearestFilter, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
+import { CanvasTexture, Color, DoubleSide, FrontSide, MeshLambertMaterial, NearestFilter, NearestMipmapNearestFilter, RepeatWrapping, SRGBColorSpace, type Material, type Texture } from 'three';
 
 /** A seeded random number generator (the same texture every time). */
 function random(seed: number): () => number {
@@ -89,12 +89,17 @@ export const concreteTexture = () => once('concrete', () => canvasTexture(32, (g
 
 /** A copy of `map` repeated `x` × `y` times over a face (it shares the image; marked so it can be disposed). */
 export function repeated(map: Texture, x: number, y: number): Texture {
-  const t = map.clone();
-  t.repeat.set(x, y);
-  t.needsUpdate = true;
-  t.userData.copy = true;
+  const key = `${map.uuid}|${x.toFixed(2)}|${y.toFixed(2)}`;
+  let t = copies.get(key);
+  if (!t) {
+    t = map.clone();
+    t.repeat.set(x, y);
+    t.needsUpdate = true;
+    copies.set(key, t);
+  }
   return t;
 }
+const copies = new Map<string, Texture>();
 
 /** A soft round shadow (an alpha map: white in the middle fading to black at the edge). */
 export const shadowTexture = () => once('shadow', () => canvasTexture(64, (g) => {
@@ -104,8 +109,23 @@ export const shadowTexture = () => once('shadow', () => canvasTexture(64, (g) =>
 }, 1, false));
 
 /** A textured material: the texture (greys) is tinted by `c`, brightened to make up for the texture's darkening. */
-export const textured = (c: string, map: Texture, side = false, flat = true) =>
-  new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: flat, side: side ? DoubleSide : FrontSide });
+export function textured(c: string, map: Texture, side = false, flat = true): MeshLambertMaterial {
+  return shared(`t|${c}|${map.uuid}|${side}|${flat}`, () =>
+    new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: flat, side: side ? DoubleSide : FrontSide }));
+}
+
+/** One material per key, made once and kept (`userData.shared`: never mutate it, and `disposeGroup` leaves it). Every
+ * building is rebuilt from the same few materials, so the GPU sees a handful of programs and buffers, not hundreds. */
+export function shared<M extends Material>(key: string, make: () => M): M {
+  let m = materials.get(key) as M | undefined;
+  if (!m) {
+    m = make();
+    m.userData.shared = true;
+    materials.set(key, m);
+  }
+  return m;
+}
+const materials = new Map<string, Material>();
 
 /** Hazard stripes: yellow and black diagonals, a little worn. */
 export const hazardTexture = () => once('hazard', () => canvasTexture(16, (g, rnd) => {

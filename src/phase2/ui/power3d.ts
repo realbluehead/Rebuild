@@ -14,8 +14,8 @@ import { concreteTexture, grateTexture, metalTexture, mirrorTexture, repeated, t
 /** Where the tower stands, and where the sun is (for the mirrors' aim). */
 const TOWER = v3(-3, 0, -3);
 const SUN = new Vector3(-0.35, 0.85, -0.4).normalize();
-/** Mirrors per ring (rings fill in order). */
-const RINGS = [6, 6, 8, 10, 12, 14, 16];
+/** Mirror slots per ring (rings fill in order; outer rings lose the slots off the plot or on reserved ground). */
+const RINGS = [6, 8, 10, 12, 16, 20, 24, 28, 32, 36];
 
 /** The receiver's glow for its temperature. */
 const heatColour = (heat: number) => (heat >= 1200 ? '#fff4c8' : heat >= 900 ? '#ffb040' : heat >= 700 ? '#ff7a2a' : '#c84020');
@@ -23,6 +23,19 @@ const heatColour = (heat: number) => (heat >= 1200 ? '#fff4c8' : heat >= 900 ? '
 /** Spots kept clear of mirrors: tank yard, exchanger, shed, pylons. */
 const reserved = (x: number, z: number) =>
   (x > 5 && z < -5) || (x > 11 && z > 11) || Math.hypot(x + 12, z - 12) < 2.5 || Math.hypot(x - TOWER.x, z - TOWER.z) < 3.5;
+
+/** Where the first `n` mirrors stand (x, z): ring by ring round the tower, skipping slots off the plot or reserved. */
+export function mirrorSpots(n: number): [number, number][] {
+  const out: [number, number][] = [];
+  RINGS.forEach((slots, ring) => {
+    for (let k = 0; k < slots && out.length < n; k++) {
+      const a = (k / slots) * Math.PI * 2 + ring * 0.37, r = 5 + ring * 2.3;
+      const x = TOWER.x + Math.cos(a) * r, z = TOWER.z + Math.sin(a) * r;
+      if (Math.abs(x) <= 18.5 && Math.abs(z) <= 18.5 && !reserved(x, z)) out.push([x, z]);
+    }
+  });
+  return out;
+}
 
 export function buildPower(p: Power): Group {
   const g = new Group();
@@ -83,13 +96,8 @@ export function buildPower(p: Power): Group {
   const glass = new MeshLambertMaterial({ map: mirrorTexture(), color: '#a8b8e0', emissive: '#16203a', emissiveMap: mirrorTexture() });
   const post = steel(), box = lambert('#2a2c34');
   const beam = glow('#ffe8a0', 0.22);
-  let placed = 0, ring = 0, inRing = 0;
-  for (let n = 0; placed < p.mirrors && n < 200; n++) {
-    if (inRing >= RINGS[ring]) { ring++; inRing = 0; if (ring >= RINGS.length) break; }
-    const a = (inRing / RINGS[ring]) * Math.PI * 2 + ring * 0.37, r = 5 + ring * 2.3;
-    inRing++;
-    const x = TOWER.x + Math.cos(a) * r, z = TOWER.z + Math.sin(a) * r;
-    if (Math.abs(x) > 18.5 || Math.abs(z) > 18.5 || reserved(x, z)) continue;
+  let placed = 0;
+  for (const [x, z] of mirrorSpots(p.mirrors)) {
     placed++;
     const pos = v3(x, 1.7, z);
     g.add(rod(v3(x, 0, z), pos, 0.09, post, 4), at(new Mesh(new BoxGeometry(0.4, 0.35, 0.4), box), x, 1.55, z));

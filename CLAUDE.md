@@ -13,8 +13,9 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
   world or code.
 
 ## Layout
-- `src/main.ts`: puts the title screen up, then boots one phase: phase II if its save (`rebuild:p2`, src/shared/keys.ts)
-  exists (phase I's code and world are then never loaded), else phase I.
+- `src/main.ts`: puts the title screen up, then boots one phase: phase II if its save (`rebuild:p2` or its backup,
+  src/shared/keys.ts) exists (phase I's code and world are then never loaded), else phase I (also if phase II fails to
+  boot); if nothing loads, the title says so and a tap reloads.
 - `src/shared/`: what both phases use and that knows neither: `decimal.ts`, `format.ts`, `codec.ts` (export text),
   `keys.ts` (storage names main.ts or both phases need), `updates.ts` (new version offers), `ui/style.css` (base look; phase II re-themes it in its own css),
   `ui/title.ts`, `ui/dom.ts` (`h`, `modal`, `confirmModal`, `textModal`).

@@ -6,7 +6,7 @@ import {
   BoxGeometry, CatmullRomCurve3, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PlaneGeometry,
   PointLight, SphereGeometry, TorusGeometry, TubeGeometry, Vector3, type Material,
 } from 'three';
-import { hazardTexture, metalTexture, repeated, SAND_LOW, sandTexture, shadowTexture, textured } from './textures';
+import { hazardTexture, metalTexture, repeated, SAND_LOW, sandTexture, shadowTexture, shared, textured } from './textures';
 
 export const STEEL = '#4a4e58';
 export const BRIGHT = '#6a707c';
@@ -16,8 +16,10 @@ export const RUST = '#5a4e40';
 export const RED = '#ff2a3a';
 export const LAMP = '#fff2b0';
 
-export const lambert = (c: string) => new MeshLambertMaterial({ color: c, flatShading: true });
-export const glow = (c: string, opacity = 1) => new MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity, depthWrite: opacity === 1 });
+// Materials are shared (`shared` in textures.ts): the same colour gives the same material, never to be changed after.
+export const lambert = (c: string) => shared(`l|${c}`, () => new MeshLambertMaterial({ color: c, flatShading: true }));
+export const glow = (c: string, opacity = 1) =>
+  shared(`g|${c}|${opacity}`, () => new MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity, depthWrite: opacity === 1 }));
 export const steel = () => textured(STEEL, metalTexture(0.7));
 export const bright = () => textured(BRIGHT, metalTexture(0.3));
 export const obsidian = () => textured(OBSIDIAN, metalTexture(0.2));
@@ -43,8 +45,8 @@ export function at<T extends Mesh | Group | PointLight>(m: T, x: number, y: numb
 
 /** A soft round shadow on the sand, `r` across from the middle. */
 export function shadow(g: Group, r: number, x = 0, z = 0, opacity = 0.5): void {
-  const m = new Mesh(new PlaneGeometry(r * 2, r * 2),
-    new MeshBasicMaterial({ color: '#000', alphaMap: shadowTexture(), transparent: true, opacity, depthWrite: false }));
+  const m = new Mesh(new PlaneGeometry(r * 2, r * 2), shared(`s|${opacity}`, () =>
+    new MeshBasicMaterial({ color: '#000', alphaMap: shadowTexture(), transparent: true, opacity, depthWrite: false })));
   m.rotation.x = -Math.PI / 2;
   g.add(at(m, x, 0.04, z));
 }
@@ -128,16 +130,12 @@ export function pipeRack(g: Group, x0: number, z0: number, x1: number, z1: numbe
   }
 }
 
-/** Frees a building's geometries, materials and texture copies (not the shared textures). */
+/** Frees a building's geometries and its own materials (not the shared ones, nor any texture: those are all shared). */
 export function disposeGroup(g: Group): void {
   g.traverse((o) => {
     if (o instanceof Mesh) {
       o.geometry.dispose();
-      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: Material) => {
-        const map = (m as MeshLambertMaterial).map;
-        if (map?.userData.copy) map.dispose();
-        m.dispose();
-      });
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: Material) => { if (!m.userData.shared) m.dispose(); });
     }
   });
 }

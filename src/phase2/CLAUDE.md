@@ -69,6 +69,14 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   pieces: materials (`steel`, `bright`, `obsidian`, `hazard`, `glow`), `rod`, and the details that settle a building in
   the desert: `shadow`, `heap` (sand drifted against it), `crate`, `barrel`, `ladder`, `railing`, `cable`, `warning`
   lights, work `lamp`, `pipeRack` on H-frames. Keep new buildings textured and detailed the same way.
+- **Performance** (keep it): materials are **shared** (`shared(key, make)` in textures.ts; `lambert`, `glow`,
+  `steel`…, `textured` and `repeated` all return the same object for the same arguments; never change one after
+  making it, make another key instead; `disposeGroup` frees only geometries and unshared materials). The desert draws
+  each building, the grid and the dock **merged by material** (`mergeByMaterial`, ui/merge3d.ts: one mesh per material;
+  lights and anything with `userData.live`, changed after building like the ship's beacon, are kept apart). Point
+  lights: each building plot has a fixed pool of `LIGHTS_PER_BUILDING` (2) lights that take its builder's brightest
+  ones (unused ones unlit), so the scene's light count never changes (that recompiles every shader). About 70 draw calls
+  with everything at Lv 20 (it was ~1,700); in dev, `__renderer.info.render` in the console.
 - **Always connected, at every level**: the fuel line runs refinery → tank farm at every level (on sleepers over the
   sand, `groundPipe`, then on the pipe rack once built; both plots' lines meet at local x = 17 on the lane between
   them), reaching the vats on one side and, on the other, a junction feeding the barrels / the upright tanks' header /
@@ -78,7 +86,7 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   (orange light on the mirror tower's plot, the source; green elsewhere) with a drop wire from the nearest pole and a
   cable over the sand into its building (`sites` in desert.ts; empty plots get a cabinet). When a building moves or
   grows, keep its hookup path clear of it.
-- `power3d.ts`: mirrors on posts in rings round a tower (steel lattice under 10 m, then concrete with bands, a lit door
+- `power3d.ts`: mirrors on posts in rings round a tower (`mirrorSpots(n)`: exactly `mirrors` of them, tested) (steel lattice under 10 m, then concrete with bands, a lit door
   and a ladder), a railed grating deck, the receiver glowing by its heat (red → white) with a light, a mast; once
   tracking, each mirror aims between the receiver and the sun (otherwise all face up), and from 900 °C beams show; salt
   tanks with hazard bands, gauges and a hot pipe; an exchanger with fins; pylons with wires; a control shed; spare

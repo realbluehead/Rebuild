@@ -160,14 +160,17 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
     });
     list.append(card, sim, table);
 
-    const setLevel = (lv: number) => {
+    /** Rebuilds it at `lv`; `move` selects its plot and glides there (not at the start). */
+    const setLevel = (lv: number, move = true) => {
       const level = Math.max(1, Math.min(FACILITY_MAX, lv));
       levels[bi] = level;
       const spec = specAt(b.facility, level);
       desert.setBuilding(b.plot, b.build(spec));
-      desert.select(b.plot);
-      shownPlot = b.plot;
-      plate.textContent = name(shownPlot);
+      if (move) {
+        desert.select(b.plot);
+        shownPlot = b.plot;
+        plate.textContent = name(shownPlot);
+      }
       if (b.view) b.view(view, spec);
       specs.replaceChildren(h('div', 'tele-name', `Lv ${level} · ${b.facility.upgrades[level - 1].name}`), ...b.facility.stats(spec).map((x) => h('div', '', x)), gauge);
       gfill.style.width = `${Math.round(b.facility.gauge(spec) * 100)}%`;
@@ -178,7 +181,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
         const n = k + 1;
         row.classList.toggle('done', n <= level);
         buy.classList.toggle('can', n === level + 1);
-        buy.disabled = n > level + 1;
+        buy.disabled = n !== level + 1;
         buy.replaceChildren();
         if (n <= level) buy.append(n === 1 ? 'Start' : 'Built');
         else buy.append(h('i', 'nut'), fmt(b.cost(n)));
@@ -187,9 +190,6 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
     };
     down.addEventListener('click', () => setLevel(levels[bi] - 1));
     up.addEventListener('click', () => setLevel(levels[bi] + 1));
-    // Built at level 1 without moving the view (the telescope's plot is where it starts).
-    const spec = specAt(b.facility, 1);
-    desert.setBuilding(b.plot, b.build(spec));
     return { list, setLevel };
   });
   const tabBtns = BUILDINGS.map((b, k) => {
@@ -199,7 +199,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
     return btn;
   });
   function topLine(): void {
-    lvl.textContent = `${BUILDINGS[tab].tab} Lv ${levels[tab]}/${TELESCOPE_MAX}`;
+    lvl.textContent = `${BUILDINGS[tab].tab} Lv ${levels[tab]}/${FACILITY_MAX}`;
     tfill.style.width = `${(levels[tab] / FACILITY_MAX) * 100}%`;
   }
   /** Shows tab `k`; `go` glides the view to its building (not when the player just tapped that plot). */
@@ -211,7 +211,8 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
     topLine();
   }
   panel.append(tabs, ...lists.map((l) => l.list));
-  lists.forEach((l, k) => { if (k === 0) l.setLevel(1); });
+  // Every building at level 1, its card and rows filled, without moving the view (the telescope's plot is where it starts).
+  lists.forEach((l) => l.setLevel(1, false));
 
   el.append(top, scene, panel);
   root.append(el);

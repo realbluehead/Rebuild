@@ -7,14 +7,15 @@
 // The ground is a GRID × GRID of plots (work areas), each about one closest view; the middle one is the Black siphon's
 // dry dock. Zoomed out, the whole ground shows; a tap on a plot selects it and the view glides in to it.
 import {
-  AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
+  AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
-  TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, type Material, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
+  TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
 import { disposeGroup } from './kit3d';
 import { buildGrid } from './grid3d';
-import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, textured } from './textures';
+import { mergeByMaterial } from './merge3d';
+import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, shared, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
  *  mock-up). Plots are numbered row by row (0..GRID²-1); the middle one is the dry dock. */
@@ -32,7 +33,13 @@ const BUILDING_PLOTS = [TELESCOPE_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT];
 /** Radius of the sand cleared (flat) round a building's plot centre. */
 const CLEARED = 17;
 /** Centre of plot `k`, and the plot under (x, z) (clamped to the ground). */
-const plotCentre = (k: number) => new Vector3(((k % GRID) - (GRID - 1) / 2) * PLOT, 0, (Math.floor(k / GRID) - (GRID - 1) / 2) * PLOT);
+const CENTRES = Array.from({ length: GRID * GRID }, (_, k) =>
+  new Vector3(((k % GRID) - (GRID - 1) / 2) * PLOT, 0, (Math.floor(k / GRID) - (GRID - 1) / 2) * PLOT));
+/** (Shared: read it, never change it.) */
+const plotCentre = (k: number): Vector3 => CENTRES[k];
+/** Point lights a building may have (its brightest; the rest are dropped). Every building plot always holds this many,
+ *  unlit when unused, so the scene's light count never changes (a change recompiles every shader: a hitch). */
+const LIGHTS_PER_BUILDING = 2;
 const plotAt = (x: number, z: number) => {
   const c = (v: number) => Math.max(0, Math.min(GRID - 1, Math.floor((v + SIZE / 2) / PLOT)));
   return c(z) * GRID + c(x);
@@ -70,8 +77,8 @@ function duneHeight(x: number, z: number): number {
   return 0.8 + Math.max(0, h) * fade;
 }
 
-const lambert = (c: string, flat = true) => new MeshLambertMaterial({ color: c, flatShading: flat });
-const glow = (c: string) => new MeshBasicMaterial({ color: c });
+const lambert = (c: string, flat = true) => shared(`dl|${c}|${flat}`, () => new MeshLambertMaterial({ color: c, flatShading: flat }));
+const glow = (c: string) => shared(`dg|${c}`, () => new MeshBasicMaterial({ color: c }));
 
 function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outline: LineLoop } {
   const scene = new Scene();
@@ -121,8 +128,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   const at = (phi: number, r: number, y: number) => new Vector3(-Math.cos(phi) * r, y, Math.sin(phi) * r);
   const plateFrom = Math.PI, plated = Math.PI * 1.25; // the sector already plated
   const openFrom = plateFrom + plated - Math.PI * 2, open = Math.PI * 2 - plated;
-  const shell = new Mesh(new SphereGeometry(R, 20, 8, plateFrom, plated, 0, Math.PI / 2), textured(OBSIDIAN, repeated(metalTexture(0.25), 6, 3)));
-  (shell.material as Material).side = DoubleSide;
+  const shell = new Mesh(new SphereGeometry(R, 20, 8, plateFrom, plated, 0, Math.PI / 2), textured(OBSIDIAN, repeated(metalTexture(0.25), 6, 3), true));
   ship.add(shell);
   const steel = textured(STEEL, metalTexture(0.6));
   for (let k = 0; k <= 6; k++) { // meridian ribs over the open sector
@@ -160,8 +166,11 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   ship.add(mast);
   const beacon = new Mesh(new SphereGeometry(0.5, 6, 4), glow(RED));
   beacon.position.y = R + 4.3;
+  beacon.userData.live = true; // (it blinks)
   ship.add(beacon);
-  scene.add(ship);
+  // The dock (ship, tentacles, clutter, floodlights) is drawn merged by material (merge3d.ts).
+  const dock = new Group();
+  dock.add(ship);
 
   // Tentacles laid out on the sand, each ending in a glowing probe.
   const tentacle = textured('#2c2f37', repeated(metalTexture(0.4), 10, 1), false, false); // (segment plates along it)
@@ -175,10 +184,10 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
       pts.push(new Vector3(x, duneHeight(x, z) + 0.25, z)); // (half sunk in the sand)
     }
     if (pts.length < 3) continue;
-    scene.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 3, 0.45, 5), tentacle));
+    dock.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 3, 0.45, 5), tentacle));
     const tip = new Mesh(new SphereGeometry(0.6, 6, 4), red);
     tip.position.copy(pts[pts.length - 1]);
-    scene.add(tip);
+    dock.add(tip);
   }
 
   // Settled in the sand: heaps drifted against its feet, crates of parts and a stack of spare plates by the dock.
@@ -187,21 +196,21 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     const heap = new Mesh(new SphereGeometry(1.2, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), sandHeap);
     heap.scale.y = 0.4;
     heap.position.set(x, duneHeight(x, z) - 0.1, z);
-    scene.add(heap);
+    dock.add(heap);
   }
   const crate = textured('#5a4e40', metalTexture(1));
   for (const [x, z, s, a] of [[-15, 1, 1.6, 0.3], [-16.5, 2.6, 1.1, 1.1], [-14.4, 3, 0.9, 0.7], [3, 15, 1.4, 0.2], [4.6, 16, 1, 0.9]]) {
     const box = new Mesh(new BoxGeometry(s, s * 0.8, s), crate);
     box.position.set(x, duneHeight(x, z) + s * 0.3, z);
     box.rotation.y = a;
-    scene.add(box);
+    dock.add(box);
   }
   const plates = textured(OBSIDIAN, metalTexture(0.25));
   for (let k = 0; k < 5; k++) {
     const plate = new Mesh(new BoxGeometry(3.2, 0.22, 2.2), plates);
     plate.position.set(15 + k * 0.12, duneHeight(15, 2) + 0.15 + k * 0.24, 2 + k * 0.1);
     plate.rotation.y = 0.4 + k * 0.08;
-    scene.add(plate);
+    dock.add(plate);
   }
 
   // Floodlights: a pole, a lamp and the warm pool it casts.
@@ -214,9 +223,10 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     lamp.position.set(x, y0 + 12.2, z);
     const light = new PointLight(LAMP, 260, 20, 1.5);
     light.position.set(x, y0 + 11, z);
-    scene.add(pole, lamp, light);
+    dock.add(pole, lamp, light);
     lamps.push(light);
   }
+  scene.add(mergeByMaterial(dock));
 
   // The plots' borders: the lanes are trodden darker sand (the ground's colours), with a red light where lanes cross.
   // (Posts along the lanes looked like rain at the closest zoom; flat strips over the sand looked stuck on.)
@@ -252,7 +262,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   scene.add(rocks);
 
   // The power grid: poles along the lanes, a transformer on every plot and a cable into its building.
-  scene.add(buildGrid({
+  scene.add(mergeByMaterial(buildGrid({
     plots: GRID, side: PLOT, centre: plotCentre, height: duneHeight, source: POWER_PLOT,
     sites: {
       [TELESCOPE_PLOT]: { path: [[18, 18], [13, 12], [6, 5], [0, 0]] },
@@ -261,7 +271,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
       [TANKS_PLOT]: { path: [[-18.5, -12], [-17.5, 0], [-15, 7]], cabinet: true },
       [DOCK_PLOT]: { path: [[18, -18], [12, -12], [6, -6]] },
     },
-  }));
+  })));
 
   // The selected plot's outline (shown while zoomed out).
   const e = PLOT / 2 - 0.8;
@@ -310,6 +320,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   el.className = 'p2-desert';
   el.style.backgroundImage = `url(${skyBackground()})`;
   const renderer = new WebGLRenderer({ antialias: false, alpha: true });
+  if (import.meta.env.DEV) (window as unknown as { __renderer: WebGLRenderer }).__renderer = renderer; // (draw calls, in the console)
   renderer.setPixelRatio(1);
   renderer.setClearColor(new Color('#000000'), 0);
   el.append(renderer.domElement);
@@ -319,9 +330,14 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   /** The plot selected, and the point the view centres on (easing to it; it drifts to the ground's centre as the view
    *  zooms out, so the whole ground fits). */
   let plot = start;
-  const focus = plotCentre(plot);
+  const focus = plotCentre(plot).clone();
   const target = new Vector3();
   const buildings = new Map<number, Group>();
+  const pools = new Map(BUILDING_PLOTS.map((k) => [k, Array.from({ length: LIGHTS_PER_BUILDING }, () => {
+    const l = new PointLight('#ffffff', 0);
+    scene.add(l);
+    return l;
+  })]));
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /** Zoom picked (1..ZOOM_MAX) and the one shown, easing towards it. */
@@ -408,14 +424,14 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     focus.lerp(plotCentre(plot), Math.min(1, ZOOM_EASE * 0.5 * dt));
     const out = (shown - 1) / (ZOOM_MAX - 1); // 0 closest, 1 furthest
     target.set(focus.x * (1 - out), 6 * (1 - out) + 2 * out, focus.z * (1 - out));
-    outline.position.set(plotCentre(plot).x, 0, plotCentre(plot).z);
+    outline.position.copy(plotCentre(plot));
     (outline.material as LineBasicMaterial).opacity = Math.min(1, out * 3);
     outline.visible = out > 0.02;
     const d = 200;
     camera.position.set(target.x + Math.sin(yaw) * d * 0.8165, target.y + d * 0.5774 + bob, target.z + Math.cos(yaw) * d * 0.8165);
     camera.lookAt(target.x, target.y + bob, target.z);
     beacon.visible = Math.floor(ms / 800) % 2 === 0;
-    for (const [k, l] of lamps.entries()) l.intensity = 260 + Math.sin(ms / 900 + k * 2) * 15;
+    for (const [k, l] of lamps.entries()) l.intensity = 260 + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 15);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   };
@@ -425,9 +441,24 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     setBuilding(k, building) {
       const old = buildings.get(k);
       if (old) { scene.remove(old); disposeGroup(old); }
-      building.position.copy(plotCentre(k)).setY(0.8);
-      scene.add(building);
-      buildings.set(k, building);
+      const merged = mergeByMaterial(building);
+      merged.position.copy(plotCentre(k)).setY(0.8);
+      // Its lights go to the plot's pool (brightest first); the builder's own are dropped.
+      const own: PointLight[] = [];
+      merged.traverse((o) => { if (o instanceof PointLight) own.push(o); });
+      own.sort((a, b) => b.intensity - a.intensity);
+      own.forEach((l) => l.removeFromParent());
+      (pools.get(k) ?? []).forEach((p, i) => {
+        const l = own[i];
+        p.intensity = l ? l.intensity : 0;
+        if (!l) return;
+        p.color.copy(l.color);
+        p.distance = l.distance;
+        p.decay = l.decay;
+        p.position.copy(l.position).add(merged.position);
+      });
+      scene.add(merged);
+      buildings.set(k, merged);
     },
     select(k) { plot = k; zoom = 1; spin = 0; },
     stop: () => { on = false; ro.disconnect(); renderer.dispose(); },

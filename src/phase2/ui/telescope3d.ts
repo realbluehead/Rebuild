@@ -2,33 +2,12 @@
 // open reflector, then a truss with a segmented mirror) tilted towards the sky on its mount (tripod, pier, then a fork on
 // a turntable), lens rings that glow brighter as it gets sharper, and as it grows a platform, a wind wall, a half dome
 // and laser guide stars. Built in local units round the plot's centre, on the flat sand (y = 0).
-import {
-  BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PointLight, Quaternion,
-  SphereGeometry, TorusGeometry, Vector3, Color, type Material, PlaneGeometry, CatmullRomCurve3, TubeGeometry,
-} from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, PointLight, Quaternion, SphereGeometry, TorusGeometry, Vector3, Color, CatmullRomCurve3, TubeGeometry } from 'three';
 import type { Telescope } from '../core/telescope';
-import { concreteTexture, metalTexture, repeated, SAND_LOW, SAND_TILE, sandTexture, shadowTexture, textured } from './textures';
+import { BRIGHT, CONCRETE, glow, LAMP, lambert, OBSIDIAN, RED, rod, shadow, STEEL } from './kit3d';
+import { concreteTexture, metalTexture, repeated, SAND_LOW, SAND_TILE, sandTexture, textured } from './textures';
 
-const OBSIDIAN = '#3a3c48';
-const STEEL = '#4a4e58';
-const BRIGHT = '#6a707c';
-const CONCRETE = '#4a4a62';
-const RED = '#ff2a3a';
 const LASER = '#ffb030';
-const LAMP = '#fff2b0';
-
-const lambert = (c: string) => new MeshLambertMaterial({ color: c, flatShading: true });
-const glow = (c: string | Color, opacity = 1) => new MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity });
-const UP = new Vector3(0, 1, 0);
-
-/** A cylinder from `a` to `b`. */
-function rod(a: Vector3, b: Vector3, r: number, mat: Material, sides = 5): Mesh {
-  const d = b.clone().sub(a);
-  const m = new Mesh(new CylinderGeometry(r, r, d.length(), sides), mat);
-  m.position.copy(a).addScaledVector(d, 0.5);
-  m.quaternion.setFromUnitVectors(UP, d.normalize());
-  return m;
-}
 
 /** Where the tube points: altitude and azimuth (direction (cos, sin) in x, z). Sideways to the starting view, so its
  *  whole length shows. */
@@ -41,7 +20,7 @@ export function buildTelescope(t: Telescope): Group {
   // Worn plating everywhere (rust on the older steel), concrete for the base.
   const steel = textured(STEEL, metalTexture(0.7)), bright = textured(BRIGHT, metalTexture(0.3));
   const obsidian = textured(OBSIDIAN, metalTexture(0.2)), red = glow(RED);
-  const lens = glow(new Color('#28406a').lerp(new Color('#c8f6ff'), t.sharpness / 100));
+  const lens = glow(`#${new Color('#28406a').lerp(new Color('#c8f6ff'), t.sharpness / 100).getHexString()}`);
   const r = 0.35 + Math.sqrt(t.aperture); // tube radius
   const L = 6 + r * 4; // tube length
   const back = 0.35; // share of the tube behind the pivot
@@ -185,7 +164,7 @@ export function buildTelescope(t: Telescope): Group {
     tube.add(f, tip);
   }
   tube.position.copy(pivot);
-  tube.quaternion.copy(new Quaternion().setFromUnitVectors(UP, dir));
+  tube.quaternion.copy(new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), dir));
   g.add(tube);
 
   // Laser guide stars, from the tube's mouth up into the sky.
@@ -199,11 +178,7 @@ export function buildTelescope(t: Telescope): Group {
   // Settled in the sand: a soft shadow round its foot, sand drifted against its base (or heaped at its feet), and the
   // site's clutter: crates of parts and the lamp's cable snaking over the sand.
   const foot = t.wall ? Rw : t.platform ? Math.max(7, L * 0.55) : 1.6 + r;
-  const shade = new Mesh(new PlaneGeometry(foot * 2.8, foot * 2.8),
-    new MeshBasicMaterial({ color: '#000', alphaMap: shadowTexture(), transparent: true, opacity: 0.55, depthWrite: false }));
-  shade.rotation.x = -Math.PI / 2;
-  shade.position.y = 0.04;
-  g.add(shade);
+  shadow(g, foot * 1.4, 0, 0, 0.55);
   const sand = (u: number, v: number) => textured(SAND_LOW, repeated(sandTexture(), u, v));
   if (t.platform) {
     const drift = new Mesh(new TorusGeometry(foot + 0.3, 1.3, 5, 36), sand((foot * 2 * Math.PI) / SAND_TILE, 0.4));
