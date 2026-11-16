@@ -1,4 +1,4 @@
-name: Web (proves + GitHub Pages)
+name: Web (tests + GitHub Pages)
 
 on:
   push:
@@ -11,9 +11,10 @@ permissions:
   pages: write
   id-token: write
 
+# Per branch or PR: a newer PR push cancels the older run; on main runs queue (a deploy is never cut off halfway).
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: web-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -26,6 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run typecheck
       - run: npm test
       - run: npm run build
         env:
@@ -39,6 +41,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    # One deploy at a time, never cut off halfway (a newer one waits).
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

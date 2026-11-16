@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=${1:-$HOME/.android-keys/rebuild.jks}
-[[ -e $out ]] && { echo "Ja existeix $out" >&2; exit 1; }
+[[ -e $out ]] && { echo "$out already exists" >&2; exit 1; }
 mkdir -p "$(dirname "$out")"
 pass=$(openssl rand -base64 24)
 keytool -genkeypair -v -keystore "$out" -alias rebuild -keyalg RSA -keysize 4096 -validity 10000 \
@@ -15,7 +15,7 @@ storePassword=$pass
 keyAlias=rebuild
 keyPassword=$pass
 PROPS
-echo "\nClau creada a $out i android/keystore.properties (ignorat per git)."
-echo "Per a la CI:  gh secret set ANDROID_KEYSTORE_BASE64 < <(base64 -i \"$out\")"
-echo "              gh secret set ANDROID_KEYSTORE_PASSWORD   (i ANDROID_KEY_PASSWORD, mateix valor)"
+echo "\nKey created at $out and android/keystore.properties (ignored by git)."
+echo "For the CI:  gh secret set ANDROID_KEYSTORE_BASE64 < <(base64 -i \"$out\")"
+echo "              gh secret set ANDROID_KEYSTORE_PASSWORD   (and ANDROID_KEY_PASSWORD, same value)"
 echo "              gh secret set ANDROID_KEY_ALIAS --body rebuild"

@@ -37,7 +37,9 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
 
 ## Commands
 - `npm run dev`: local server (Vite). Also as `idle-joc` in `../.claude/launch.json`.
-- `npm test`, `npm run lint`, `npm run typecheck`.
+- `npm test`, `npm run lint` (the whole repo: src, tools, configs), `npm run typecheck`.
+- `node tools/icon.mjs` (macOS): draws the app icon (`public/icon.svg`, 32×32 pixel art, full bleed so it is also the
+  maskable one) and writes its PNGs (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) with `sips`.
 - `npm run sim -- <hours>`: phase I's balance simulator (see src/phase1/CLAUDE.md).
 - `npm run android:apk`: debug APK in `android/app/build/outputs/apk/debug/`. Needs `JAVA_HOME` from Android Studio's JDK:
   `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` (the system Java does not work with Gradle).
@@ -54,8 +56,10 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
   `?v=` to skip the HTTP cache; `main.ts` strips it). Native apps use the APK check instead.
 
 ## Deployment
-- Web: push to `main` → `.github/workflows/web.yml` (lint, test, build with `BASE_PATH=/<repo>/`) → GitHub Pages.
-- Android: tag `v*` → `.github/workflows/android.yml` → signed APK on GitHub Releases. The installed app checks
+- Web: push to `main` → `.github/workflows/web.yml` (lint, typecheck, test, build with `BASE_PATH=/<repo>/`) → GitHub Pages.
+  Runs on main queue (one deploy at a time, never cancelled halfway); a newer push to a PR cancels its older run.
+- Android: tag `v*` → `.github/workflows/android.yml` (lint, test, Gradle cached) → signed APK on GitHub Releases; run
+  by hand it keeps the APK as the run's artifact (14 days) instead. `npm run release` lints, typechecks and tests first. The installed app checks
   the latest release and offers to download it. `versionCode` is derived from the `package.json` version (1.2.3 → 10203).
 - Signing key: `tools/new-keystore.sh` (once). Kept outside the repo; secrets `ANDROID_KEYSTORE_BASE64`,
   `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. If it is lost, phones will not be able to update.

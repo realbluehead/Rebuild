@@ -12,3 +12,5 @@ android/local.properties
 *.jks
 *.keystore
 keystore.properties
+coverage
+.vite
