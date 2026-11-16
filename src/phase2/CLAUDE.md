@@ -1,7 +1,8 @@
 # Rebuild · phase II (the voyage)
 
 Phase II: build a fleet of ships to carry what phase I gathered to a new planet. **Its rules are still to be designed**
-(decide them with the user); for now the screen simulates the base's buildings (telescope, power, fuel, fuel storage), 20 levels each. Paths below are relative to
+(decide them with the user); for now the screen simulates the base's buildings (telescope, power, fuel, fuel storage: 20 levels each; antenna and
+probes: 15 each). Paths below are relative to
 `src/phase2/` unless they start with `src/`.
 
 ## Starting point: the legacy
@@ -52,7 +53,7 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   desert in the middle with the selected area's plate; the tab panel below, about 3/7 of the height, its list scrolling)
   re-themed by overriding the colour variables on `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian
   plates, steel rivets, red for lights, bars and the active tab, yellow for buttons you can press and the currency.
-- **One tab per building: Telescope / Power / Fuel / Tanks** (`BUILDINGS` in ui/phase2.ts: tab, plate name, plot,
+- **One tab per building: Telescope / Power / Fuel / Tanks / Antenna / Probes** (two rows of three) (`BUILDINGS` in ui/phase2.ts: tab, plate name, plot,
   facility, cost, 3D builder, optional card picture). Each tab: a card (the telescope adds what it sees, a small canvas:
   a ringed planet among stars, sharper with the level, `drawView`) with the building's numbers (`stats`) and a bar
   (`gauge`); **a simulation**: "Lv −"/"Lv +" and the next row's button step its level freely (nothing spent or saved,
@@ -61,7 +62,7 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   top bar shows the open tab's level.
 
 ## Facilities (`core/facility.ts`)
-- A building is a `Facility<S>`: `upgrades` (20, one per level: part, name, note, `apply`), `base()`, `stats`,
+- A building is a `Facility<S>`: `upgrades` (one per level: 20, or 15 for the antenna and probes; `maxLevel(f)`; part, name, note, `apply`), `base()`, `stats`,
   `gauge` (0..1 of its best); `specAt(f, level)` folds the upgrades; `facilityCost(level, scale)` suggests costs.
   Tested for all of them in `facility.test.ts` (20 upgrades, clamping, gauge never drops and ends full). **Their rules
   (real costs, saving levels, what each gives the base) are still to be decided with the user**; saving levels means a
@@ -70,7 +71,12 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   tanks, exchanger, power line, crown; output MW, night store MWh), `core/refinery.ts` (`REFINERY`, the bluetreri
   refinery: hoppers, conveyor, crusher, vats, big vats, burners, purity, centrifuge, columns, pipe rack, pressure core;
   L/min), `core/tanks.ts` (`TANKS`, the tank farm: barrels, upright tanks, spheres, gauges, bund wall, pipe rack,
-  hydrants, pump house, filling arms, dock pipeline, cladding, beacon; capacity kL), and the telescope below.
+  hydrants, pump house, filling arms, dock pipeline, cladding, beacon; capacity kL), `core/antenna.ts` (`ANTENNA`, the
+  telecommunications antenna, 15 levels: dishes 2 → 12 → 25 m, guy wires, feed horn, lattice mast 15/30 m, relay drums,
+  transmitter hut, tracking, aircraft lights, phased array, laser link; range AU, kbit/s), `core/probes.ts` (`PROBES`,
+  the probe hangar, 15 levels: hangar frame → roof → sliding doors, bays 1–3, crane; the probe's solar wings, radio, ion
+  engine, instruments, nuclear battery; launcher rail → tower → pad, booster, 3 probes a launch; reach AU, probes a
+  day), and the telescope below.
 
 ## Buildings in 3D (`ui/kit3d.ts`, `ui/*3d.ts`)
 - Each builder takes the building at its level and returns a `Group` round its plot's centre on the flat sand
@@ -112,6 +118,15 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   open vats of blue fuel (rims, bubbles, ladders, spills; on legs over burner rings later), a centrifuge, columns with
   railed platforms, sight glasses and a pilot flame, a pressure core caged in rings, a pipe rack out at x = 17 towards
   the tank farm.
+- `antenna3d.ts`: a salvaged dish on a pole, then a lattice mast (15/30 m) with guy wires, relay drums, a service
+  lift and red aircraft lights; up to three dishes (the main one 2 → 12 → 25 m, ~14 units across) on motorised mounts,
+  a feed horn sending signal rings, a transmitter hut with a generator, phased-array panels scanning, a laser link to
+  the sky with data pulses; grid cabinet at (7, 7), hut at (3.5, 10.5).
+- `probes3d.ts`: a hangar at the back (open frame → arched roof → sliding doors on +z) with probe bays (probes on
+  cradles: solar wings, radio dish, ion engine, instruments, nuclear battery), a gantry crane, a track out to the
+  launcher (rail → tower with swing arms → pad with a flame trench) at (−3, 6). A 24 s launch cycle: doors open, the
+  probe (on a booster later; three with the fleet) rolls out, is raised, lifts off on a flame and climbs out of sight.
+  Grid cabinet at (6.1, −7).
 - `tanks3d.ts`: a pallet of barrels, upright tanks (cone roofs, ladders, railings, hazard bands, gauges) inside a bund
   wall, spheres on legs with a girder and a valve, the pipe rack in at x = 17 and a header, hydrants and a foam monitor,
   a pump house, filling arms with hoses, a pipeline off towards the dock, a beacon mast; white cladding at the top.
@@ -140,9 +155,9 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   edges get in-between colours and do not crawl as the view sways, and pixel-snapped: each frame the camera slides
   across its view to whole low-res pixels (bob, glide and zoom move in pixel steps; only the turn is unsnapped).
 - **Plots** (work areas): the ground is `GRID`×`GRID` (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1).
-  The buildings' plots (`TELESCOPE_PLOT` 0 = AREA 1, where the view starts; `POWER_PLOT` 2 = AREA 3; `REFINERY_PLOT`
-  5 = AREA 6; `TANKS_PLOT` 8 = AREA 9, by the dock) have their sand cleared flat within `CLEARED`;
-  the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; the rest are empty for now. Each plot has its own dunes
+  The buildings' plots (`TELESCOPE_PLOT` 0 = AREA 1, where the view starts; `ANTENNA_PLOT` 1 = AREA 2; `POWER_PLOT`
+  2 = AREA 3; `REFINERY_PLOT` 5 = AREA 6; `PROBES_PLOT` 7 = AREA 8, by the tanks and the dock; `TANKS_PLOT` 8 = AREA 9) have their sand cleared flat within `CLEARED`;
+  the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; AREA 4 and AREA 7 are empty for now. Each plot has its own dunes
   (`duneHeight`, flat towards its edges), with flat lanes between (trodden darker sand, red lights at crossings; posts
   along them looked like rain, flat strips looked stuck on). The sand is textured and tinted per vertex (`SAND_LOW` in
   the hollows to `SAND_HIGH` on the crests, in broad patches with a little speckle, `SAND_LANE` on the lanes), with

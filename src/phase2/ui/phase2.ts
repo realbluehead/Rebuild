@@ -8,15 +8,19 @@ import { fmt } from '../../shared/format';
 import { h } from '../../shared/ui/dom';
 import type { P2State } from '../core/state';
 import type { Group } from 'three';
-import { FACILITY_MAX, specAt, type Facility } from '../core/facility';
+import { specAt, type Facility } from '../core/facility';
 import { POWER, powerCost } from '../core/power';
 import { REFINERY, refineryCost } from '../core/refinery';
 import { TANKS, tanksCost } from '../core/tanks';
+import { ANTENNA, antennaCost } from '../core/antenna';
+import { PROBES, probesCost } from '../core/probes';
 import { TELESCOPE, TELESCOPE_MAX, upgradeCost, type Telescope } from '../core/telescope';
-import { createDesert, DOCK_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT, TELESCOPE_PLOT } from './desert';
+import { createDesert, ANTENNA_PLOT, PROBES_PLOT, DOCK_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT, TELESCOPE_PLOT } from './desert';
 import { buildPower } from './power3d';
 import { buildRefinery } from './refinery3d';
 import { buildTanks } from './tanks3d';
+import { buildAntenna } from './antenna3d';
+import { buildProbes } from './probes3d';
 import { buildTelescope } from './telescope3d';
 
 /** What the telescope sees (a ringed planet among stars), drawn at a resolution and with noise that improve with it. */
@@ -78,6 +82,8 @@ const BUILDINGS = [
   building({ tab: 'Power', plate: 'MIRROR TOWER', plot: POWER_PLOT, facility: POWER, cost: powerCost, build: buildPower }),
   building({ tab: 'Fuel', plate: 'BLUETRERI REFINERY', plot: REFINERY_PLOT, facility: REFINERY, cost: refineryCost, build: buildRefinery }),
   building({ tab: 'Tanks', plate: 'TANK FARM', plot: TANKS_PLOT, facility: TANKS, cost: tanksCost, build: buildTanks }),
+  building({ tab: 'Antenna', plate: 'ANTENNA', plot: ANTENNA_PLOT, facility: ANTENNA, cost: antennaCost, build: buildAntenna }),
+  building({ tab: 'Probes', plate: 'PROBE HANGAR', plot: PROBES_PLOT, facility: PROBES, cost: probesCost, build: buildProbes }),
 ];
 
 export interface Phase2Screen {
@@ -162,7 +168,8 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
 
     /** Rebuilds it at `lv`; `move` selects its plot and glides there (not at the start). */
     const setLevel = (lv: number, move = true) => {
-      const level = Math.max(1, Math.min(FACILITY_MAX, lv));
+      const top = b.facility.upgrades.length;
+      const level = Math.max(1, Math.min(top, lv));
       levels[bi] = level;
       const spec = specAt(b.facility, level);
       desert.setBuilding(b.plot, b.build(spec));
@@ -175,8 +182,8 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
       specs.replaceChildren(h('div', 'tele-name', `Lv ${level} · ${b.facility.upgrades[level - 1].name}`), ...b.facility.stats(spec).map((x) => h('div', '', x)), gauge);
       gfill.style.width = `${Math.round(b.facility.gauge(spec) * 100)}%`;
       down.disabled = level <= 1;
-      up.disabled = level >= FACILITY_MAX;
-      up.classList.toggle('can', level < FACILITY_MAX);
+      up.disabled = level >= top;
+      up.classList.toggle('can', level < top);
       rows.forEach(({ row, buy }, k) => {
         const n = k + 1;
         row.classList.toggle('done', n <= level);
@@ -199,8 +206,8 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
     return btn;
   });
   function topLine(): void {
-    lvl.textContent = `${BUILDINGS[tab].tab} Lv ${levels[tab]}/${FACILITY_MAX}`;
-    tfill.style.width = `${(levels[tab] / FACILITY_MAX) * 100}%`;
+    lvl.textContent = `${BUILDINGS[tab].tab} Lv ${levels[tab]}/${BUILDINGS[tab].facility.upgrades.length}`;
+    tfill.style.width = `${(levels[tab] / BUILDINGS[tab].facility.upgrades.length) * 100}%`;
   }
   /** Shows tab `k`; `go` glides the view to its building (not when the player just tapped that plot). */
   function showTab(k: number, go: boolean): void {

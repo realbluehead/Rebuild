@@ -29,7 +29,10 @@ export const TELESCOPE_PLOT = 0;
 export const POWER_PLOT = 2;
 export const REFINERY_PLOT = 5;
 export const TANKS_PLOT = 8;
-const BUILDING_PLOTS = [TELESCOPE_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT];
+/** The telecommunications antenna (AREA 2) and the probe hangar with its launcher (AREA 8, by the tanks and the dock). */
+export const ANTENNA_PLOT = 1;
+export const PROBES_PLOT = 7;
+const BUILDING_PLOTS = [TELESCOPE_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT, ANTENNA_PLOT, PROBES_PLOT];
 /** Radius of the sand cleared (flat) round a building's plot centre. */
 const CLEARED = 17;
 /** Centre of plot `k`, and the plot under (x, z) (clamped to the ground). */
@@ -270,6 +273,8 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
       [REFINERY_PLOT]: { path: [[-18, -18], [-6, -17], [-2, -8], [-2, -2]] },
       [TANKS_PLOT]: { path: [[-18.5, -12], [-17.5, 0], [-15, 7]], cabinet: true },
       [DOCK_PLOT]: { path: [[18, -18], [12, -12], [6, -6]] },
+      [ANTENNA_PLOT]: { path: [[18, 18], [13, 13], [7, 7]] },
+      [PROBES_PLOT]: { path: [[18, -18], [13, -13], [7, -7]] },
     },
   })));
 
