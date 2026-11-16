@@ -12,8 +12,7 @@ import {
   TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, type Material, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
-import { telescopeAt, type Telescope } from '../core/telescope';
-import { buildTelescope, disposeTelescope } from './telescope3d';
+import { disposeGroup } from './kit3d';
 import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
@@ -22,9 +21,14 @@ export const PLOT = 40;
 export const GRID = 3;
 const SIZE = PLOT * GRID;
 export const DOCK_PLOT = (GRID * GRID - 1) / 2;
-/** The giant telescope's plot (AREA 1, the first row's first). */
+/** The base's buildings' plots: the giant telescope (AREA 1), the mirror tower (power, AREA 3), the bluetreri
+ *  refinery (fuel, AREA 6) and the tank farm (fuel storage, AREA 9). */
 export const TELESCOPE_PLOT = 0;
-/** Radius of the sand cleared (flat) round the telescope. */
+export const POWER_PLOT = 2;
+export const REFINERY_PLOT = 5;
+export const TANKS_PLOT = 8;
+const BUILDING_PLOTS = [TELESCOPE_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT];
+/** Radius of the sand cleared (flat) round a building's plot centre. */
 const CLEARED = 17;
 /** Centre of plot `k`, and the plot under (x, z) (clamped to the ground). */
 const plotCentre = (k: number) => new Vector3(((k % GRID) - (GRID - 1) / 2) * PLOT, 0, (Math.floor(k / GRID) - (GRID - 1) / 2) * PLOT);
@@ -58,8 +62,8 @@ const LAMP = '#fff2b0';
 function duneHeight(x: number, z: number): number {
   const local = (v: number) => ((((v + SIZE / 2) % PLOT) + PLOT) % PLOT) - PLOT / 2;
   const edge = PLOT / 2 - Math.max(Math.abs(local(x)), Math.abs(local(z)));
-  const site = plotCentre(TELESCOPE_PLOT);
-  const clear = Math.max(0, Math.min(1, (Math.hypot(x - site.x, z - site.z) - CLEARED) / 4));
+  const near = Math.min(...BUILDING_PLOTS.map((k) => { const c = plotCentre(k); return Math.hypot(x - c.x, z - c.z); }));
+  const clear = Math.max(0, Math.min(1, (near - CLEARED) / 4));
   const fade = Math.max(0, Math.min(1, (edge - 1.5) / 5)) * clear;
   const h = 1.2 + Math.sin((x * 0.8 + z * 0.35) / 3.2) * 0.9 + Math.sin(x / 7.3 + 1.7) * Math.cos(z / 6.1) * 1.3;
   return 0.8 + Math.max(0, h) * fade;
@@ -227,8 +231,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   };
   place(new InstancedMesh(new BoxGeometry(0.7, 0.7, 0.7), red, crossings.length), crossings, 1.5);
 
-  // Rocks half sunk in the sand, scattered (none on the dock's or the telescope's sites).
-  const site = plotCentre(TELESCOPE_PLOT);
+  // Rocks half sunk in the sand, scattered (none on the dock's site, only small ones on the buildings' sites).
   let seed = 23;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const rocks = new InstancedMesh(new DodecahedronGeometry(1, 0), lambert('#4a4862'), 700);
@@ -237,8 +240,8 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   while (n < rocks.count) {
     const x = (rnd() - 0.5) * (SIZE - 2), z = (rnd() - 0.5) * (SIZE - 2), s = 0.25 + Math.pow(rnd(), 3) * 1.1;
     const rx = rnd(), ry = rnd(), sy = 0.5 + rnd() * 0.4;
-    const fromSite = Math.hypot(x - site.x, z - site.z);
-    if (Math.hypot(x, z) < 14 || fromSite < 4 || (fromSite < CLEARED + 2 && s > 0.45)) continue; // (small ones on the site: under its platform)
+    const fromSite = Math.min(...BUILDING_PLOTS.map((k) => { const c = plotCentre(k); return Math.hypot(x - c.x, z - c.z); }));
+    if (Math.hypot(x, z) < 14 || fromSite < 4 || (fromSite < CLEARED + 2 && s > 0.45)) continue; // (small ones on the sites: under platforms, among mirrors)
     o.position.set(x, duneHeight(x, z) - s * 0.25, z);
     o.rotation.set(rx * 3, ry * 6, 0);
     o.scale.set(s, s * sy, s * (0.7 + rx * 0.5));
@@ -280,8 +283,8 @@ function skyBackground(): string {
 
 export interface Desert {
   el: HTMLElement;
-  /** Shows the telescope as it stands. */
-  setTelescope(t: Telescope): void;
+  /** Puts `building` (built round the origin) on plot `k`, replacing what stood there. */
+  setBuilding(k: number, building: Group): void;
   /** Selects plot `k` (the view glides in to it; `onPlot` is not called). */
   select(k: number): void;
   stop(): void;
@@ -305,10 +308,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   let plot = start;
   const focus = plotCentre(plot);
   const target = new Vector3();
-  const site = plotCentre(TELESCOPE_PLOT).setY(0.8);
-  let telescope = buildTelescope(telescopeAt(1));
-  telescope.position.copy(site);
-  scene.add(telescope);
+  const buildings = new Map<number, Group>();
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /** Zoom picked (1..ZOOM_MAX) and the one shown, easing towards it. */
@@ -409,12 +409,12 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   requestAnimationFrame(frame);
   return {
     el,
-    setTelescope(t) {
-      scene.remove(telescope);
-      disposeTelescope(telescope);
-      telescope = buildTelescope(t);
-      telescope.position.copy(site);
-      scene.add(telescope);
+    setBuilding(k, building) {
+      const old = buildings.get(k);
+      if (old) { scene.remove(old); disposeGroup(old); }
+      building.position.copy(plotCentre(k)).setY(0.8);
+      scene.add(building);
+      buildings.set(k, building);
     },
     select(k) { plot = k; zoom = 1; spin = 0; },
     stop: () => { on = false; ro.disconnect(); renderer.dispose(); },

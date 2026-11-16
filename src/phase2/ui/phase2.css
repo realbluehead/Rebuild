@@ -76,3 +76,5 @@
 .tele-step .px-btn { font: 8px/1 var(--font-num); padding: 7px 10px; }
 .tele-table .part-row { --cols: 18px minmax(0, 1fr) minmax(0, 1.2fr) 62px; }
 .tele-table .part-row.done .name { color: var(--muted); }
+.tele-card .tele-gauge { margin-top: 2px; }
+.tele-card .tele-specs { flex: 1; }

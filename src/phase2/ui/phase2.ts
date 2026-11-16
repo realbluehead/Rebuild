@@ -1,13 +1,23 @@
 // Phase II screen: the same layout as phase I — a top bar with the currency and the ≡ menu, the scene in the middle and
 // a panel of tabs at the bottom — re-themed in the voyage splash's palette (obsidian plates, steel rivets, red lights)
-// with yellow for what you can press. The currency comes from the state (what phase I handed over). One tab so far, the
-// Telescope: a simulation of its 20 levels (stepped freely, nothing spent or saved) that rebuilds it in the desert.
+// with yellow for what you can press. The currency comes from the state (what phase I handed over). One tab per
+// building of the base (Telescope, Power, Fuel, Tanks): a simulation of its 20 levels (stepped freely, nothing spent or
+// saved) that rebuilds it on its plot in the desert.
 import './phase2.css';
 import { fmt } from '../../shared/format';
 import { h } from '../../shared/ui/dom';
 import type { P2State } from '../core/state';
-import { TELESCOPE_MAX, telescopeAt, telescopeRange, UPGRADES, upgradeCost, type Telescope } from '../core/telescope';
-import { createDesert, DOCK_PLOT, TELESCOPE_PLOT } from './desert';
+import type { Group } from 'three';
+import { FACILITY_MAX, specAt, type Facility } from '../core/facility';
+import { POWER, powerCost } from '../core/power';
+import { REFINERY, refineryCost } from '../core/refinery';
+import { TANKS, tanksCost } from '../core/tanks';
+import { TELESCOPE, TELESCOPE_MAX, upgradeCost, type Telescope } from '../core/telescope';
+import { createDesert, DOCK_PLOT, POWER_PLOT, REFINERY_PLOT, TANKS_PLOT, TELESCOPE_PLOT } from './desert';
+import { buildPower } from './power3d';
+import { buildRefinery } from './refinery3d';
+import { buildTanks } from './tanks3d';
+import { buildTelescope } from './telescope3d';
 
 /** What the telescope sees (a ringed planet among stars), drawn at a resolution and with noise that improve with it. */
 function drawView(c: HTMLCanvasElement, t: Telescope): void {
@@ -49,6 +59,27 @@ function drawView(c: HTMLCanvasElement, t: Telescope): void {
   g.putImageData(img, 0, 0);
 }
 
+/** A building of the base as the screen shows it: its tab, its plot and plate, its levels, and how it looks in 3D. */
+interface Building<S extends { level: number }> {
+  tab: string;
+  /** Its name on the plot's plate. */
+  plate: string;
+  plot: number;
+  facility: Facility<S>;
+  cost(level: number): number;
+  build(s: S): Group;
+  /** A small picture for the tab's card (the telescope's view), drawn at each level. */
+  view?(c: HTMLCanvasElement, s: S): void;
+}
+const building = <S extends { level: number }>(b: Building<S>) => b as unknown as Building<{ level: number }>;
+
+const BUILDINGS = [
+  building<Telescope>({ tab: 'Telescope', plate: 'TELESCOPE', plot: TELESCOPE_PLOT, facility: TELESCOPE, cost: upgradeCost, build: buildTelescope, view: drawView }),
+  building({ tab: 'Power', plate: 'MIRROR TOWER', plot: POWER_PLOT, facility: POWER, cost: powerCost, build: buildPower }),
+  building({ tab: 'Fuel', plate: 'BLUETRERI REFINERY', plot: REFINERY_PLOT, facility: REFINERY, cost: refineryCost, build: buildRefinery }),
+  building({ tab: 'Tanks', plate: 'TANK FARM', plot: TANKS_PLOT, facility: TANKS, cost: tanksCost, build: buildTanks }),
+];
+
 export interface Phase2Screen {
   /** Updates the texts from the state (every frame; only what changed is written). */
   render(s: P2State): void;
@@ -57,10 +88,11 @@ export interface Phase2Screen {
 /** Puts the phase II screen over `root` (the phone), fading in. `openMenu` opens the ≡ menu. */
 export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void): Phase2Screen {
   const el = h('div', 'p2');
-  /** The telescope's level in the simulation (view state: not saved). */
-  let level = 1;
+  /** Each building's level in the simulation, and the tab shown (view state: not saved). */
+  const levels = BUILDINGS.map(() => 1);
+  let tab = 0;
 
-  // Top bar: metal scraps (the currency of phase II), the telescope's level and its bar; menu on the right.
+  // Top bar: metal scraps (the currency of phase II), the shown building's level and its bar; menu on the right.
   const top = h('header', 'topbar');
   const stats = h('div', 'stats');
   const line = h('div', 'gold-line');
@@ -77,78 +109,109 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void):
   menu.addEventListener('click', openMenu);
   top.append(stats, menu);
 
-  // Middle: the night desert (3D, isometric), starting on the telescope's plot.
+  // Middle: the night desert (3D, isometric), starting on the telescope's plot. A tap on a building's plot opens its tab.
   const scene = h('section', 'p2-scene');
   const plate = h('div', 'p2-dock px-box');
+  const name = (k: number) => {
+    const b = BUILDINGS.findIndex((x) => x.plot === k);
+    if (b >= 0) return `AREA ${k + 1} · ${BUILDINGS[b].plate} · Lv ${levels[b]}`;
+    return k === DOCK_PLOT ? `AREA ${k + 1} · DRY DOCK · Black siphon` : `AREA ${k + 1} · empty`;
+  };
   let shownPlot = TELESCOPE_PLOT;
-  const name = (k: number) =>
-    k === TELESCOPE_PLOT ? `AREA ${k + 1} · TELESCOPE · Lv ${level}`
-      : k === DOCK_PLOT ? `AREA ${k + 1} · DRY DOCK · Black siphon` : `AREA ${k + 1} · empty`;
-  const desert = createDesert((k) => { shownPlot = k; plate.textContent = name(k); }, TELESCOPE_PLOT);
+  const desert = createDesert((k) => {
+    shownPlot = k;
+    plate.textContent = name(k);
+    const b = BUILDINGS.findIndex((x) => x.plot === k);
+    if (b >= 0 && b !== tab) showTab(b, false);
+  }, TELESCOPE_PLOT);
   scene.append(desert.el, plate);
 
-  // Bottom panel: the Telescope tab — what it sees, its numbers, the level stepper and the 20 upgrades.
+  // Bottom panel: a tab per building — its card (picture, numbers, bar), the level stepper and its 20 upgrades.
   const panel = h('aside', 'panel');
   const tabs = h('div', 'tabs');
-  tabs.append(h('button', 'px-btn tab on', 'Telescope'));
-  const list = h('div', 'list tele');
-  const card = h('div', 'px-box tele-card');
-  const view = document.createElement('canvas');
-  view.className = 'tele-view';
-  const specs = h('div', 'tele-specs');
-  const step = h('div', 'tele-step');
-  const down = h('button', 'px-btn', 'Lv −'), up = h('button', 'px-btn can', 'Lv +');
-  step.append(down, up);
-  card.append(view, specs);
-  const sim = h('div', 'tele-sim');
-  sim.append(h('span', '', 'Simulation: free levels, not saved'), step);
-  const table = h('div', 'part-table px-box p2-table tele-table');
-  const head = h('div', 'part-row head');
-  for (const x of ['Lv', 'Upgrade', 'Does', '']) head.append(h('span', '', x));
-  table.append(head);
-  const rows = UPGRADES.map((u, k) => {
-    const row = h('div', 'part-row');
-    const buy = h('button', 'px-btn buy');
-    buy.addEventListener('click', () => setLevel(k + 1));
-    row.append(h('span', 'lvl', String(k + 1)), h('span', 'name', u.name), h('span', 'eff', `${u.part} · ${u.note}`), buy);
-    table.append(row);
-    return { row, buy };
-  });
-  list.append(card, sim, table);
-  panel.append(tabs, list);
-
-  const setLevel = (lv: number) => {
-    level = Math.max(1, Math.min(TELESCOPE_MAX, lv));
-    const t = telescopeAt(level);
-    desert.setTelescope(t);
-    desert.select(TELESCOPE_PLOT);
-    shownPlot = TELESCOPE_PLOT;
-    plate.textContent = name(shownPlot);
-    lvl.textContent = `Telescope Lv ${level}/${TELESCOPE_MAX}`;
-    tfill.style.width = `${(level / TELESCOPE_MAX) * 100}%`;
-    drawView(view, t);
-    specs.replaceChildren(
-      h('div', 'tele-name', `Lv ${level} · ${UPGRADES[level - 1].name}`),
-      h('div', '', `Aperture ${t.aperture} m`),
-      h('div', '', `Lenses ${t.lenses} · sharp ${t.sharpness}%`),
-      h('div', '', `Sees ${fmt(telescopeRange(t))} ly`),
-    );
-    down.disabled = level <= 1;
-    up.disabled = level >= TELESCOPE_MAX;
-    up.classList.toggle('can', level < TELESCOPE_MAX);
-    rows.forEach(({ row, buy }, k) => {
-      const lv = k + 1;
-      row.classList.toggle('done', lv <= level);
-      buy.classList.toggle('can', lv === level + 1);
-      buy.disabled = lv > level + 1;
-      buy.replaceChildren();
-      if (lv <= level) buy.append(lv === 1 ? 'Start' : 'Built');
-      else { buy.append(h('i', 'nut'), fmt(upgradeCost(lv))); }
+  const lists = BUILDINGS.map((b, bi) => {
+    const list = h('div', 'list tele');
+    list.hidden = bi !== 0;
+    const card = h('div', 'px-box tele-card');
+    const view = document.createElement('canvas');
+    view.className = 'tele-view';
+    const specs = h('div', 'tele-specs');
+    const gauge = h('div', 'bar slim tele-gauge');
+    const gfill = h('i');
+    gauge.append(gfill);
+    if (b.view) card.append(view);
+    card.append(specs);
+    const step = h('div', 'tele-step');
+    const down = h('button', 'px-btn', 'Lv −'), up = h('button', 'px-btn can', 'Lv +');
+    step.append(down, up);
+    const sim = h('div', 'tele-sim');
+    sim.append(h('span', '', 'Simulation: free levels, not saved'), step);
+    const table = h('div', 'part-table px-box p2-table tele-table');
+    const head = h('div', 'part-row head');
+    for (const x of ['Lv', 'Upgrade', 'Does', '']) head.append(h('span', '', x));
+    table.append(head);
+    const rows = b.facility.upgrades.map((u, k) => {
+      const row = h('div', 'part-row');
+      const buy = h('button', 'px-btn buy');
+      buy.addEventListener('click', () => setLevel(k + 1));
+      row.append(h('span', 'lvl', String(k + 1)), h('span', 'name', u.name), h('span', 'eff', `${u.part} · ${u.note}`), buy);
+      table.append(row);
+      return { row, buy };
     });
-  };
-  down.addEventListener('click', () => setLevel(level - 1));
-  up.addEventListener('click', () => setLevel(level + 1));
-  setLevel(1);
+    list.append(card, sim, table);
+
+    const setLevel = (lv: number) => {
+      const level = Math.max(1, Math.min(FACILITY_MAX, lv));
+      levels[bi] = level;
+      const spec = specAt(b.facility, level);
+      desert.setBuilding(b.plot, b.build(spec));
+      desert.select(b.plot);
+      shownPlot = b.plot;
+      plate.textContent = name(shownPlot);
+      if (b.view) b.view(view, spec);
+      specs.replaceChildren(h('div', 'tele-name', `Lv ${level} · ${b.facility.upgrades[level - 1].name}`), ...b.facility.stats(spec).map((x) => h('div', '', x)), gauge);
+      gfill.style.width = `${Math.round(b.facility.gauge(spec) * 100)}%`;
+      down.disabled = level <= 1;
+      up.disabled = level >= FACILITY_MAX;
+      up.classList.toggle('can', level < FACILITY_MAX);
+      rows.forEach(({ row, buy }, k) => {
+        const n = k + 1;
+        row.classList.toggle('done', n <= level);
+        buy.classList.toggle('can', n === level + 1);
+        buy.disabled = n > level + 1;
+        buy.replaceChildren();
+        if (n <= level) buy.append(n === 1 ? 'Start' : 'Built');
+        else buy.append(h('i', 'nut'), fmt(b.cost(n)));
+      });
+      topLine();
+    };
+    down.addEventListener('click', () => setLevel(levels[bi] - 1));
+    up.addEventListener('click', () => setLevel(levels[bi] + 1));
+    // Built at level 1 without moving the view (the telescope's plot is where it starts).
+    const spec = specAt(b.facility, 1);
+    desert.setBuilding(b.plot, b.build(spec));
+    return { list, setLevel };
+  });
+  const tabBtns = BUILDINGS.map((b, k) => {
+    const btn = h('button', `px-btn tab${k === 0 ? ' on' : ''}`, b.tab);
+    btn.addEventListener('click', () => showTab(k, true));
+    tabs.append(btn);
+    return btn;
+  });
+  function topLine(): void {
+    lvl.textContent = `${BUILDINGS[tab].tab} Lv ${levels[tab]}/${TELESCOPE_MAX}`;
+    tfill.style.width = `${(levels[tab] / FACILITY_MAX) * 100}%`;
+  }
+  /** Shows tab `k`; `go` glides the view to its building (not when the player just tapped that plot). */
+  function showTab(k: number, go: boolean): void {
+    tab = k;
+    tabBtns.forEach((x, q) => x.classList.toggle('on', q === k));
+    lists.forEach((l, q) => (l.list.hidden = q !== k));
+    if (go) { desert.select(BUILDINGS[k].plot); shownPlot = BUILDINGS[k].plot; plate.textContent = name(shownPlot); }
+    topLine();
+  }
+  panel.append(tabs, ...lists.map((l) => l.list));
+  lists.forEach((l, k) => { if (k === 0) l.setLevel(1); });
 
   el.append(top, scene, panel);
   root.append(el);

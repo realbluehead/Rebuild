@@ -3,7 +3,9 @@
 // `telescopeAt(level)` folds them into the telescope as it stands, which the 3D scene draws and the Telescope tab lists.
 // For now this is a simulation: levels are stepped freely, nothing is spent or saved (its rules are still to be decided).
 
-export const TELESCOPE_MAX = 20;
+import { FACILITY_MAX, facilityCost, specAt, type Facility } from './facility';
+
+export const TELESCOPE_MAX = FACILITY_MAX;
 
 export type TelescopePart = 'Base' | 'Size' | 'Lenses' | 'Sharpness' | 'Mount' | 'Dome' | 'Mirror' | 'Laser';
 
@@ -60,19 +62,22 @@ export const UPGRADES: TelescopeUpgrade[] = [
   { part: 'Laser', name: 'Star array', note: '3 lasers, 12 m, 99%', apply: (t) => { t.lasers = 3; t.lenses = 6; t.sharpness = 99; t.aperture = 12; } },
 ];
 
-/** The telescope at `level` (1..TELESCOPE_MAX, clamped). */
-export function telescopeAt(level: number): Telescope {
-  const lv = Math.max(1, Math.min(TELESCOPE_MAX, Math.floor(level)));
-  const t: Telescope = {
-    level: lv, aperture: 0.1, lenses: 1, sharpness: 10, mount: 'tripod', tube: 'refractor',
+/** The telescope as a facility (core/facility.ts). */
+export const TELESCOPE: Facility<Telescope> = {
+  upgrades: UPGRADES,
+  base: () => ({
+    level: 0, aperture: 0.1, lenses: 1, sharpness: 10, mount: 'tripod', tube: 'refractor',
     finder: false, platform: false, wall: false, dome: false, segments: 0, lasers: 0,
-  };
-  for (let k = 0; k < lv; k++) UPGRADES[k].apply(t);
-  return t;
-}
+  }),
+  stats: (t) => [`Aperture ${t.aperture} m`, `Lenses ${t.lenses} · sharp ${t.sharpness}%`, `Sees ${telescopeRange(t)} ly`],
+  gauge: (t) => telescopeRange(t) / telescopeRange(telescopeAt(TELESCOPE_MAX)),
+};
+
+/** The telescope at `level` (1..TELESCOPE_MAX, clamped). */
+export const telescopeAt = (level: number): Telescope => specAt(TELESCOPE, level);
 
 /** How far it sees, in light years (grows with the aperture and the sharpness). */
 export const telescopeRange = (t: Telescope): number => Math.round(10 * Math.pow(t.aperture * 10, 1.6) * (t.sharpness / 100));
 
 /** Metal scraps for the upgrade that reaches `level` (2..TELESCOPE_MAX): a suggestion for the simulation. */
-export const upgradeCost = (level: number): number => Math.round(40 * Math.pow(1.8, level - 2));
+export const upgradeCost = (level: number): number => facilityCost(level);

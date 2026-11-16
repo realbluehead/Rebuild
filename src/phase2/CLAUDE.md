@@ -1,7 +1,7 @@
 # Rebuild · phase II (the voyage)
 
 Phase II: build a fleet of ships to carry what phase I gathered to a new planet. **Its rules are still to be designed**
-(decide them with the user); for now the screen has the giant telescope's level simulation. Paths below are relative to
+(decide them with the user); for now the screen simulates the base's buildings (telescope, power, fuel, fuel storage), 20 levels each. Paths below are relative to
 `src/phase2/` unless they start with `src/`.
 
 ## Starting point: the legacy
@@ -43,11 +43,44 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   desert in the middle with the selected area's plate; the tab panel below, about 3/7 of the height, its list scrolling)
   re-themed by overriding the colour variables on `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian
   plates, steel rivets, red for lights, bars and the active tab, yellow for buttons you can press and the currency.
-- **One tab so far: Telescope** (the earlier mocked tabs are gone). A card with what the telescope sees (a small canvas:
-  a ringed planet among stars, drawn at a resolution and noise that improve with the level, `drawView`) and its numbers;
-  **a simulation**: "Lv −"/"Lv +" and the next row's button step the level freely (nothing spent or saved, the costs
-  shown are suggestions); the 20 upgrades as rows (Built / next / cost). Changing the level rebuilds the telescope in
-  the desert and glides the view to its plot.
+- **One tab per building: Telescope / Power / Fuel / Tanks** (`BUILDINGS` in ui/phase2.ts: tab, plate name, plot,
+  facility, cost, 3D builder, optional card picture). Each tab: a card (the telescope adds what it sees, a small canvas:
+  a ringed planet among stars, sharper with the level, `drawView`) with the building's numbers (`stats`) and a bar
+  (`gauge`); **a simulation**: "Lv −"/"Lv +" and the next row's button step its level freely (nothing spent or saved,
+  costs shown are suggestions); its 20 upgrades as rows (Built / next / cost). Changing a level rebuilds that building
+  on its plot and glides the view there; opening a tab glides to its plot; tapping a building's plot opens its tab. The
+  top bar shows the open tab's level.
+
+## Facilities (`core/facility.ts`)
+- A building is a `Facility<S>`: `upgrades` (20, one per level: part, name, note, `apply`), `base()`, `stats`,
+  `gauge` (0..1 of its best); `specAt(f, level)` folds the upgrades; `facilityCost(level, scale)` suggests costs.
+  Tested for all of them in `facility.test.ts` (20 upgrades, clamping, gauge never drops and ends full). **Their rules
+  (real costs, saving levels, what each gives the base) are still to be decided with the user**; saving levels means a
+  `P2State` field (version bump, migration, test).
+- `core/power.ts` (`POWER`, the mirror tower: mirrors, reflectivity, tower height, receiver heat, tracking, salt
+  tanks, exchanger, power line, crown; output MW, night store MWh), `core/refinery.ts` (`REFINERY`, the bluetreri
+  refinery: hoppers, conveyor, crusher, vats, big vats, burners, purity, centrifuge, columns, pipe rack, pressure core;
+  L/min), `core/tanks.ts` (`TANKS`, the tank farm: barrels, upright tanks, spheres, gauges, bund wall, pipe rack,
+  hydrants, pump house, filling arms, dock pipeline, cladding, beacon; capacity kL), and the telescope below.
+
+## Buildings in 3D (`ui/kit3d.ts`, `ui/*3d.ts`)
+- Each builder takes the building at its level and returns a `Group` round its plot's centre on the flat sand
+  (`desert.setBuilding(plot, group)` places it and frees the old one with `disposeGroup`). `kit3d.ts` holds the shared
+  pieces: materials (`steel`, `bright`, `obsidian`, `hazard`, `glow`), `rod`, and the details that settle a building in
+  the desert: `shadow`, `heap` (sand drifted against it), `crate`, `barrel`, `ladder`, `railing`, `cable`, `warning`
+  lights, work `lamp`, `pipeRack` on H-frames. Keep new buildings textured and detailed the same way.
+- `power3d.ts`: mirrors on posts in rings round a tower (steel lattice under 10 m, then concrete with bands, a lit door
+  and a ladder), a railed grating deck, the receiver glowing by its heat (red → white) with a light, a mast; once
+  tracking, each mirror aims between the receiver and the sun (otherwise all face up), and from 900 °C beams show; salt
+  tanks with hazard bands, gauges and a hot pipe; an exchanger with fins; pylons with wires; a control shed; spare
+  mirrors, crates, a cable, a lamp. Mirrors seen from the camera show their backs (they face the tower and sun).
+- `refinery3d.ts`: sacks of ore, then hoppers (hazard rims, glowing ore) over crushers, conveyors with ore on them,
+  open vats of blue fuel (rims, bubbles, ladders, spills; on legs over burner rings later), a centrifuge, columns with
+  railed platforms, sight glasses and a pilot flame, a pressure core caged in rings, a pipe rack out at x = 17 towards
+  the tank farm.
+- `tanks3d.ts`: a pallet of barrels, upright tanks (cone roofs, ladders, railings, hazard bands, gauges) inside a bund
+  wall, spheres on legs with a girder and a valve, the pipe rack in at x = 17 and a header, hydrants and a foam monitor,
+  a pump house, filling arms with hoses, a pipeline off towards the dock, a beacon mast; white cladding at the top.
 
 ## The telescope (`core/telescope.ts`, `ui/telescope3d.ts`)
 - 20 levels, one upgrade each (`UPGRADES`: part Size / Lenses / Sharpness / Mount / Dome / Mirror / Laser);
@@ -60,18 +93,19 @@ Phase II: build a fleet of ships to carry what phase I gathered to a new planet.
   view (so its length shows), on its mount; lens rings glow brighter with sharpness; platform with red lights, wind wall,
   a half dome behind (open towards the view), hexagonal mirror segments, laser beams; a work lamp. Settled in the sand:
   a soft shadow at its foot, a bank of sand against the platform (or heaps at the feet), crates and the lamp's cable.
-  `setTelescope` swaps it (`disposeTelescope` frees the old one and its texture copies, not the shared textures).
+  (`disposeGroup` in kit3d frees a replaced building and its texture copies, not the shared textures.)
 - **Textures** (`ui/textures.ts`): small pixel canvases drawn once, nearest filtered, mostly greys tinted by the
   material colour (`textured`, also here, brightens it to make up): sand (grain, wind ripples, pebbles; `SAND_TILE` units per
-  tile), metal plating (seams, rivets, scratches, rust streaks; more rust on the steel), cracked concrete, and a round
-  shadow alpha map. `repeated(map, x, y)` copies one with its own repeat for a face.
+  tile), metal plating (seams, rivets, scratches, rust streaks; more rust on the steel), cracked concrete, hazard
+  stripes, mirror glass, walkway grating, sacking, and a round shadow alpha map. `repeated(map, x, y)` copies one with its own repeat for a face.
 
-## The desert (`ui/desert.ts`, `createDesert(onPlot, start)` → `{ el, setTelescope, select, stop }`)
+## The desert (`ui/desert.ts`, `createDesert(onPlot, start)` → `{ el, setBuilding, select, stop }`)
 - three.js, only in phase II's chunk (phase I imports `../phase2/boot` dynamically, never statically). A real 3D scene
   with an orthographic isometric camera (45° round, ~35° down), rendered at 1/`PX` (2) of the screen and scaled up with
   crisp pixels over a pixel night sky (a canvas drawn once, CSS background).
 - **Plots** (work areas): the ground is `GRID`×`GRID` (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1).
-  `TELESCOPE_PLOT` (0, AREA 1, where the view starts) holds the telescope, its sand cleared flat within `CLEARED`;
+  The buildings' plots (`TELESCOPE_PLOT` 0 = AREA 1, where the view starts; `POWER_PLOT` 2 = AREA 3; `REFINERY_PLOT`
+  5 = AREA 6; `TANKS_PLOT` 8 = AREA 9, by the dock) have their sand cleared flat within `CLEARED`;
   the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; the rest are empty for now. Each plot has its own dunes
   (`duneHeight`, flat towards its edges), with flat lanes between (trodden darker sand, red lights at crossings; posts
   along them looked like rain, flat strips looked stuck on). The sand is textured and tinted per vertex (`SAND_LOW` in

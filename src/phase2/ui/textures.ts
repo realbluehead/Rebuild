@@ -2,7 +2,7 @@
 // squares like the rest of the low-resolution render): sand with grain and wind ripples, metal plates with seams,
 // rivets and rust streaks, cracked concrete, and a soft round shadow for where things meet the sand. Mostly greys, so
 // a material's colour (or the ground's vertex colours) tints them.
-import { CanvasTexture, Color, DoubleSide, MeshLambertMaterial, NearestFilter, NearestMipmapNearestFilter, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
+import { CanvasTexture, Color, DoubleSide, FrontSide, MeshLambertMaterial, NearestFilter, NearestMipmapNearestFilter, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
 
 /** A seeded random number generator (the same texture every time). */
 function random(seed: number): () => number {
@@ -105,4 +105,41 @@ export const shadowTexture = () => once('shadow', () => canvasTexture(64, (g) =>
 
 /** A textured material: the texture (greys) is tinted by `c`, brightened to make up for the texture's darkening. */
 export const textured = (c: string, map: Texture, side = false, flat = true) =>
-  new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: flat, side: side ? DoubleSide : undefined });
+  new MeshLambertMaterial({ color: new Color(c).multiplyScalar(1.45), map, flatShading: flat, side: side ? DoubleSide : FrontSide });
+
+/** Hazard stripes: yellow and black diagonals, a little worn. */
+export const hazardTexture = () => once('hazard', () => canvasTexture(16, (g, rnd) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const on = Math.floor((x + y) / 4) % 2 === 0;
+    const wear = rnd() < 0.08;
+    g.fillStyle = on && !wear ? '#e8c020' : wear ? '#5a5040' : '#1a1a1e';
+    g.fillRect(x, y, 1, 1);
+  }
+}, 13));
+
+/** Mirror glass: a cool sky gradient with a bright glint and a dark frame. */
+export const mirrorTexture = () => once('mirror', () => canvasTexture(16, (g) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const v = 150 + (x + y) * 3;
+    g.fillStyle = `rgb(${v - 30},${v},${Math.min(255, v + 40)})`;
+    g.fillRect(x, y, 1, 1);
+  }
+  g.fillStyle = '#fff'; g.fillRect(3, 4, 4, 1); g.fillRect(4, 5, 2, 1);
+  g.fillStyle = '#20222a'; g.fillRect(0, 0, 16, 1); g.fillRect(0, 15, 16, 1); g.fillRect(0, 0, 1, 16); g.fillRect(15, 0, 1, 16);
+  g.fillRect(8, 0, 1, 16);
+}, 17));
+
+/** Walkway grating: a grid of bars over darkness. */
+export const grateTexture = () => once('grate', () => canvasTexture(16, (g) => {
+  g.fillStyle = '#18181e'; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = '#b0b0b8';
+  for (let k = 0; k < 16; k += 4) { g.fillRect(k, 0, 1, 16); g.fillRect(0, k, 16, 1); }
+}, 19));
+
+/** Sacking: woven cloth, for sacks of ore. */
+export const sackTexture = () => once('sack', () => canvasTexture(16, (g, rnd) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    g.fillStyle = grey(180 + ((x + y) % 2) * 30 + (rnd() - 0.5) * 30);
+    g.fillRect(x, y, 1, 1);
+  }
+}, 23));

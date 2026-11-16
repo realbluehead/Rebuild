@@ -245,16 +245,3 @@ export function buildTelescope(t: Telescope): Group {
   return g;
 }
 
-/** Frees a telescope's geometries and materials. */
-export function disposeTelescope(g: Group): void {
-  g.traverse((o) => {
-    if (o instanceof Mesh) {
-      o.geometry.dispose();
-      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: Material) => {
-        const map = (m as MeshLambertMaterial).map;
-        if (map?.userData.copy) map.dispose(); // (the shared textures stay)
-        m.dispose();
-      });
-    }
-  });
-}
