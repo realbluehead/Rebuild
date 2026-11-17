@@ -114,7 +114,7 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
         locked = true; // (no autosave may land on top of the new start)
         reloadAfter(savePhase2(newPhase2(state.legacy)));
       }));
-      item('Restart (new map)', 'danger', () => confirmModal('Erase this game (both phases) and start a new map?', 'Erase and restart', () => {
+      item('Restart from scratch', 'danger', () => confirmModal('Erase this game (both phases) and start a new map?', 'Erase and restart', () => {
         try { localStorage.removeItem('rebuild:help-seen'); localStorage.removeItem('rebuild:p2-notes-seen'); } catch { /* no storage */ }
         reloadAfter(import('../saves').then(({ wipeAll }) => wipeAll()));
       }));

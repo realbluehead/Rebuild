@@ -1212,7 +1212,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     item('Fleet', '', () => openFleet());
     item('Export game', '', () => textModal('Copy this text to save your game:', actions.exportText(), true));
     item('Import game', '', () => textModal('Paste an exported game:', '', false, actions.importText));
-    item('Restart (new map)', 'danger', () => confirmModal('Erase this game and start a new map?', 'Erase and restart', () => {
+    item('Restart from scratch', 'danger', () => confirmModal('Erase this game and start a new map?', 'Erase and restart', () => {
       try { localStorage.removeItem(HELP_SEEN_KEY); } catch { /* no storage */ }
       actions.reset();
     }));
