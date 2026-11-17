@@ -1,7 +1,9 @@
 // "The arrival" splash: phase I (explore the ruined planet and gather what is left), shown when a new game starts,
 // right after the title. Pixel art like the title screen: the planet seen from space (the "Smog giant": ochre ground
 // under drifting bands of yellow smog, a dithered day side and a hazy rim) turns slowly on a small canvas (96 pixels
-// wide) scaled up with crisp pixels. A tap closes it.
+// wide) scaled up with crisp pixels, dressed like the title (src/shared/ui/splash.ts, as phase II's "The voyage"). A
+// tap closes it.
+import { dressSplash } from '../../shared/ui/splash';
 
 /** Width of the scene in canvas pixels (its height follows the screen). */
 const SCENE_W = 96;
@@ -89,18 +91,9 @@ export function showArrival(root: HTMLElement): Promise<void> {
   const el = document.createElement('div');
   el.className = 'arrival';
   const canvas = document.createElement('canvas');
-  const caption = document.createElement('div');
-  caption.className = 'arrival-title';
-  const name = document.createElement('b');
-  name.textContent = 'THE ARRIVAL';
-  const phase = document.createElement('i');
-  phase.textContent = 'PHASE I';
-  caption.append(name, phase);
-  const hint = document.createElement('span');
-  hint.className = 'arrival-hint';
-  hint.textContent = 'tap to begin';
-  el.append(canvas, caption, hint);
+  el.append(canvas);
   root.append(el);
+  const dress = dressSplash(el, 'THE ARRIVAL', 'PHASE I', 'TAP TO BEGIN', '#ffc23f');
 
   const W = SCENE_W;
   const H = Math.max(120, Math.round((W * (el.clientHeight || 640)) / (el.clientWidth || 360)));
@@ -121,7 +114,7 @@ export function showArrival(root: HTMLElement): Promise<void> {
     el.addEventListener('click', () => {
       if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('out')) return;
       el.classList.add('out');
-      setTimeout(() => { clearInterval(timer); el.remove(); done(); }, 600);
+      setTimeout(() => { clearInterval(timer); el.remove(); dress.drop(); done(); }, 600);
     });
   });
 }

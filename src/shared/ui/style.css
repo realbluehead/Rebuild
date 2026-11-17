@@ -544,12 +544,14 @@ button { font: inherit; color: inherit; }
 .arrival { position: absolute; inset: 0; z-index: 95; background: #07060a; cursor: pointer; opacity: 0; transition: opacity .6s; container-type: size; }
 .arrival.in { opacity: 1; }
 .arrival.out { opacity: 0; pointer-events: none; }
+/* The splashes' dressing (ui/splash.ts), like the title screen; --px is the title canvas's pixel. */
+.splash-name { z-index: 1; }
+.splash-sub { position: absolute; left: 0; right: 0; text-align: center; font: calc(var(--px) * 2.4) var(--font-num); letter-spacing: calc(var(--px) * 1.2); color: #3ff0ff; text-shadow: 2px 2px 0 #2a0f45; pointer-events: none; }
+.splash-scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(#00000026 0 var(--px), transparent var(--px) calc(var(--px) * 2)); }
+.splash-box { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); bottom: calc(var(--px) * 12); height: calc(var(--px) * 22); background: #000000aa; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.splash-hint { font: calc(var(--px) * 3.4) var(--font-num); color: #7dff9a; animation: splash-tap 1s steps(1) infinite; }
+@keyframes splash-tap { 50% { opacity: 0; } }
 .arrival canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
-.arrival-title { position: absolute; left: 0; right: 0; top: 9cqh; text-align: center; color: #e6c97a; font-family: var(--font-num); pointer-events: none; }
-.arrival-title b { display: block; font-weight: 400; font-size: min(7.2cqw, 26px); letter-spacing: .3cqw; }
-.arrival-title i { display: flex; align-items: center; justify-content: center; gap: 3cqw; margin-top: 3cqw; font-style: normal; font-size: min(2.9cqw, 11px); letter-spacing: 1.6cqw; opacity: .75; }
-.arrival-title i::before, .arrival-title i::after { content: ''; width: 11cqw; height: 1px; background: currentColor; opacity: .6; }
-.arrival-hint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font: 9px var(--font-num); color: #8a7a52; animation: vy-pulse 2.4s ease-in-out infinite; pointer-events: none; }
 
 /* The archive binder under the Decoder (ui/binder.ts): black velvet, silver clasp; a tap opens it and turns the pages. */
 .binder { flex: 0 1 auto; min-height: 84px; margin-top: 0; cursor: pointer; }

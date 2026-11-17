@@ -2,9 +2,9 @@
 // phase II (from phase I's boot: a tap enters phase II). A robot jellyfish ship (the Black siphon: an obsidian armoured bell with red lights and a dozen jointed
 // tentacles ending in probes) floats over a starfield. Drawn in SVG; the tentacles are redrawn every frame so each
 // joint follows the one above it. Its ≡ menu is phase I's (export, import or a restart). Dressed like the title screen
-// (src/shared/ui/title.ts): the name in neon Monoton at the same place and size, the night-violet sky, CRT scanlines
-// and the green "TAP TO ENTER" in the same dark box at the bottom, all in units of the title's pixel (`--px`).
+// (src/shared/ui/splash.ts, like phase I's "The arrival") over a night-violet sky.
 import './phase2.css';
+import { dressSplash } from '../../shared/ui/splash';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** Taps are ignored for the first second (so the tap that opened it does not close it), and the fades take FADE_MS. */
@@ -12,8 +12,6 @@ const TAP_DELAY_MS = 1000;
 const FADE_MS = 600;
 const W = 240;
 const H = 400;
-/** The title screen's canvas width (its pixels): the splash's scanlines and box are sized in them. */
-const TITLE_PIXELS = 112;
 
 /** Obsidian plating, darkest edge to highlight (horizontal sheen across the bell and the rim). */
 const PLATE = ['#030304', '#23262c', '#5a606b', '#2a2d34', '#050507'];
@@ -173,37 +171,22 @@ export function showVoyage(root: HTMLElement, openMenu: () => void, onEnter: () 
   const el = document.createElement('div');
   el.className = 'voyage';
   const { svg, stop } = shipScene('The voyage', false);
-  const div = (cls: string, text = '') => { const d = document.createElement('div'); d.className = cls; d.textContent = text; return d; };
-  const name = div('title-name lit voyage-name', 'THE VOYAGE');
-  const sub = div('voyage-sub', 'PHASE II');
-  const box = div('voyage-box');
-  box.append(div('voyage-hint', 'TAP TO ENTER'));
-  const lines = div('voyage-scan');
   const menu = document.createElement('button');
   menu.className = 'px-btn menu-btn voyage-menu';
   menu.title = 'Menu';
   menu.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
   menu.addEventListener('click', (e) => { e.stopPropagation(); openMenu(); });
-  el.append(svg, lines, name, sub, box, menu);
+  el.append(svg);
   root.append(el);
-  // Sized like the title screen: its pixel, and the name filling most of the width (once Monoton is in).
-  const fit = () => {
-    const w = el.clientWidth || window.innerWidth;
-    el.style.setProperty('--px', `${w / TITLE_PIXELS}px`);
-    name.style.fontSize = '40px';
-    name.style.fontSize = `${Math.min(64 * (w / 360), (40 * w * 0.88) / Math.max(1, name.offsetWidth))}px`;
-    sub.style.top = `${name.offsetTop + name.offsetHeight + 8}px`;
-  };
-  fit();
-  void document.fonts?.load('40px Monoton').then(fit, () => {});
-  window.addEventListener('resize', fit);
+  const dress = dressSplash(el, 'THE VOYAGE', 'PHASE II', 'TAP TO ENTER', '#ff4a5a');
+  el.append(menu);
   requestAnimationFrame(() => el.classList.add('in'));
   const shown = performance.now();
   el.addEventListener('click', () => {
     if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('leaving')) return;
     el.classList.add('leaving'); // (the ship fades out; the black stays)
     void onEnter().then(
-      () => setTimeout(() => { stop(); el.remove(); window.removeEventListener('resize', fit); }, FADE_MS), // (once phase II has faded in over it)
+      () => setTimeout(() => { stop(); el.remove(); dress.drop(); }, FADE_MS), // (once phase II has faded in over it)
       (e: unknown) => { console.error('Phase II could not start', e); el.classList.remove('leaving'); },
     );
   });

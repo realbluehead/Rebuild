@@ -18,14 +18,6 @@
 .voyage .vy-bob { animation: vy-bob 4s ease-in-out infinite; }
 .voyage .vy-pulse, .voyage .vy-blink { animation: vy-pulse 2.4s ease-in-out infinite; }
 .voyage .vy-beacon { animation: vy-beacon 1.6s steps(1) infinite; }
-.voyage-name { z-index: 1; }
-.voyage-name.lit { color: #ff4a5a; }
-.voyage-sub { position: absolute; left: 0; right: 0; text-align: center; font: calc(var(--px) * 2.4) var(--font-num); letter-spacing: calc(var(--px) * 1.2); color: #3ff0ff; text-shadow: 2px 2px 0 #2a0f45; pointer-events: none; }
-/* The title screen's CRT scanlines (a dark line every other pixel) and its dark box at the bottom with green text. */
-.voyage-scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(#00000026 0 var(--px), transparent var(--px) calc(var(--px) * 2)); }
-.voyage-box { position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); bottom: calc(var(--px) * 12); height: calc(var(--px) * 22); background: #000000aa; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.voyage-hint { font: calc(var(--px) * 3.4) var(--font-num); color: #7dff9a; animation: vy-tap 1s steps(1) infinite; }
-@keyframes vy-tap { 50% { opacity: 0; } }
 @keyframes vy-bob { 50% { transform: translateY(-5px); } }
 @keyframes vy-pulse { 50% { opacity: .3; } }
 @keyframes vy-beacon { 0%, 80% { opacity: 1; } 90% { opacity: .1; } }

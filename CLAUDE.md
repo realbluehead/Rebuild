@@ -18,7 +18,7 @@ Exploration idle with a **retro pixel** look, in two phases, each its own code:
   boot); if nothing loads, the title says so and a tap reloads.
 - `src/shared/`: what both phases use and that knows neither: `decimal.ts`, `format.ts`, `codec.ts` (export text),
   `keys.ts` (storage names main.ts or both phases need), `updates.ts` (new version offers), `ui/style.css` (base look; phase II re-themes it in its own css),
-  `ui/title.ts`, `ui/dom.ts` (`h`, `modal`, `confirmModal`, `textModal`), `ui/speed.ts` (the Speed ×N test button, one
+  `ui/title.ts`, `ui/splash.ts` (the phase splashes dressed like the title), `ui/dom.ts` (`h`, `modal`, `confirmModal`, `textModal`), `ui/speed.ts` (the Speed ×N test button, one
   setting for both phases).
 - `src/platform/`: everything that differs between web and Android (storage, background, local notifications, APK updates).
 - `src/saves.ts`: the one module that knows both phases' saves (import of either kind of exported text, restart = wipe both).
