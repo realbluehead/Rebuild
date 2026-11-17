@@ -4,8 +4,8 @@ import { COIL_MULT, DETECTOR_GOLD, DETECTOR_UPS, SIFT_EVERY, type DetectorUpId, 
 import { TERRAINS, ZOOMS } from '../content/world';
 import { STORMS } from '../content/weather';
 import { ROUTES, ROUTE_PACE_LEVEL, type RouteId } from '../content/routes';
-import { GOAL_TIERS, GOALS, type GoalId, type GoalReward } from '../content/goals';
-import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, canPrintNext, pageNeed, digCell, digPath, dugCells, isDug, canClaim, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, canCraft, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
+import { GOAL_TIERS, GOALS, type GoalReward } from '../content/goals';
+import { canBuildSection, libraryOpen, sectionBuilt, sectionHave, sectionLevelNeeded, partOffered, canBuyDetector, canBuyDetectorUp, detectorUpCost, detectorLevelNeeded, metalCollected, decodeTime, canPrintNext, pageNeed, digCell, digPath, dugCells, isDug, goalBonus, goalReached, goalTarget, goalValue, activeSector, canBuild, hasPart, roverIndex, roverLevelNeeded, canUnlockRoute, itemsCollected, routePace, canUpgradeRoute, libraryShare, loreFound, routeLevel, routeUpgradeCost, canBuy, costOf, detourPlan, explorerLevel, explorerXp, fleetSpeed, levelOn, levelOf, routeLevelNeeded, workLevelNeeded, upgradeGain, itemsInReach, nextWorkCost, explored as exploredCells, goldPerSec, isComplete, progress, revealed, stats, type Stats } from '../core/game';
 import { stormAt, stormFactor, stormName } from '../core/weather';
 import { fmt, fmtTime } from '../../shared/format';
 import type { Bot, GameState } from '../core/state';
@@ -30,9 +30,6 @@ export interface ViewActions {
   /** Sets the Hauler policy: how full a hold must be, and which rover it drives to first. */
   /** Builds the rover of kind `kind`. */
   build(kind: RoverKind): void;
-  /** Claims the next tier of goal `id`. */
-  claimGoal(id: GoalId): void;
-  craft(id: WorkId): void;
   /** Buys the Metal detector (I+D). */
   buyDetector(): void;
   /** Buys the next level of a Metal detector upgrade. */
@@ -51,6 +48,9 @@ export interface ViewActions {
 /** Sets text only if it changed (saves the browser work on every frame). */
 /** How often the panel under the map is refreshed (the map and top bar every frame). */
 const PANEL_MS = 100;
+/** Toasts in a queue: the longest one shows while others wait, and the pause between two, ms. */
+const TOAST_QUEUED_MS = 1800;
+const TOAST_GAP_MS = 250;
 const set = (el: HTMLElement, text: string) => { if (el.textContent !== text) el.textContent = text; };
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -323,7 +323,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const goalPicker = h('div', 'rover-pick');
   const goalTabBtns = (['goals', 'works'] as const).map((id) => {
     const btn = h('button', 'px-btn pick', id === 'goals' ? 'Milestones' : 'Works');
-    btn.addEventListener('click', () => { goalTab = id; const s = current; if (s) fillGoalTab(s); });
+    btn.addEventListener('click', () => { goalTab = id; fillGoalTab(); });
     goalPicker.append(btn);
     return btn;
   });
@@ -335,8 +335,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const pipEls = Array.from({ length: GOAL_TIERS }, () => pips.appendChild(h('i')));
     const eff = h('span', 'eff');
     const gain = h('span', 'gain');
-    const btn = h('button', 'px-btn buy');
-    btn.addEventListener('click', () => actions.claimGoal(g.id));
+    const btn = h('span', 'buy goal-mult'); // (tiers are claimed on their own: boot's autoUnlock)
     card.title = `${g.name}: ${g.what}. Each tier: ${g.rewardText} ×${g.mult}`;
     card.append(h('span', 'name', g.name), pips, eff, gain, btn);
     goalsTable.append(card);
@@ -521,9 +520,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     btn.addEventListener('mouseenter', () => showTip(btn, row.tip));
     btn.addEventListener('mouseleave', hideTip);
     btn.addEventListener('click', () => {
-      const s = current;
-      if (s && canCraft(s, world, wd.id)) actions.craft(wd.id);
-      else showTip(btn, row.tip, 2000);
+      showTip(btn, row.tip, 2000); // (works are made on their own: boot's autoUnlock)
     });
     card.title = `${wd.name}: each one ${wd.effect} ×${wd.bonus}`;
     card.append(h('span', 'name', wd.name), pips, next, gain, btn);
@@ -868,9 +865,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       }
       if (l === goalsList) {
         const keepGoal = goalTab;
-        for (const id of ['goals', 'works'] as const) { goalTab = id; fillGoalTab(s); goalsTall = Math.max(goalsTall, l.offsetHeight); }
+        for (const id of ['goals', 'works'] as const) { goalTab = id; fillGoalTab(); goalsTall = Math.max(goalsTall, l.offsetHeight); }
         goalTab = keepGoal;
-        fillGoalTab(s);
+        fillGoalTab();
         continue;
       }
       if (l !== list) { tallest = Math.max(tallest, l.offsetHeight); continue; }
@@ -891,13 +888,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     lists.forEach((l, q) => { l.hidden = was[q]; l.style.minHeight = l.style.maxHeight = `${l === goalsList ? goalsTall : tallest}px`; });
   }
 
-  /** Shows the picked sub-tab of Goals; the other one blinks when it has something to claim or make. */
-  function fillGoalTab(s: GameState) {
-    const alert = [GOALS.some((g) => canClaim(s, world, g.id)), WORKS.some((wd) => canCraft(s, world, wd.id))];
-    (['goals', 'works'] as const).forEach((id, q) => {
-      goalTabBtns[q].classList.toggle('on', id === goalTab);
-      goalTabBtns[q].classList.toggle('alert', alert[q]);
-    });
+  /** Shows the picked sub-tab of Goals. */
+  function fillGoalTab() {
+    (['goals', 'works'] as const).forEach((id, q) => goalTabBtns[q].classList.toggle('on', id === goalTab));
     goalsTable.hidden = goalTab !== 'goals';
     worksTable.hidden = goalTab !== 'works';
   }
@@ -1246,7 +1239,6 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   new ResizeObserver(() => map.resize()).observe(canvas);
 
   const n = totalCells(world);
-  let toastTimer = 0;
   let lastFrame = performance.now();
   /** Last state drawn (for map taps and the shelf). */
   let current: GameState | null = null;
@@ -1255,11 +1247,24 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   let panelAt = -Infinity;
   root.addEventListener('pointerup', () => { panelAt = -Infinity; }, true);
 
-  function showToast(text: string, ms = 2600) {
-    toast.textContent = text;
+  /** Messages wait their turn (several unlocks can land at once, e.g. after time away); while others wait, each
+   *  shows for at most `TOAST_QUEUED_MS`. */
+  const toasts: { text: string; ms: number }[] = [];
+  let toastBusy = false;
+  function nextToast() {
+    const t = toasts.shift();
+    toastBusy = !!t;
+    if (!t) return;
+    toast.textContent = t.text;
     toast.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => toast.classList.remove('show'), ms);
+    window.setTimeout(() => {
+      toast.classList.remove('show');
+      window.setTimeout(nextToast, TOAST_GAP_MS);
+    }, toasts.length ? Math.min(t.ms, TOAST_QUEUED_MS) : t.ms);
+  }
+  function showToast(text: string, ms = 2600) {
+    toasts.push({ text, ms });
+    if (!toastBusy) nextToast();
   }
 
   return {
@@ -1361,9 +1366,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         if (tipOwner === x.btn) { if (x.tip) set(tipEl, x.tip); else hideTip(); }
         x.btn.classList.toggle('plain', plain);
         x.bar.style.setProperty('--p', `${plain ? 0 : Math.min(100, (100 * have) / Math.max(1, price)).toFixed(0)}%`);
-        x.btn.classList.toggle('can', canCraft(s, world, x.wd.id));
       }
-      const ready = WORKS.some((wd) => canCraft(s, world, wd.id));
       const got = itemsCollected(s, world); // routes ask for items collected, they do not spend them
       const nextRoute = ROUTES.find((rd) => !s.routes.includes(rd.id));
       fillRD(s);
@@ -1430,14 +1433,12 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         set(c.eff, reached > got ? 'ready' : `${pct}%`);
         c.eff.title = reached >= GOAL_TIERS ? `${fmt(v)} ${c.g.what}` : `${fmt(Math.floor(v))}/${fmt(target)} ${c.g.what}`;
         set(c.gain, `${REWARD_SHORT[c.g.reward]} ×${fmt(goalBonus(s, c.g.reward))}`);
-        set(c.btn, canClaim(s, world, id) ? 'Claim' : got >= GOAL_TIERS ? 'Done' : `×${c.g.mult}`);
+        set(c.btn, got >= GOAL_TIERS ? 'Done' : `×${c.g.mult}`);
         c.btn.title = `Each tier: ${c.g.rewardText} ×${c.g.mult}`;
-        c.btn.classList.toggle('can', canClaim(s, world, id));
       }
       tabLibrary.hidden = !libraryOpen(s, world);
       tabLibrary.classList.toggle('alert', SECTIONS.some((d) => canBuildSection(s, world, d.id)));
-      tabGoals.classList.toggle('alert', ready || GOALS.some((g) => canClaim(s, world, g.id)));
-      fillGoalTab(s);
+      fillGoalTab();
       sizePanel(s);
     },
     /** Bluetreri from a revealed deposit, floating over the map. */

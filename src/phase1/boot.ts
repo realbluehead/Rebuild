@@ -7,10 +7,10 @@ import { D } from '../shared/decimal';
 import { fmt } from '../shared/format';
 import { ZOOMS } from './content/world';
 import { routeById } from './content/routes';
-import { DETECTOR_UPS } from './content/collection';
+import { DETECTOR_UPS, WORKS } from './content/collection';
 import { sectionById } from './content/library';
 import { kindById } from './content/upgrades';
-import { goalById } from './content/goals';
+import { GOALS } from './content/goals';
 import { applyOffline, type OfflineReport } from './save/offline';
 import { RateMeter } from './core/rate';
 import { loadGame, saveGame } from './save/persist';
@@ -28,6 +28,8 @@ import { loadWorld, type Loaded } from './load';
 const AUTOSAVE_MS = 30_000;
 /** If the tab was frozen for longer than this, it is treated as offline time. */
 const MAX_FRAME_SEC = 5;
+/** How often goals and works are checked to complete on their own, ms. */
+const UNLOCK_MS = 500;
 
 /** Whether the end-of-game message is still owed (and marks it as shown). Kept per device, not in the save. */
 function finishedUnseen(s: GameState): boolean {
@@ -95,12 +97,6 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
       view.bought(id, levelOn(state, id, bot), before, stats(state, bot), bot.kind);
       void save();
     },
-    claimGoal: (id) => {
-      if (!claimGoal(state, world, id)) return;
-      const g = goalById(id);
-      view.toast(`${g.name} tier ${state.goals[id]}\n${g.rewardText} ×${fmt(goalBonus(state, g.reward))}`);
-      void save();
-    },
     digOrder: (order) => {
       if (state.digPick === order) return;
       chooseDig(state, world, order);
@@ -126,12 +122,6 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     chooseRoute: (id) => {
       if (!chooseRoute(state, id)) return;
       view.toast(`Scout · ${routeById(id)!.name}\nfrom the next ring`);
-      void save();
-    },
-    craft: (id) => {
-      const before = stats(state);
-      if (!craft(state, world, id)) return;
-      view.crafted(id, state.works[id], before, stats(state));
       void save();
     },
     buyDetector: () => {
@@ -198,6 +188,28 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     }
   };
 
+  /** Goals and works complete on their own (no button; between ticks, like a tap, so `tick` stays exact): a message
+   *  for each tier claimed and each work made (the view queues them). */
+  const autoUnlock = () => {
+    let any = false;
+    for (const g of GOALS) {
+      while (claimGoal(state, world, g.id)) {
+        any = true;
+        view.toast(`${g.name} tier ${state.goals[g.id]}\n${g.rewardText} ×${fmt(goalBonus(state, g.reward))}`);
+      }
+    }
+    for (const wd of WORKS) {
+      for (;;) {
+        const before = stats(state);
+        if (!craft(state, world, wd.id)) break;
+        any = true;
+        view.crafted(wd.id, state.works[wd.id], before, stats(state));
+      }
+    }
+    if (any) void save();
+  };
+  let unlockAt = -Infinity;
+
   // Fixed-step loop: the simulation advances at TICK_RATE regardless of the fps.
   let last = performance.now();
   let acc = 0;
@@ -232,6 +244,7 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
         acc -= step;
       }
     }
+    if (now - unlockAt >= UNLOCK_MS) { unlockAt = now; autoUnlock(); }
     view.render(state, now);
     requestAnimationFrame(frame);
   };
