@@ -3,7 +3,7 @@ import sample from '../dev/sample-legacy.json';
 import { advance } from './advance';
 import { ATTRS, attrFactor, expeditionLevel, xpToNext } from './attributes';
 import {
-  aimFirst, bluetreriOffer, BLUETRERI_METAL, buildModule, buyBluetreri, canHurry, hurry, hurryCost, canLaunchShip, canSpendPoint, canTarget, launchShip, pointsFree, rates, research, setTarget, spendPoint,
+  aimFirst, bluetreriOffer, canQueue, canQueueResearch, plannedLevel, QUEUE_MAX, queueWaits, BLUETRERI_METAL, buildModule, buyBluetreri, canHurry, hurry, hurryCost, canLaunchShip, canSpendPoint, canTarget, launchShip, pointsFree, rates, research, setTarget, spendPoint,
   systemsOf, tripSeconds, upgrade, upgradeCost, worksLeft,
 } from './economy';
 import type { Legacy } from './legacy';
@@ -77,7 +77,6 @@ describe('the economy', () => {
     const cost = upgradeCost(s, 'refinery')!;
     expect(upgrade(s, 'refinery')).toBe(true);
     expect(s.metal.toNumber()).toBe(legacy.metal - cost);
-    expect(upgrade(s, 'power')).toBe(false); // (one crew)
     expect(s.levels.refinery).toBe(1);
     advance(s, 1000);
     expect(s.levels.refinery).toBe(2);
@@ -157,6 +156,73 @@ describe('the economy', () => {
     expect(s.samples[sys.kind]).toBeGreaterThan(0);
   });
 
+  it("the crew's queue: jobs start in order as the crew comes free, each paid for when it starts", () => {
+    const s = fresh();
+    expect(upgrade(s, 'refinery')).toBe(true);
+    const before = s.metal.toNumber();
+    expect(upgrade(s, 'power')).toBe(true); // (queued: nothing paid yet)
+    expect(upgrade(s, 'power')).toBe(true);
+    expect(s.metal.toNumber()).toBe(before);
+    expect(s.queue).toEqual([{ kind: 'building', id: 'power' }, { kind: 'building', id: 'power' }]);
+    expect(plannedLevel(s, 'power')).toBe(3);
+    advance(s, 3600);
+    expect(s.levels).toMatchObject({ refinery: 2, power: 3 });
+    expect(s.queue).toEqual([]);
+    expect(s.crew).toBeNull();
+  });
+
+  it('the queue holds QUEUE_MAX jobs, never past the top level, a module once', () => {
+    const s = fresh();
+    expect(canQueue(s, { kind: 'building', id: 'power' })).toBe(false); // (the crew is free: build it now)
+    upgrade(s, 'antenna');
+    s.levels.power = 19;
+    expect(upgrade(s, 'power')).toBe(true);
+    expect(canQueue(s, { kind: 'building', id: 'power' })).toBe(false); // (20 is the top)
+    expect(buildModule(s, MODULES[0].id)).toBe(true);
+    expect(canQueue(s, { kind: 'module', id: MODULES[0].id })).toBe(false);
+    while (s.queue.length < QUEUE_MAX) upgrade(s, 'telescope');
+    expect(upgrade(s, 'refinery')).toBe(false);
+  });
+
+  it('a queued job waits for its metal and starts the moment there is enough, the same in one step or many', () => {
+    const make = () => {
+      const s = fresh();
+      upgrade(s, 'refinery');
+      upgrade(s, 'telescope');
+      s.metal = D(0);
+      return s;
+    };
+    const a = make(), b = make();
+    advance(a, 2000);
+    expect(queueWaits(a)).toBeNull();
+    for (let k = 0; k < 2000; k++) advance(b, 1);
+    expect(b.levels).toEqual(a.levels);
+    expect(b.crew?.left ?? 0).toBeCloseTo(a.crew?.left ?? 0, 3);
+    expect(b.metal.toNumber()).toBeCloseTo(a.metal.toNumber(), 3);
+    const s = make();
+    advance(s, s.crew!.left / rates(s).build + 1);
+    expect(s.crew).toBeNull(); // (done, and the telescope's metal not there yet)
+    expect(queueWaits(s)).toBe('metal');
+    advance(s, 3600);
+    expect(s.levels.telescope).toBe(2);
+  });
+
+  it("the lab's queue starts the next research once the lab is free and the data is in", () => {
+    const s = fresh();
+    s.data = 6;
+    expect(research(s, 'sweepers')).toBe(true);
+    expect(canQueueResearch(s, 'sweepers')).toBe(false);
+    expect(research(s, 'heatpipes')).toBe(true); // (queued)
+    expect(s.labQueue).toEqual(['heatpipes']);
+    advance(s, 3600);
+    expect(s.researched).toContain('sweepers');
+    expect(s.labQueue).toEqual(['heatpipes']); // (no data for it yet)
+    s.data = 6;
+    advance(s, 3600);
+    expect(s.researched).toContain('heatpipes');
+    expect(s.labQueue).toEqual([]);
+  });
+
   it('is exact: one long step ends where many short ones do', () => {
     const make = () => {
       const s = fresh();
@@ -197,5 +263,24 @@ describe('the economy', () => {
     const before = plain(s);
     advance(s, 3600);
     expect(plain(s)).toEqual(before);
+  });
+});
+
+describe('the report on coming back', () => {
+  it('sums up what changed while away: levels, research, studies, samples', async () => {
+    const { snap, awaySummary } = await import('./away');
+    const s = fresh();
+    setTarget(s, 0);
+    upgrade(s, 'refinery');
+    upgrade(s, 'power');
+    s.data = 6;
+    research(s, 'sweepers');
+    const before = snap(s);
+    advance(s, 4 * 3600);
+    const a = awaySummary(before, s);
+    expect(a.levels).toEqual(expect.arrayContaining([['refinery', 1, 2], ['power', 1, 2]]));
+    expect(a.researched).toEqual(['sweepers']);
+    expect(a.studies).toBeGreaterThan(0);
+    expect(a.metal).toBeGreaterThan(0);
   });
 });

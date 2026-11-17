@@ -67,6 +67,12 @@
 .p2 .speed-ctl { z-index: 3; top: 8px; bottom: auto; }
 .p2-hurry { flex-wrap: nowrap; white-space: nowrap; flex: none; }
 .p2-hurry[hidden] { display: none; }
+/* The crew's and the lab's queues (ui/buildings.ts queueList, ui/lab.ts). */
+.p2-queue { margin: 6px 0; padding: 6px 8px; font-size: 13px; }
+.p2-queue[hidden] { display: none; }
+.p2-queue-head { opacity: .7; font-size: 12px; margin-bottom: 4px; }
+.p2-queue-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.p2-queue-row .p2-small { padding: 0 6px; min-width: 0; }
 .p2-news { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; z-index: 3; }
 .p2-news-line { padding: 5px 8px; font: 8px/1.4 var(--font-num); color: var(--gold); animation: p2-news-in .3s steps(3); transition: opacity .6s steps(4); }
 .p2-news-line.out { opacity: 0; }

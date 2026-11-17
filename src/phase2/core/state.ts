@@ -8,6 +8,8 @@ import { PER_RING, RINGS, SAMPLE_KINDS, type SampleKind } from './starmap';
 
 /** What the crew is building: a building's next level or a ship module. */
 export type Job = { kind: 'building'; id: BuildingId; left: number } | { kind: 'module'; id: string; left: number };
+/** A job waiting in the crew's queue (paid for when it starts). */
+export type QueuedJob = { kind: 'building'; id: BuildingId } | { kind: 'module'; id: string };
 
 export interface Probe {
   /** The system it went to, and seconds until it is back. */
@@ -30,8 +32,12 @@ export interface P2State {
   levels: Record<BuildingId, number>;
   /** The crew's job (one at a time), `left` in seconds of work. */
   crew: Job | null;
+  /** What the crew builds next, in order (each started, and paid for, as soon as the crew is free and it is affordable). */
+  queue: QueuedJob[];
   /** Research under way (one at a time), `left` in seconds of work, and research done. */
   lab: { id: string; left: number } | null;
+  /** Research to start next, in order (like `queue`). */
+  labQueue: string[];
   researched: string[];
   /** Ship modules built. */
   modules: string[];
@@ -68,7 +74,9 @@ export function newPhase2(legacy: Legacy): P2State {
     playTime: 0,
     levels: startLevels(),
     crew: null,
+    queue: [],
     lab: null,
+    labQueue: [],
     researched: [],
     modules: [],
     fuel: tanksL(1), // (the last barrels from phase I: the first probes can fly at once)

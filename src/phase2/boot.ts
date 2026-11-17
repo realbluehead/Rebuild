@@ -8,9 +8,11 @@ import { onBackground } from '../platform';
 import { WORLD_CACHE_DB } from '../shared/keys';
 import type { Legacy } from './core/legacy';
 import { advance } from './core/advance';
+import { awaySummary, AWAY_MIN_SEC, snap } from './core/away';
 import { aimFirst } from './core/economy';
 import { newPhase2, type P2State } from './core/state';
 import { loadPhase2, savePhase2, serializeP2 } from './save';
+import { showAway } from './ui/away';
 import { showPhase2 } from './ui/phase2';
 
 const AUTOSAVE_MS = 30_000;
@@ -25,8 +27,14 @@ function dropPhase1Map(): void {
 export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolean> {
   const loaded = await loadPhase2();
   if (!loaded) return false;
-  // Time away runs exactly (core/advance.ts).
-  advance(loaded.state, Math.max(0, (Date.now() - loaded.savedAt) / 1000));
+  // Time away runs exactly (core/advance.ts); after a while away, a report once the title is tapped.
+  const away = Math.max(0, (Date.now() - loaded.savedAt) / 1000);
+  const before = snap(loaded.state);
+  advance(loaded.state, away);
+  if (away >= AWAY_MIN_SEC) {
+    const summary = awaySummary(before, loaded.state);
+    void title.ready().then(() => showAway(away, summary, loaded.state));
+  }
   title.progress(1);
   dropPhase1Map();
   // New versions: after the title tap and whenever the game comes back to the foreground (entered from phase I, its
@@ -98,7 +106,10 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
   const frame = (now: number) => {
     const dt = (now - last) / 1000;
     last = now;
-    advance(state, dt * screen.speed()); // (a frozen or hidden tab catches up on the next frame)
+    // (a frozen or hidden tab catches up on the next frame, with the report if it was long)
+    const long = dt >= AWAY_MIN_SEC ? snap(state) : null;
+    advance(state, dt * screen.speed());
+    if (long) showAway(dt, awaySummary(long, state), state);
     screen.render(state);
     requestAnimationFrame(frame);
   };

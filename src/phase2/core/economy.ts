@@ -10,7 +10,7 @@ import {
 import { LAUNCH_FUEL, MODULES, moduleById, type Module } from './ship';
 import { techById, TECHS, tierOpensAt, TIER_DATA, TIER_ITEM_SHARE, TIER_SECONDS, type Effect, type Tech } from './research';
 import { destinationOf, SAMPLES_FROM, starMap, STUDIES, type SampleKind, type StarSystem } from './starmap';
-import type { P2State } from './state';
+import type { P2State, QueuedJob } from './state';
 
 /** Metal the rovers salvage, a minute each (at full power, before research). */
 export const METAL_PER_ROVER = 80;
@@ -144,9 +144,12 @@ export function probeBack(s: P2State, sys: StarSystem, r: Rates): void {
 
 /** Metal for `id`'s next level, or null at its top. */
 export function upgradeCost(s: P2State, id: BuildingId): number | null {
-  const next = s.levels[id] + 1;
-  if (next > TOP_LEVEL[id]) return null;
-  return Math.ceil(upgradeMetal(id, next) / rates(s).cost);
+  return levelCost(s, id, s.levels[id] + 1);
+}
+/** Metal for `id`'s level `level` at today's rates, or null past its top. */
+export function levelCost(s: P2State, id: BuildingId, level: number): number | null {
+  if (level > TOP_LEVEL[id]) return null;
+  return Math.ceil(upgradeMetal(id, level) / rates(s).cost);
 }
 export const crewFree = (s: P2State): boolean => s.crew === null && s.launchedAt === null;
 export function canUpgrade(s: P2State, id: BuildingId): boolean {
@@ -154,6 +157,7 @@ export function canUpgrade(s: P2State, id: BuildingId): boolean {
   return c !== null && crewFree(s) && s.metal.gte(c);
 }
 export function upgrade(s: P2State, id: BuildingId): boolean {
+  if (!crewFree(s)) return queueJob(s, { kind: 'building', id });
   if (!canUpgrade(s, id)) return false;
   s.metal = s.metal.sub(upgradeCost(s, id)!);
   s.crew = { kind: 'building', id, left: upgradeSeconds(id, s.levels[id] + 1) };
@@ -198,7 +202,89 @@ export function hurry(s: P2State): boolean {
   if (!canHurry(s)) return false;
   s.metal = s.metal.sub(hurryCost(s)!);
   jobDone(s);
+  startQueued(s);
   return true;
+}
+
+// ---- The queues: the crew's and the lab's next jobs, started (and paid for) in order as soon as each can be
+
+/** How many jobs each queue holds. */
+export const QUEUE_MAX = 5;
+/** The level building `id` will have once the crew's job and the queue are done. */
+export function plannedLevel(s: P2State, id: BuildingId): number {
+  const busy = s.crew?.kind === 'building' && s.crew.id === id ? 1 : 0;
+  return s.levels[id] + busy + s.queue.filter((j) => j.kind === 'building' && j.id === id).length;
+}
+const planned = (s: P2State, j: QueuedJob): boolean =>
+  j.kind === 'building' ? false : (s.crew?.kind === 'module' && s.crew.id === j.id) || s.queue.some((q) => q.kind === 'module' && q.id === j.id);
+/** Whether `job` can join the crew's queue (the crew busy, room left, not past the top level, a module not yet planned). */
+export function canQueue(s: P2State, job: QueuedJob): boolean {
+  if (s.launchedAt !== null || crewFree(s) || s.queue.length >= QUEUE_MAX) return false;
+  if (job.kind === 'building') return plannedLevel(s, job.id) < TOP_LEVEL[job.id];
+  return !!moduleById(job.id) && !s.modules.includes(job.id) && !planned(s, job);
+}
+export function queueJob(s: P2State, job: QueuedJob): boolean {
+  if (!canQueue(s, job)) return false;
+  s.queue.push(job);
+  return true;
+}
+export function unqueue(s: P2State, k: number): void {
+  s.queue.splice(k, 1);
+}
+/** Why the queue's first job has not started: null when it can (or the queue is empty or the crew busy). */
+export function queueWaits(s: P2State): string | null {
+  const j = s.queue[0];
+  if (!j || !crewFree(s)) return null;
+  if (j.kind === 'building') return s.metal.lt(upgradeCost(s, j.id) ?? 0) ? 'metal' : null;
+  const m = moduleById(j.id)!;
+  if (s.metal.lt(moduleMetal(s, m))) return 'metal';
+  if (s.data < m.data) return 'data';
+  return Object.entries(m.samples).some(([k, n]) => s.samples[k as SampleKind] < (n ?? 0)) ? 'samples' : null;
+}
+/** Seconds of metal income until the queue's first job is affordable (when only metal is short), else Infinity. */
+export function queueMetalWait(s: P2State, r: Rates): number {
+  const j = s.queue[0];
+  if (!j || !crewFree(s) || r.metal <= 0) return Infinity;
+  const cost = j.kind === 'building' ? upgradeCost(s, j.id) : moduleMetal(s, moduleById(j.id)!);
+  if (cost === null) return 0;
+  if (j.kind === 'module') {
+    const m = moduleById(j.id)!;
+    if (s.data < m.data || Object.entries(m.samples).some(([k, n]) => s.samples[k as SampleKind] < (n ?? 0))) return Infinity;
+  }
+  const short = cost - metalNow(s);
+  return short <= 0 ? 0 : short / r.metal + 1e-6; // (a hair past, so rounding never leaves it a fraction short)
+}
+/** Starts the crew's next queued job if it is free and the job affordable (dropping jobs that no longer make sense). */
+export function startQueued(s: P2State): void {
+  while (crewFree(s) && s.queue.length) {
+    const j = s.queue[0];
+    const stale = j.kind === 'building' ? upgradeCost(s, j.id) === null : s.modules.includes(j.id);
+    if (stale) { s.queue.shift(); continue; }
+    const ok = j.kind === 'building' ? canUpgrade(s, j.id) && upgrade(s, j.id) : canBuildModule(s, j.id) && buildModule(s, j.id);
+    if (!ok) return;
+    s.queue.shift();
+  }
+}
+/** Whether research `id` can join the lab's queue (the lab busy, room left, not done or planned). */
+export function canQueueResearch(s: P2State, id: string): boolean {
+  return s.launchedAt === null && s.lab !== null && s.labQueue.length < QUEUE_MAX && !!techById(id)
+    && !s.researched.includes(id) && s.lab.id !== id && !s.labQueue.includes(id);
+}
+export function queueResearch(s: P2State, id: string): boolean {
+  if (!canQueueResearch(s, id)) return false;
+  s.labQueue.push(id);
+  return true;
+}
+export function unqueueResearch(s: P2State, k: number): void {
+  s.labQueue.splice(k, 1);
+}
+/** Starts the first queued research that can start, if the lab is free (dropping research already done). The first
+ *  that can, not only the head: one waiting for its tier to open would otherwise hold up the research that opens it. */
+export function startLabQueue(s: P2State): void {
+  s.labQueue = s.labQueue.filter((id) => !s.researched.includes(id) && !!techById(id));
+  if (s.lab || s.launchedAt !== null) return;
+  const k = s.labQueue.findIndex((id) => canResearch(s, id));
+  if (k >= 0 && research(s, s.labQueue[k])) s.labQueue.splice(k, 1);
 }
 
 // ---- Research
@@ -214,6 +300,7 @@ export function canResearch(s: P2State, id: string): boolean {
   return s.data >= c.data && s.items[t.item] >= c.items;
 }
 export function research(s: P2State, id: string): boolean {
+  if (s.lab) return queueResearch(s, id);
   if (!canResearch(s, id)) return false;
   const t = techById(id)!;
   const c = techCost(s, t);
@@ -234,6 +321,7 @@ export function canBuildModule(s: P2State, id: string): boolean {
   return Object.entries(m.samples).every(([k, n]) => s.samples[k as SampleKind] >= (n ?? 0));
 }
 export function buildModule(s: P2State, id: string): boolean {
+  if (!crewFree(s)) return queueJob(s, { kind: 'module', id });
   if (!canBuildModule(s, id)) return false;
   const m = moduleById(id)!;
   s.metal = s.metal.sub(moduleMetal(s, m));

@@ -32,7 +32,12 @@ start with `src/`.
   tower MW, refinery L/min, tanks L, telescope sight ly, antenna hearing ly and data factor, probe reach ly, launches an
   hour, speed ly/h, fuel a launch. An upgrade costs metal (`upgradeMetal`, ×`COST_GROWTH` 1.6 a level) and **crew**
   time (`upgradeSeconds`: 30 s for Lv 2, ×1.45 a level, so the first quarter hour is a build a minute and the late
-  levels take hours); **one crew** builds one thing at a time (building levels and ship modules). **Hurry**
+  levels take hours); **one crew** builds one thing at a time (building levels and ship modules). While it is busy,
+  jobs go into its **queue** (`queue`, `QUEUE_MAX` 5, `queueJob`/`canQueue`/`unqueue`, `plannedLevel`): started **in
+  order** and paid for only when each starts (`startQueued`, run by `advance` at every event; when only metal is short,
+  the moment it is affordable is an event too, `queueMetalWait`, so it stays exact). `upgrade`/`buildModule` queue by
+  themselves while the crew is busy. The lab has one too (`labQueue`, `queueResearch`, `startLabQueue`: the first queued
+  research that can start, so one waiting for its tier never holds up the research that opens it). **Hurry**
   (`hurry`, `hurryCost`) finishes the crew's job now for `HURRY_RATE` (2) seconds of the base's metal per second
   saved: always dearer than waiting, a way to trade metal for time while the crew is busy. Every building
   but the tower draws power (`demandMW`, a share of the tower's curve): short of power, metal, fuel and launches slow
@@ -79,7 +84,7 @@ start with `src/`.
   fails): if phase II needs something more from phase I, add a field to `Legacy` and fill it in `legacyOf` (a phase II
   save made before has it missing: give it a default in a migration).
 - `P2State` (`core/state.ts`): `legacy` (never changed), `metal` (phase II's currency, a Decimal), `bluetreri` (the
-  sump), `items` (brought over, to spend), `playTime`, and the economy: `levels`, `crew`, `lab`, `researched`,
+  sump), `items` (brought over, to spend), `playTime`, and the economy: `levels`, `crew`, `queue`, `lab`, `labQueue`, `researched`,
   `modules`, `fuel`, `data`, `samples`, `studies` (per system), `target`, `launchWait`, `probes` out, `xp`, `attrs`,
   `launchedAt`. Times are countdowns in seconds. `newPhase2(legacy)` starts with phase I's resources at hand.
 
@@ -88,7 +93,8 @@ start with `src/`.
   `phase: 2` so exported texts tell the phases apart (`isPhase2Save`). Reading one back checks every field (`cleanLegacy`,
   `cleanItems` in core/legacy.ts, `amount` in src/shared/decimal.ts): a broken field gets a harmless default, only a
   save with no version or no legacy seed is refused. Writes and wipes go through one queue, in the order asked (an
-  overlapping save could undo a wipe). v2 added the economy (v1 → v2: every building at level 1, the sump filled). The menu's Import locks saving before it writes (and unlocks if it fails). **If `P2State` changes: bump the version, add the
+  overlapping save could undo a wipe). v2 added the economy (v1 → v2: every building at level 1, the sump filled); v3
+  the crew's and the lab's queues (empty). The menu's Import locks saving before it writes (and unlocks if it fails). **If `P2State` changes: bump the version, add the
   migration and a test** (`save.test.ts`).
 - Once this save exists, src/main.ts boots straight into phase II (`boot` here; if it cannot be read, phase I boots):
   none of phase I's code, save or map is loaded (check the network list when touching boot or imports), and phase I's
@@ -108,6 +114,10 @@ start with `src/`.
   II's chunk, with three.js, loads meanwhile) saves the new phase II and fades its screen in over the black; only then
   does the splash go, so nothing of phase I shows in between. Phase I's loop and saving stop. (`?phase2` covers phase
   I's view in black, `.p2-cover`, for the same reason.)
+- **Coming back** (`core/away.ts` `snap`/`awaySummary`, `ui/away.ts` `showAway`): after `AWAY_MIN_SEC` (10 min) or more
+  away (on boot, once the title is tapped; or a frame that long, a hidden tab), "While you were away": metal and data
+  (net), levels, modules and research done, studies, samples, expedition levels, and what the crew and the lab are
+  doing now (or that they stand idle).
 - `boot.ts`: `run` mounts the screen, runs the frame loop (`advance` by each frame's time; on boot, by the time away since the save), autosaves every
   30 s and on going to the background, and owns the ≡ menu. New versions (`offerUpdates`): booted straight into phase II
   (and in the `/phase2` preview), it checks after the title tap and each time the game comes back to the foreground;
@@ -136,7 +146,10 @@ start with `src/`.
   - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
     picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
     level reached; the crew's button (next level: metal, crew time), a note (crew busy, short of metal, top level) and, while the crew
-    is busy, Hurry (`hurryButton`, also on the Ship tab); the Fuel tab adds the sump (`sumpRow`: what is left, red when
+    is busy, Hurry (`hurryButton`, also on the Ship tab); with the crew busy the button queues the level after what is
+    planned ("Queue Lv N"), and the queue shows under it (`queueList`, also on the Ship tab: each job with ✕, and what
+    the first waits for); the Ship tab's module buttons and the Lab's research buttons queue the same way (Queue /
+    Queued; the Lab lists its queue under its card); the Fuel tab adds the sump (`sumpRow`: what is left, red when
     empty, and Buy once it holds under two tank farms; the Fuel tab blinks, the top bar's fuel turns red and a news
     line says so when it runs dry);
     the Probes tab adds the launches (`launchRow`: where they go, and Stop launches / Resume launches at the last

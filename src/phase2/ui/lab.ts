@@ -2,7 +2,7 @@
 // it costs (data and a share of the pages, notes or photos brought over) and a button. A tier opens once enough
 // research is done.
 import { h } from '../../shared/ui/dom';
-import { canResearch, rates, research, techCost, tierOpen } from '../core/economy';
+import { canQueueResearch, canResearch, QUEUE_MAX, rates, research, techCost, tierOpen, unqueueResearch } from '../core/economy';
 import { techById, TECHS, TIER_SECONDS, TIERS, tierOpensAt } from '../core/research';
 import { bar, enable, fill, flag, num, set, time, type Ctx, type Tab } from './panel';
 
@@ -15,6 +15,8 @@ export function labTab(ctx: Ctx): Tab {
   const progress = bar();
   const left = h('div', 'p2-note');
   card.append(now, progress.el, left);
+  // The lab's queue: research started in order once the lab is free (and the data is in), each with ✕.
+  const queue = h('div', 'px-box p2-queue');
   const table = h('div', 'part-table px-box p2-table p2-lab');
   const rows = TECHS.map((t) => {
     const row = h('div', 'part-row');
@@ -26,7 +28,7 @@ export function labTab(ctx: Ctx): Tab {
   });
   const heads = Array.from({ length: TIERS }, () => h('div', 'part-row head p2-tier'));
   for (let k = 0; k < TIERS; k++) table.append(heads[k], ...rows.filter((r) => r.t.tier === k + 1).map((r) => r.row));
-  list.append(card, table);
+  list.append(card, queue, table);
 
   /** The research the list was last scrolled to ('' = scroll again: the tab was just opened). */
   let scrolledTo = '';
@@ -47,6 +49,21 @@ export function labTab(ctx: Ctx): Tab {
         fill(progress.fill, 0);
         set(left, `${s.researched.length}/${TECHS.length} done · data ${num(s.data)}`);
       }
+      queue.hidden = s.labQueue.length === 0;
+      const qk = `${s.labQueue.join()}|${Math.floor(s.data)}|${!!lab}|${s.researched.length}`;
+      if (queue.dataset.k !== qk) {
+        queue.dataset.k = qk;
+        queue.replaceChildren(h('div', 'p2-queue-head', `Queue ${s.labQueue.length}/${QUEUE_MAX} · started in order, paid when each starts`), ...s.labQueue.map((id, k) => {
+          const t = techById(id)!;
+          const row = h('div', 'p2-queue-row');
+          const x = h('button', 'px-btn p2-small', '✕');
+          x.title = 'Remove from the queue';
+          x.addEventListener('click', () => { unqueueResearch(ctx.s, k); ctx.changed(); });
+          const waits = lab ? '' : !tierOpen(s, t.tier) ? ' · its tier is locked' : s.data < techCost(s, t).data ? ' · waiting for data' : ' · short of items';
+          row.append(h('span', '', `${k + 1}. ${t.name}${waits}`), x);
+          return row;
+        }));
+      }
       for (let k = 0; k < TIERS; k++) {
         const open = tierOpen(s, k + 1);
         set(heads[k], open ? `Tier ${k + 1}` : `Tier ${k + 1} · opens after ${tierOpensAt(k + 1)} research (${s.researched.length} done)`);
@@ -58,8 +75,10 @@ export function labTab(ctx: Ctx): Tab {
         flag(row, 'done', done);
         flag(row, 'locked', !open && !done);
         set(cost, done ? t.note : `${t.note} · ${num(c.data)} data${c.items ? ` · ${num(c.items)} ${ITEM_NAME[t.item]}` : ''} · ${time(TIER_SECONDS[t.tier - 1] / r.research)}`);
-        enable(go, canResearch(s, t.id));
-        set(go, done ? 'Done' : lab?.id === t.id ? 'Running' : !open ? '🔒' : 'Research');
+        const queued = s.labQueue.includes(t.id);
+        // The lab free: research it now; busy: queue it (even a locked tier's: it starts once the tier opens).
+        enable(go, lab ? canQueueResearch(s, t.id) : canResearch(s, t.id));
+        set(go, done ? 'Done' : lab?.id === t.id ? 'Running' : queued ? 'Queued' : lab ? 'Queue' : !open ? '🔒' : 'Research');
       }
       // Always scrolled to what is next to research (the first not done nor running), with its tier's heading above.
       const next = rows.find((x) => !s.researched.includes(x.t.id) && s.lab?.id !== x.t.id) ?? rows.find((x) => s.lab?.id === x.t.id);

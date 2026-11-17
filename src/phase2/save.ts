@@ -4,19 +4,21 @@
 // v2: the economy (core/economy.ts): building levels, the crew's and the lab's jobs, research, ship modules, fuel, data,
 //     samples, star system studies, the probes' target and those out, XP and attribute points, the launch; the bluetreri
 //     is the siphon's sump (all phase I brought up).
+// v3: the crew's and the lab's queues (`queue`, `labQueue`), empty in older saves.
 import { amount, Decimal } from '../shared/decimal';
 import { noAttrs, type Attr } from './core/attributes';
 import { BUILDING_IDS, tanksL, TOP_LEVEL, type BuildingId } from './core/curves';
+import { QUEUE_MAX } from './core/economy';
 import { techById } from './core/research';
 import { moduleById } from './core/ship';
 import { SAMPLE_KINDS, STUDIES, type SampleKind } from './core/starmap';
-import { SYSTEMS, type Job, type Probe } from './core/state';
+import { SYSTEMS, type Job, type Probe, type QueuedJob } from './core/state';
 import { PHASE2_BACKUP_KEY, PHASE2_KEY } from '../shared/keys';
 import { store } from '../platform';
 import { cleanItems, cleanLegacy, type Legacy, type LegacyItem } from './core/legacy';
 import type { P2State } from './core/state';
 
-export const P2_SAVE_VERSION = 2;
+export const P2_SAVE_VERSION = 3;
 
 /** JSON shape: Decimals as text. `phase` tells it apart from a phase I save (exported texts can be either). */
 export interface P2SaveData {
@@ -31,7 +33,9 @@ export interface P2SaveData {
   playTime: number;
   levels: Record<BuildingId, number>;
   crew: Job | null;
+  queue: QueuedJob[];
   lab: { id: string; left: number } | null;
+  labQueue: string[];
   researched: string[];
   modules: string[];
   fuel: number;
@@ -55,6 +59,8 @@ const MIGRATIONS: Record<number, (d: RawP2) => RawP2> = {
     const total = (d.legacy as { totalBluetreri?: unknown } | null)?.totalBluetreri;
     return { ...d, bluetreri: Decimal.max(amount(d.bluetreri), amount(total)).toString(), fuel: tanksL(1) };
   },
+  // v2 -> v3: the queues start empty.
+  2: (d) => ({ ...d, queue: [], labQueue: [] }),
 };
 
 export const isPhase2Save = (raw: unknown): raw is RawP2 =>
@@ -72,7 +78,9 @@ export function serializeP2(s: P2State, now: number): P2SaveData {
     playTime: s.playTime,
     levels: { ...s.levels },
     crew: s.crew && { ...s.crew },
+    queue: s.queue.map((j) => ({ ...j })),
     lab: s.lab && { ...s.lab },
+    labQueue: [...s.labQueue],
     researched: [...s.researched],
     modules: [...s.modules],
     fuel: s.fuel,
@@ -124,7 +132,10 @@ export function deserializeP2(raw: unknown): { state: P2State; savedAt: number }
       playTime: fin(data.playTime),
       levels: Object.fromEntries(BUILDING_IDS.map((id) => [id, Math.max(1, Math.min(TOP_LEVEL[id], whole(levels[id])))])) as Record<BuildingId, number>,
       crew: cleanJob(data.crew),
+      queue: (Array.isArray(data.queue) ? data.queue : []).map(cleanJob).filter((j): j is Job => j !== null).slice(0, QUEUE_MAX)
+        .map((j) => ({ kind: j.kind, id: j.id }) as QueuedJob),
       lab: typeof lab.id === 'string' && techById(lab.id) ? { id: lab.id, left: fin(lab.left) } : null,
+      labQueue: ids(data.labQueue, (id) => !!techById(id)).slice(0, QUEUE_MAX),
       researched: ids(data.researched, (id) => !!techById(id)),
       modules: ids(data.modules, (id) => !!moduleById(id)),
       fuel: fin(data.fuel),

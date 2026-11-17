@@ -53,6 +53,19 @@ describe('phase II save', () => {
     expect(state).toMatchObject({ ...newPhase2(legacy), metal: state.metal, bluetreri: state.bluetreri, playTime: 3600 });
   });
 
+  it('migrates a v2 save: the queues start empty, and keeps them once saved', () => {
+    const v2 = { ...serializeP2(newPhase2(legacy), 1), v: 2 } as Record<string, unknown>;
+    delete v2.queue; delete v2.labQueue;
+    const { state } = deserializeP2(JSON.parse(JSON.stringify(v2)));
+    expect(state.queue).toEqual([]);
+    expect(state.labQueue).toEqual([]);
+    state.queue = [{ kind: 'building', id: 'power' }, { kind: 'module', id: 'frame' }];
+    state.labQueue = ['heatpipes'];
+    const back = deserializeP2(JSON.parse(JSON.stringify(serializeP2(state, 2)))).state;
+    expect(back.queue).toEqual(state.queue);
+    expect(back.labQueue).toEqual(['heatpipes']);
+  });
+
   it('tells phase I saves apart and refuses them', () => {
     const phase1 = { v: 25, savedAt: 1, seed: 7 };
     expect(isPhase2Save(phase1)).toBe(false);

@@ -1,7 +1,7 @@
 // Time in phase II, exact for any step: between events every rate is constant (core/economy.ts), so the state moves
 // on in straight lines from one event to the next (a build or research done, a probe back, a launch, the tanks full,
 // the sump empty). Playing, reloading after a day away or stepping a second at a time all end the same.
-import { canTarget, jobDone, metalNow, probeBack, rates, researchDone, setMetal, systemsOf, tripSeconds, FUEL_PER_BLUETRERI } from './economy';
+import { canTarget, jobDone, metalNow, probeBack, queueMetalWait, rates, researchDone, setMetal, startLabQueue, startQueued, systemsOf, tripSeconds, FUEL_PER_BLUETRERI } from './economy';
 import type { P2State } from './state';
 import { D } from '../../shared/decimal';
 
@@ -13,6 +13,9 @@ export function advance(s: P2State, dt: number): number {
   let left = Math.max(0, dt);
   let events = 0;
   for (let guard = 0; left > 0 && s.launchedAt === null && guard < 1e7; guard++) {
+    // The queues start what they can now (a job done, a probe back with data, the metal for the next job).
+    startQueued(s);
+    startLabQueue(s);
     const r = rates(s);
     const sump = s.bluetreri.toNumber();
     const filling = s.fuel < r.capacity - EPS && sump > 0 ? r.fuel : 0;
@@ -20,6 +23,7 @@ export function advance(s: P2State, dt: number): number {
     let t = left;
     if (s.crew) t = Math.min(t, s.crew.left / r.build);
     if (s.lab) t = Math.min(t, s.lab.left / r.research);
+    t = Math.min(t, queueMetalWait(s, r));
     for (const p of s.probes) t = Math.min(t, p.left);
     if (filling > 0) {
       t = Math.min(t, (r.capacity - s.fuel) / filling, (sump * FUEL_PER_BLUETRERI) / filling);
@@ -61,5 +65,7 @@ export function advance(s: P2State, dt: number): number {
       events++;
     }
   }
+  startQueued(s);
+  startLabQueue(s);
   return events;
 }

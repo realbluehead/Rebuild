@@ -3,10 +3,10 @@
 // that ends phase II.
 import { fmt } from '../../shared/format';
 import { confirmModal, h } from '../../shared/ui/dom';
-import { buildModule, canBuildModule, canLaunchShip, destinationKnown, launchShip, moduleMetal, rates } from '../core/economy';
+import { buildModule, canBuildModule, canLaunchShip, canQueue, crewFree, destinationKnown, launchShip, moduleMetal, rates } from '../core/economy';
 import { LAUNCH_FUEL, MODULES } from '../core/ship';
 import { destinationOf, STUDIES, type SampleKind } from '../core/starmap';
-import { crewText, hurryButton } from './buildings';
+import { crewText, hurryButton, queueList } from './buildings';
 import { DOCK_PLOT } from './desert';
 import { enable, flag, num, part, set, time, type Ctx, type Tab } from './panel';
 
@@ -20,6 +20,7 @@ export function shipTab(ctx: Ctx): Tab {
   launch.addEventListener('click', () => confirmModal('Launch the ship? This ends phase II.', 'Launch', () => { if (launchShip(ctx.s)) ctx.changed(); }));
   const crew = h('div', 'p2-note');
   const rush = hurryButton(ctx);
+  const queue = queueList(ctx);
   const act = h('div', 'p2-act');
   act.append(crew, rush.el);
   const table = h('div', 'part-table px-box p2-table p2-ship');
@@ -34,7 +35,7 @@ export function shipTab(ctx: Ctx): Tab {
     table.append(row);
     return { m, row, cost, go };
   });
-  list.append(card, act, table);
+  list.append(card, act, queue.el, table);
 
   return {
     label: 'Ship',
@@ -56,6 +57,8 @@ export function shipTab(ctx: Ctx): Tab {
       const busy = crewText(s);
       set(crew, busy ? `Crew: ${busy}` : 'The crew is free.');
       rush.update(s);
+      queue.update(s);
+      const free = crewFree(s);
       for (const { m, row, cost, go } of rows) {
         const done = s.modules.includes(m.id);
         const building = s.crew?.kind === 'module' && s.crew.id === m.id;
@@ -70,8 +73,10 @@ export function shipTab(ctx: Ctx): Tab {
             h('span', 'cost-part', time(m.seconds / r.build)),
           ]));
         }
-        enable(go, canBuildModule(s, m.id));
-        set(go, done ? 'Built' : building ? 'Building' : 'Build');
+        const queued = s.queue.some((j) => j.kind === 'module' && j.id === m.id);
+        // The crew free: build it now; busy: queue it (paid when it starts).
+        enable(go, free ? canBuildModule(s, m.id) : canQueue(s, { kind: 'module', id: m.id }));
+        set(go, done ? 'Built' : building ? 'Building' : queued ? 'Queued' : free ? 'Build' : 'Queue');
       }
     },
   };

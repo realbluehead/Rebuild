@@ -5,7 +5,10 @@ import { h } from '../../shared/ui/dom';
 import { fmt } from '../../shared/format';
 import { ANTENNA } from '../core/antenna';
 import { upgradeSeconds, type BuildingId } from '../core/curves';
-import { BLUETRERI_METAL, bluetreriOffer, buyBluetreri, canHurry, canUpgrade, hurry, hurryCost, rates, setTarget, systemsOf, upgrade, upgradeCost } from '../core/economy';
+import {
+  BLUETRERI_METAL, bluetreriOffer, buyBluetreri, canHurry, canQueue, canUpgrade, crewFree, hurry, hurryCost, levelCost, plannedLevel, QUEUE_MAX, queueWaits,
+  rates, setTarget, systemsOf, unqueue, upgrade, upgradeCost,
+} from '../core/economy';
 import { specAt, type Facility } from '../core/facility';
 import { POWER } from '../core/power';
 import { PROBES } from '../core/probes';
@@ -94,6 +97,39 @@ export function crewText(s: P2State): string | null {
   return `${what} · ${time(j.left / rates(s).build)}`;
 }
 
+/** A queued job's name ("Power Lv 4", a module's). */
+function queuedName(s: P2State, k: number): string {
+  const j = s.queue[k];
+  if (j.kind === 'module') return moduleById(j.id)?.name ?? '?';
+  const before = s.queue.slice(0, k + 1).filter((q) => q.kind === 'building' && q.id === j.id).length;
+  const busy = s.crew?.kind === 'building' && s.crew.id === j.id ? 1 : 0;
+  return `${BUILDINGS.find((b) => b.id === j.id)!.tab} Lv ${s.levels[j.id] + busy + before}`;
+}
+const WAITS = { metal: 'waiting for metal', data: 'waiting for data', samples: 'waiting for samples' } as const;
+
+/** The crew's queue: each job in order with ✕ to drop it, and what the first waits for (on the building and Ship tabs). */
+export function queueList(ctx: Ctx): { el: HTMLElement; update(s: P2State): void } {
+  const el = h('div', 'px-box p2-queue');
+  return {
+    el,
+    update(s) {
+      el.hidden = s.queue.length === 0;
+      const wait = queueWaits(s);
+      const key = `${s.queue.map((j) => j.kind + j.id).join()}|${s.crew?.kind}${s.crew?.id}|${wait}|${Object.values(s.levels).join()}`;
+      if (el.dataset.k === key) return;
+      el.dataset.k = key;
+      el.replaceChildren(h('div', 'p2-queue-head', `Queue ${s.queue.length}/${QUEUE_MAX} · started in order, paid when each starts`), ...s.queue.map((_, k) => {
+        const row = h('div', 'p2-queue-row');
+        const x = h('button', 'px-btn p2-small', '✕');
+        x.title = 'Remove from the queue';
+        x.addEventListener('click', () => { unqueue(ctx.s, k); ctx.changed(); });
+        row.append(h('span', '', `${k + 1}. ${queuedName(s, k)}${k === 0 && wait ? ` · ${WAITS[wait as keyof typeof WAITS]}` : ''}`), x);
+        return row;
+      }));
+    },
+  };
+}
+
 /** "Hurry ⊙ cost": finishes the crew's job now for metal (core: `hurry`); hidden while the crew is free. */
 export function hurryButton(ctx: Ctx): { el: HTMLButtonElement; update(s: P2State): void } {
   const el = h('button', 'px-btn buy p2-go p2-hurry');
@@ -176,6 +212,7 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
   const go = h('button', 'px-btn buy p2-go');
   const note = h('div', 'p2-note');
   const rush = hurryButton(ctx);
+  const queue = queueList(ctx);
   act.append(go, note, rush.el);
   go.addEventListener('click', () => { if (upgrade(ctx.s, b.id)) ctx.changed(); });
   const table = h('div', 'part-table px-box p2-table tele-table');
@@ -192,7 +229,7 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
   // The refinery's tab: the sump (phase I's bluetreri) and, once it runs low, bluetreri bought with metal. The probe
   // hangar's: its launches, on or off.
   const sump = b.id === 'refinery' ? sumpRow(ctx) : b.id === 'probes' ? launchRow(ctx, desert) : null;
-  list.append(card, act, ...(sump ? [sump.el] : []), table);
+  list.append(card, act, queue.el, ...(sump ? [sump.el] : []), table);
 
   let shown = 0;
   /** The card, the rows and the 3D building at the level reached. */
@@ -213,13 +250,18 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
       if (level !== shown) rebuild(level);
       const cost = upgradeCost(s, b.id);
       const building = s.crew?.kind === 'building' && s.crew.id === b.id;
-      enable(go, canUpgrade(s, b.id));
-      const label = cost === null ? 'Top level' : `Build Lv ${level + 1}`;
-      if (go.dataset.k !== `${label}|${cost}`) {
-        go.dataset.k = `${label}|${cost}`;
+      // The crew free: build the next level now; busy: queue the level after what is planned (paid when it starts).
+      const free = crewFree(s);
+      const nextLv = free ? level + 1 : plannedLevel(s, b.id) + 1;
+      const nextCost = levelCost(s, b.id, nextLv);
+      enable(go, free ? canUpgrade(s, b.id) : canQueue(s, { kind: 'building', id: b.id }));
+      const label = nextCost === null ? (cost === null ? 'Top level' : 'All levels queued') : `${free ? 'Build' : 'Queue'} Lv ${nextLv}`;
+      if (go.dataset.k !== `${label}|${nextCost}`) {
+        go.dataset.k = `${label}|${nextCost}`;
         go.replaceChildren(label);
-        if (cost !== null) go.append(h('i', 'nut'), fmt(cost), ` · ${time(upgradeSeconds(b.id, level + 1) / rates(s).build)}`);
+        if (nextCost !== null) go.append(h('i', 'nut'), fmt(nextCost), ` · ${time(upgradeSeconds(b.id, nextLv) / rates(s).build)}`);
       }
+      queue.update(s);
       const busy = crewText(s);
       rush.update(s);
       sump?.update(s);
