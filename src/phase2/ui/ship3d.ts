@@ -1,15 +1,16 @@
 // The Black siphon in the dry dock, as far as it is built: a bell on four legs, its frame of ribs and hoops, the rim
 // lights and a mast with a blinking beacon from the start; each ship module (core/ship.ts) adds what it is:
 //   hull       obsidian plating closes the whole bell (before it, only a few plates on the frame), red windows
-//   tanks      four frosted cryogenic tanks slung under the bell
+//   tanks      four tall frosted cryogenic tanks hung outside the rim, between the legs
 //   life       a green-lit greenhouse dome on top
-//   engines    three plasma nozzles under the bell, blue at their mouths
+//   engines    four big plasma nozzles hanging under the bell, glowing blue at their mouths
 //   nav        a taller mast with a dish and a ring of sensors
 //   cryo       a band of cyan windows round the bell (the sleepers)
 //   shield     a faint violet ring round the bell
-//   core       the bluetreri core glowing under the bell; the beacon turns blue
+//   core       the bluetreri core glowing under the bell; the rim lights and the beacon turn blue
+// (what hangs under the bell sits low enough to show between the legs from the game's camera)
 // Built round the origin with the sand at y = 0; the beacon is `userData.live` (it blinks) and `userData.beacon`.
-import { BoxGeometry, ConeGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, TorusGeometry, Vector3 } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, TorusGeometry, Vector3 } from 'three';
 import { glow, lambert, OBSIDIAN, RED, STEEL } from './kit3d';
 import { metalTexture, repeated, textured } from './textures';
 
@@ -56,9 +57,10 @@ export function buildShip(modules: readonly string[]): Group {
   rim.rotation.x = Math.PI / 2;
   bell.add(rim);
   const red = glow(RED);
+  const rimLight = has('core') ? glow('#6ab8ff') : red;
   for (let k = 0; k < 16; k++) {
     const a = (k / 16) * Math.PI * 2;
-    const light = new Mesh(new BoxGeometry(0.6, 0.5, 0.6), red);
+    const light = new Mesh(new BoxGeometry(0.6, 0.5, 0.6), rimLight);
     light.position.set(Math.cos(a) * (R + 1.2), 0, Math.sin(a) * (R + 1.2));
     bell.add(light);
   }
@@ -72,12 +74,18 @@ export function buildShip(modules: readonly string[]): Group {
   }
   if (has('tanks')) {
     const frost = textured('#cfe0ea', metalTexture(0.1));
-    for (const [x, z, a] of [[0, -3.2, 0], [0, 3.2, 0], [-3.2, 0, Math.PI / 2], [3.2, 0, Math.PI / 2]]) {
-      const tank = new Mesh(new CylinderGeometry(1, 1, 5, 8), frost);
-      tank.rotation.set(Math.PI / 2, a, 0);
-      tank.rotation.order = 'YXZ';
-      tank.position.set(x, -1.3, z);
+    for (let k = 0; k < 4; k++) { // between the legs, outside the rim, hung from it
+      const a = (k / 4) * Math.PI * 2;
+      const x = Math.cos(a) * (R + 0.4), z = Math.sin(a) * (R + 0.4);
+      const tank = new Mesh(new CylinderGeometry(1.3, 1.3, 5, 10), frost);
+      tank.position.set(x, -3, z);
       bell.add(tank);
+      for (const y of [-1.2, -4.8]) {
+        const band = new Mesh(new TorusGeometry(1.35, 0.12, 4, 10), steel);
+        band.rotation.x = Math.PI / 2;
+        band.position.set(x, y, z);
+        bell.add(band);
+      }
     }
   }
   if (has('life')) {
@@ -91,15 +99,19 @@ export function buildShip(modules: readonly string[]): Group {
   }
   if (has('engines')) {
     const blue = glow('#6ab8ff');
-    for (let k = 0; k < 3; k++) {
-      const a = (k / 3) * Math.PI * 2 + 0.4;
-      const x = Math.cos(a) * 2.2, z = Math.sin(a) * 2.2;
-      const nozzle = new Mesh(new ConeGeometry(1.1, 2.4, 8, 1, true), lambert('#2a2c34'));
-      nozzle.position.set(x, -1.4, z);
+    const plume = glow('#6ab8ff', 0.4);
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      const x = Math.cos(a) * 3, z = Math.sin(a) * 3;
+      const nozzle = new Mesh(new CylinderGeometry(0.8, 1.6, 3.6, 10, 1, true), lambert('#2a2c34'));
+      nozzle.position.set(x, -2.2, z);
       bell.add(nozzle);
-      const mouth = new Mesh(new CylinderGeometry(1, 1, 0.2, 8), blue);
-      mouth.position.set(x, -2.6, z);
+      const mouth = new Mesh(new CylinderGeometry(1.5, 1.5, 0.25, 10), blue);
+      mouth.position.set(x, -4.1, z);
       bell.add(mouth);
+      const glowCone = new Mesh(new CylinderGeometry(1.4, 0.3, 2, 8), plume);
+      glowCone.position.set(x, -5.2, z);
+      bell.add(glowCone);
     }
   }
   const mastHigh = has('nav') ? 7 : 4;
@@ -132,11 +144,11 @@ export function buildShip(modules: readonly string[]): Group {
     bell.add(shield);
   }
   if (has('core')) {
-    const core = new Mesh(new SphereGeometry(1.6, 10, 6), glow('#3a7cff'));
-    core.position.y = -1.6;
+    const core = new Mesh(new SphereGeometry(2, 10, 6), glow('#3a7cff'));
+    core.position.y = -6.6;
     bell.add(core);
-    const halo = new Mesh(new SphereGeometry(2.4, 10, 6), glow('#3a7cff', 0.3));
-    halo.position.y = -1.6;
+    const halo = new Mesh(new SphereGeometry(3, 10, 6), glow('#3a7cff', 0.3));
+    halo.position.y = -6.6;
     bell.add(halo);
   }
   const beacon = new Mesh(new SphereGeometry(0.5, 6, 4), glow(has('core') ? '#6ab8ff' : RED));
