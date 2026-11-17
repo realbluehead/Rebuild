@@ -2,7 +2,7 @@
 // Times are countdowns in seconds (nothing depends on the clock): core/advance.ts moves them on.
 import { D, Decimal } from '../../shared/decimal';
 import { noAttrs, type Attr } from './attributes';
-import { BUILDING_IDS, type BuildingId } from './curves';
+import { BUILDING_IDS, tanksL, type BuildingId } from './curves';
 import type { Legacy, LegacyItem } from './legacy';
 import { PER_RING, RINGS, SAMPLE_KINDS, type SampleKind } from './starmap';
 
@@ -57,7 +57,7 @@ export const noSamples = (): Record<SampleKind, number> => Object.fromEntries(SA
 export const startLevels = (): Record<BuildingId, number> => Object.fromEntries(BUILDING_IDS.map((id) => [id, 1])) as Record<BuildingId, number>;
 export const SYSTEMS = RINGS.length * PER_RING;
 
-/** Phase II's start: phase I's resources at hand, every building at level 1. */
+/** Phase II's start: phase I's resources at hand, every building at level 1, the barrels full. */
 export function newPhase2(legacy: Legacy): P2State {
   const sump = Decimal.max(D(legacy.bluetreri), D(legacy.totalBluetreri));
   return {
@@ -71,7 +71,7 @@ export function newPhase2(legacy: Legacy): P2State {
     lab: null,
     researched: [],
     modules: [],
-    fuel: 0,
+    fuel: tanksL(1), // (the last barrels from phase I: the first probes can fly at once)
     data: 0,
     samples: noSamples(),
     studies: new Array(SYSTEMS).fill(0),

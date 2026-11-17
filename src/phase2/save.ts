@@ -6,7 +6,7 @@
 //     is the siphon's sump (all phase I brought up).
 import { amount, Decimal } from '../shared/decimal';
 import { noAttrs, type Attr } from './core/attributes';
-import { BUILDING_IDS, TOP_LEVEL, type BuildingId } from './core/curves';
+import { BUILDING_IDS, tanksL, TOP_LEVEL, type BuildingId } from './core/curves';
 import { techById } from './core/research';
 import { moduleById } from './core/ship';
 import { SAMPLE_KINDS, STUDIES, type SampleKind } from './core/starmap';
@@ -49,10 +49,11 @@ export interface P2SaveData {
 type RawP2 = { phase: 2; v: number } & Record<string, unknown>;
 
 const MIGRATIONS: Record<number, (d: RawP2) => RawP2> = {
-  // v1 -> v2: the economy starts (every building at level 1, nothing under way); the sump holds all phase I brought up.
+  // v1 -> v2: the economy starts (every building at level 1, nothing under way, the barrels full); the sump holds all
+  // phase I brought up.
   1: (d) => {
     const total = (d.legacy as { totalBluetreri?: unknown } | null)?.totalBluetreri;
-    return { ...d, bluetreri: Decimal.max(amount(d.bluetreri), amount(total)).toString() };
+    return { ...d, bluetreri: Decimal.max(amount(d.bluetreri), amount(total)).toString(), fuel: tanksL(1) };
   },
 };
 

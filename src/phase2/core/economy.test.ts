@@ -87,6 +87,7 @@ describe('the economy', () => {
 
   it('the refinery fills the tanks up to their capacity, burning the sump', () => {
     const s = fresh();
+    s.fuel = 0;
     const r = rates(s);
     advance(s, 60);
     expect(s.fuel).toBeCloseTo(r.fuel * 60);

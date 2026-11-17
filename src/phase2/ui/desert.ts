@@ -453,7 +453,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     // The buildings' moving parts (`animated` in kit3d); with reduced motion they were posed once, at t = 0.
     if (!reduced) for (const parts of moving.values()) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
     for (const [k, l] of lamps.entries()) l.intensity = 260 + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 15);
-    renderer.render(scene, camera);
+    if (el.offsetParent !== null) renderer.render(scene, camera); // (not while hidden: the star map is shown)
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

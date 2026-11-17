@@ -85,3 +85,48 @@
 /* Six buildings: the tabs in two rows of three. */
 .p2 .tabs { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .p2 .tab { padding: 6px 2px; }
+/* Ten tabs (six buildings, the map, the lab, the team, the ship): two rows of five. */
+.p2 .tabs { grid-template-columns: repeat(5, 1fr); }
+.p2 .tab { font-size: 7px; padding: 6px 1px; }
+.p2-rate { margin-left: 6px; font-size: 13px; color: var(--muted); }
+.p2-res.short { color: var(--red); }
+/* The upgrade / action row under a card, its note, and the cards of the other tabs. */
+.p2-act { display: flex; align-items: center; gap: 8px; }
+.p2-act .p2-note { flex: 1; }
+.p2-go { font: 8px/1.3 var(--font-num); padding: 8px 10px; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.p2-small { font: 7px/1 var(--font-num); padding: 6px 8px; }
+.p2-note { font-size: 14px; color: var(--muted); }
+.p2-card { display: grid; gap: 5px; padding: 8px 10px; }
+.p2-name { font: 8px/1.4 var(--font-num); color: var(--text); }
+.p2-facts { display: grid; gap: 2px; font-size: 15px; color: var(--muted); }
+.p2-state { font: 7px/1 var(--font-num); color: var(--muted); text-align: right; }
+.tele-table .part-row.next .p2-state { color: var(--gold); }
+.p2 .part-row.locked { opacity: .45; }
+/* The star map (in the scene, in place of the desert). */
+.p2-map { position: absolute; inset: 0; background: #04050c; }
+.p2-map[hidden] { display: none; }
+.p2-map canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: manipulation; cursor: pointer; }
+.p2-systems .part-row, .p2-sys { --cols: minmax(0, 1fr) minmax(0, 1.4fr) 28px; width: 100%; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.p2-sys.on .name { color: var(--gold); }
+/* The lab, the team and the ship. */
+.p2-lab .part-row { --cols: 22px minmax(0, 0.9fr) minmax(0, 1.6fr) 70px; }
+.p2-lab .p2-tier { display: block; font: 7px/1.6 var(--font-num); color: var(--red); }
+.p2-lab .part-row.done .name, .p2-lab .part-row.done .eff { color: var(--muted); }
+.p2-team .part-row { --cols: 22px minmax(0, 1fr) 46px; align-items: center; }
+.p2-team .lvl { font: 10px/1 var(--font-num); color: var(--gold); text-align: center; }
+.p2-attr { display: grid; gap: 2px; min-width: 0; }
+.p2-attr .eff { white-space: normal; }
+.p2-pips { display: flex; flex-wrap: wrap; gap: 2px; }
+.p2-pips i { width: 7px; height: 7px; border: 1px solid var(--rivet); }
+.p2-pips i.used { background: var(--gold); border-color: var(--gold); }
+.p2-pips i.other { background: var(--hi); border-color: var(--hi); }
+.p2-pips i.ready { border-color: var(--gold); }
+.p2-pips i.locked { position: relative; border-color: #3a3e48; opacity: .6; }
+.p2-pips i.locked::after { content: ''; position: absolute; left: 1px; right: 1px; bottom: 0; height: 3px; background: #6a707c; }
+.p2-ship .part-row { --cols: minmax(0, 1fr) 64px; align-items: center; }
+.p2-cost { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.cost-part { color: var(--muted); }
+.cost-part.ok { color: var(--text); }
+.p2-ship .part-row.done .name { color: var(--muted); }
+.p2-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 7px; pointer-events: none; }
+.p2-legend .sight { color: #ffd23a; } .p2-legend .reach { color: #ff4a5a; } .p2-legend .hear { color: #78c8ff; }

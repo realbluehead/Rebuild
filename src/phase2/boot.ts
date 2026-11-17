@@ -88,7 +88,7 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
     m.addClose('Close');
   };
 
-  const screen = showPhase2(root, state, openMenu);
+  const screen = showPhase2(root, state, openMenu, () => void save());
   let last = performance.now();
   const frame = (now: number) => {
     const dt = (now - last) / 1000;

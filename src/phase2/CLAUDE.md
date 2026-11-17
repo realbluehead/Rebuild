@@ -36,7 +36,7 @@ start with `src/`.
   down by the share covered (`rates().power`).
 - **Resources**: metal (the currency; the rovers brought over salvage it, ×research, ×Strength, +4% per study of a
   system, +2% per building level, ×power); **bluetreri** in the siphon's sump (all phase I brought up: the larger of
-  `bluetreri`/`totalBluetreri`), refined 1:1 into **fuel**, held in the tanks (up to their capacity); **data** from
+  `bluetreri`/`totalBluetreri`), refined 1:1 into **fuel**, held in the tanks (up to their capacity; they start full, so the first probes fly at once); **data** from
   the probes; **samples** (5 kinds) from the probes; the **items** brought over (pages, notes, photos) for research.
 - **Star map** (`starmap.ts`, from the legacy's seed, never saved): 16 systems in 4 rings (4–7, 10–20, 25–45, 50–90
   ly), each with a star, a sample kind (all five within the first three rings) and one habitable far system (ring 4):
@@ -106,18 +106,36 @@ start with `src/`.
   `LEGACY=src/phase2/dev/sample-legacy.json npm run sim -- 24`), without phase I's code or any save read or written
   (`bootSample`).
 
-## Screen (`ui/phase2.ts`, `showPhase2` → `render(state)`)
-- Phase I's layout (top bar with metal scraps as the currency, the telescope's level and bar, and the ≡ menu; the 3D
-  desert in the middle with the selected area's plate; the tab panel below, about 3/7 of the height, its list scrolling)
-  re-themed by overriding the colour variables on `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css): obsidian
-  plates, steel rivets, red for lights, bars and the active tab, yellow for buttons you can press and the currency.
-- **One tab per building: Telescope / Power / Fuel / Tanks / Antenna / Probes** (two rows of three) (`BUILDINGS` in ui/phase2.ts: tab, plate name, plot,
-  facility, cost, 3D builder, optional card picture). Each tab: a card (the telescope adds what it sees, a small canvas:
-  a ringed planet among stars, sharper with the level, `drawView`) with the building's numbers (`stats`) and a bar
-  (`gauge`); **a simulation**: "Lv −"/"Lv +" and the next row's button step its level freely (nothing spent or saved,
-  costs shown are suggestions); its 20 upgrades as rows (Built / next / cost). Changing a level rebuilds that building
-  on its plot and glides the view there; opening a tab glides to its plot; tapping a building's plot opens its tab. The
-  top bar shows the open tab's level.
+## Screen (`ui/phase2.ts`, `showPhase2(root, state, openMenu, changed)` → `render(state)`)
+- Phase I's layout (top bar, the 3D desert in the middle with the selected area's plate, the tab panel below, its list
+  scrolling) re-themed by overriding the colour variables on `.p2` (`ui/phase2.css`, on top of src/shared/ui/style.css):
+  obsidian plates, steel rivets, red for lights, bars and the active tab, yellow for buttons you can press and the
+  currency. The top bar: metal and what it makes an hour; fuel/capacity, data, power (red when short); the expedition's
+  level, points to spend, what the crew is doing; the XP bar.
+- **Ten tabs** in two rows of five (`Tab` in `ui/panel.ts`: label, list, `update(s)`, optional plot, scene, `shown`).
+  `render` writes the metal every frame and refreshes every tab every `REFRESH_MS` (250 ms; helpers in panel.ts write
+  only what changed). Actions call core/economy.ts and then `ctx.changed()` (boot saves, the screen refreshes). The Team
+  and Lab tabs blink when something waits (a point to spend; research affordable with the lab free). Launching the
+  ship shows a message once.
+  - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
+    picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
+    level reached; the crew's button (next level: metal, crew time) and a note (crew busy, short of metal, top level);
+    the upgrades as rows (Start / Built / Next / Building). A new level rebuilds the building on its plot.
+  - **Map** (`ui/starmap.ts`): shows the star map in the scene in place of the desert (which stops rendering while
+    hidden): home, the rings (by the square root of the distance), dashed yellow what the telescope sees, red how far
+    probes reach, dotted blue what the antenna hears; the systems seen (grey until studied, then their star's colour;
+    the habitable one boxed in green once known), the target, probes out (yellow going, green coming back), and with
+    `HINT_SHEETS` (10) sheets of the planet's history a faint mark where the habitable system is. A tap picks a system:
+    its card (what the studies told, a probe's trip and data, why it cannot be targeted) and "Send probes here"; the
+    hangar line (target, probes out, next launch or the fuel it waits for) with "Stop launches"; the systems seen as
+    rows.
+  - **Lab** (`ui/lab.ts`): research under way (bar, time left), then all research by tier (locked tiers greyed, with
+    how many are needed), each with its effect, cost and time.
+  - **Team** (`ui/team.ts`): level and XP, points to spend, the six attributes (points, effect, factor, works left,
+    a pip per work of its kind: used, used by its pair, ready, locked) with "+1".
+  - **Ship** (`ui/ship.ts`, the dock's plot): what the launch still needs (a checklist) and the button (asks first),
+    the crew, the modules with each cost part shown met or not.
+- Tapping a building's plot (or the dock) opens its tab; opening such a tab glides the view to it.
 
 ## Facilities (`core/facility.ts`)
 - A building is a `Facility<S>`: `upgrades` (one per level: 20, or 15 for the antenna and probes; `maxLevel(f)`; part, name, note, `apply`), `base()`, `stats`,
