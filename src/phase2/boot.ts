@@ -42,7 +42,9 @@ export async function boot(app: HTMLElement, title: TitleScreen): Promise<boolea
 export async function bootSample(app: HTMLElement, title: TitleScreen): Promise<void> {
   const { default: sample } = await import('./dev/sample-legacy.json');
   title.progress(1);
-  run(app, newPhase2({ ...(sample as Legacy), at: Date.now() }), false);
+  // New versions too (nothing to save first: a preview).
+  const checkWeb = offerUpdates(title.ready(), () => Promise.resolve());
+  run(app, newPhase2({ ...(sample as Legacy), at: Date.now() }), false, checkWeb);
   app.append(title.el); // (on top until the player taps)
 }
 

@@ -41,7 +41,8 @@ export interface WebBuild { version: string; build: string }
 export async function checkWebUpdate(current = __APP_BUILD__): Promise<WebBuild | null> {
   if (isNative || current === 'dev') return null;
   try {
-    const res = await fetch(`${new URL('version.json', document.baseURI).href}?t=${Date.now()}`, { cache: 'no-store' });
+    // From the app's base, not the page: /phase2/ (or any deeper address) would look for it in the wrong folder.
+    const res = await fetch(`${new URL(`${import.meta.env.BASE_URL}version.json`, document.baseURI).href}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json();
     return typeof data?.build === 'string' && data.build !== current ? { version: String(data.version ?? ''), build: data.build } : null;

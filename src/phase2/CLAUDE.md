@@ -97,9 +97,10 @@ start with `src/`.
   does the splash go, so nothing of phase I shows in between. Phase I's loop and saving stop. (`?phase2` covers phase
   I's view in black, `.p2-cover`, for the same reason.)
 - `boot.ts`: `run` mounts the screen, runs the frame loop (`advance` by each frame's time; on boot, by the time away since the save), autosaves every
-  30 s and on going to the background, and owns the ≡ menu. New versions (`offerUpdates`): booted straight into phase II,
-  it checks after the title tap and each time the game comes back to the foreground; entered from phase I, phase I's
-  boot keeps doing it. `?phase2` in the address (on a phase I game) is a
+  30 s and on going to the background, and owns the ≡ menu. New versions (`offerUpdates`): booted straight into phase II
+  (and in the `/phase2` preview), it checks after the title tap and each time the game comes back to the foreground;
+  entered from phase I, phase I's boot keeps doing it (a build is offered once a session, whichever phase asks).
+  version.json is fetched from the app's base (`BASE_URL`), so `/phase2/` finds it too. `?phase2` in the address (on a phase I game) is a
   **preview**: phase II from the current game's legacy, nothing saved, no Import/Restart. `/phase2` at the end of the
   address (any origin, also on GitHub Pages: the build copies index.html to 404.html) boots straight into the same
   preview from a **sample legacy** (`dev/sample-legacy.json`, the end of a whole simulated game: regenerate it with

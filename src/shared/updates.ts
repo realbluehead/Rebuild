@@ -2,6 +2,10 @@
 import { checkForUpdate, checkWebUpdate, hardReload } from '../platform/update';
 import { h, modal } from './ui/dom';
 
+/** The newer web build already offered this session (by either phase's checker: phase I's keeps running after the
+ *  player enters phase II). */
+let offered = '';
+
 /** Checks for a new version once `ready` resolves (after the title tap). A newer web build is offered once per build and
  *  session; "Reload now" runs `saveFirst` and then reloads. Returns the web check, to run again whenever the game comes
  *  back to the foreground. */
@@ -14,7 +18,6 @@ export function offerUpdates(ready: Promise<unknown>, saveFirst: () => Promise<v
     m.addClose('Download', () => { location.href = u.apkUrl; });
     m.addClose('Later');
   });
-  let offered = '';
   const checkWeb = () => void checkWebUpdate().then((u) => {
     if (!u || u.build === offered) return;
     offered = u.build;

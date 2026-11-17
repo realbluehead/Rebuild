@@ -11,8 +11,9 @@ describe('isNewer', () => {
 });
 
 describe('checkWebUpdate', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
   const serve = (body: unknown, ok = true) => {
+    vi.stubEnv('BASE_URL', './'); // (local and Android builds; Pages builds use /<repo>/)
     vi.stubGlobal('document', { baseURI: 'https://example.test/Rebuild/' });
     const fetch = vi.fn(async () => ({ ok, json: async () => body }));
     vi.stubGlobal('fetch', fetch);
@@ -25,6 +26,14 @@ describe('checkWebUpdate', () => {
     const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toMatch(/^https:\/\/example\.test\/Rebuild\/version\.json\?t=\d+$/);
     expect(init.cache).toBe('no-store');
+  });
+
+  it('looks for version.json at the base of the app, also from a deeper address (/phase2/)', async () => {
+    const fetch = serve({ version: '0.1.0', build: 'b2' });
+    vi.stubEnv('BASE_URL', '/Rebuild/');
+    vi.stubGlobal('document', { baseURI: 'https://example.test/Rebuild/phase2/' });
+    await checkWebUpdate('b1');
+    expect((fetch.mock.calls[0] as unknown as [string])[0]).toMatch(/^https:\/\/example\.test\/Rebuild\/version\.json\?t=\d+$/);
   });
 
   it('stays quiet for the same build, the dev server, errors and odd files', async () => {
