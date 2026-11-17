@@ -5,7 +5,7 @@ import { h } from '../../shared/ui/dom';
 import { fmt } from '../../shared/format';
 import { ANTENNA } from '../core/antenna';
 import { upgradeSeconds, type BuildingId } from '../core/curves';
-import { BLUETRERI_METAL, bluetreriOffer, buyBluetreri, canHurry, canUpgrade, hurry, hurryCost, rates, upgrade, upgradeCost } from '../core/economy';
+import { BLUETRERI_METAL, bluetreriOffer, buyBluetreri, canHurry, canUpgrade, hurry, hurryCost, rates, setTarget, systemsOf, upgrade, upgradeCost } from '../core/economy';
 import { specAt, type Facility } from '../core/facility';
 import { POWER } from '../core/power';
 import { PROBES } from '../core/probes';
@@ -136,6 +136,32 @@ function sumpRow(ctx: Ctx): { el: HTMLElement; update(s: P2State): void } {
   };
 }
 
+/** The probe hangar's launches: what they do, and a switch to stop them (no target: no probe leaves, and the
+ *  launcher stands still) or resume them at the last target (else one is picked on the Map). */
+function launchRow(ctx: Ctx, desert: Desert): { el: HTMLElement; update(s: P2State): void } {
+  const el = h('div', 'p2-act');
+  const note = h('div', 'p2-note');
+  const btn = h('button', 'px-btn p2-small');
+  let last = ctx.s.target;
+  btn.addEventListener('click', () => {
+    if (ctx.s.target !== null) setTarget(ctx.s, null);
+    else if (last === null || !setTarget(ctx.s, last)) return;
+    ctx.changed();
+  });
+  el.append(note, btn);
+  return {
+    el,
+    update(s) {
+      if (s.target !== null) last = s.target;
+      const on = s.target !== null;
+      desert.still(PROBES_PLOT, !on);
+      set(note, on ? `Launching probes to ${systemsOf(s)[s.target!].name}.` : last !== null ? 'Launches stopped: no probe leaves.' : 'Launches stopped: pick a system on the Map to send probes.');
+      set(btn, on ? 'Stop launches' : 'Resume launches');
+      btn.hidden = !on && last === null;
+    },
+  };
+}
+
 /** The tab of building `b`. */
 export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: Desert): Tab {
   const list = h('div', 'list tele');
@@ -163,8 +189,9 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
     table.append(row);
     return { row, state };
   });
-  // The refinery's tab: the sump (phase I's bluetreri) and, once it runs low, bluetreri bought with metal.
-  const sump = b.id === 'refinery' ? sumpRow(ctx) : null;
+  // The refinery's tab: the sump (phase I's bluetreri) and, once it runs low, bluetreri bought with metal. The probe
+  // hangar's: its launches, on or off.
+  const sump = b.id === 'refinery' ? sumpRow(ctx) : b.id === 'probes' ? launchRow(ctx, desert) : null;
   list.append(card, act, ...(sump ? [sump.el] : []), table);
 
   let shown = 0;

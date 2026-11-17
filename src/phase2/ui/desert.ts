@@ -240,6 +240,8 @@ export interface Desert {
   setShip(modules: readonly string[]): void;
   /** Selects plot `k` (the view glides in to it; `onPlot` is not called). */
   select(k: number): void;
+  /** Holds plot `k`'s moving parts still in their rest pose (t = 0) while `on` (the hangar with launches stopped). */
+  still(k: number, on: boolean): void;
   stop(): void;
 }
 
@@ -270,6 +272,8 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   const buildings = new Map<number, Group>();
   /** Each building's animated parts. */
   const moving = new Map<number, Group[]>();
+  /** Plots whose moving parts are held at rest (`still`). */
+  const held = new Set<number>();
   const pools = new Map(BUILDING_PLOTS.map((k) => [k, Array.from({ length: LIGHTS_PER_BUILDING }, () => {
     const l = new PointLight('#ffffff', 0);
     scene.add(l);
@@ -379,7 +383,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     camera.updateMatrixWorld();
     if (beacon) beacon.visible = Math.floor(ms / 800) % 2 === 0;
     // The buildings' moving parts (`animated` in kit3d); with reduced motion they were posed once, at t = 0.
-    if (!reduced) for (const parts of moving.values()) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
+    if (!reduced) for (const [k, parts] of moving) if (!held.has(k)) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
     for (const [k, l] of lamps.entries()) l.intensity = LAMP_POWER + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 8);
     if (el.offsetParent !== null) renderer.render(scene, camera); // (not while hidden: the star map is shown)
     requestAnimationFrame(frame);
@@ -412,6 +416,10 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
       merged.traverse((o) => { if (o.userData.anim) parts.push(o as Group); });
       parts.forEach((o) => (o.userData.anim as Anim)(o, 0));
       moving.set(k, parts);
+    },
+    still(k, on) {
+      if (on === held.has(k)) return;
+      if (on) { held.add(k); for (const o of moving.get(k) ?? []) (o.userData.anim as Anim)(o, 0); } else held.delete(k);
     },
     setShip(modules) {
       if (ship) { scene.remove(ship); disposeGroup(ship); }

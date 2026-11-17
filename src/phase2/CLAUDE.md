@@ -136,6 +136,8 @@ start with `src/`.
     is busy, Hurry (`hurryButton`, also on the Ship tab); the Fuel tab adds the sump (`sumpRow`: what is left, red when
     empty, and Buy once it holds under two tank farms; the Fuel tab blinks, the top bar's fuel turns red and a news
     line says so when it runs dry);
+    the Probes tab adds the launches (`launchRow`: where they go, and Stop launches / Resume launches at the last
+    target; stopped, no probe leaves and the hangar's 3D stands still in its rest pose, `desert.still`);
     only two upgrade rows: the level reached (Now) and the next (Next / Building); the full list was long and said little. A new level rebuilds the building on its plot.
   - **Map** (`ui/starmap.ts`): shows the star map in the scene in place of the desert (which stops rendering while
     hidden): home, the rings (by the square root of the distance), dashed yellow what the telescope sees, red how far
