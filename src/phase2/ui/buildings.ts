@@ -197,11 +197,13 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
       rush.update(s);
       sump?.update(s);
       set(note, cost === null ? 'Every upgrade is built.' : building ? `Building… ${busy}` : busy ? `Crew busy: ${busy}` : s.metal.lt(cost) ? 'Not enough metal yet.' : 'The crew is free.');
+      // Only the upgrade reached and the next one (the full list was long and said little).
       rows.forEach(({ row, state }, k) => {
         const n = k + 1;
-        flag(row, 'done', n <= level);
+        row.style.display = n === level || n === level + 1 ? '' : 'none';
+        flag(row, 'done', n === level);
         flag(row, 'next', n === level + 1);
-        set(state, n <= level ? (n === 1 ? 'Start' : 'Built') : n === level + 1 ? (building ? 'Building' : 'Next') : '');
+        set(state, n === level ? 'Now' : n === level + 1 ? (building ? 'Building' : 'Next') : '');
       });
     },
   };

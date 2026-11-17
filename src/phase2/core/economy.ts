@@ -289,6 +289,8 @@ export function worksLeft(s: P2State, a: Attr): number {
   const used = ATTRS.filter((x) => x.work === work).reduce((n, x) => n + s.attrs[x.id], 0);
   return s.legacy.works[work] - used;
 }
+/** Whether a point could still be spent on anything: once every work brought over is used, levels give nothing more. */
+export const pointsUseful = (s: P2State): boolean => ATTRS.some((a) => worksLeft(s, a.id) > 0);
 export const canSpendPoint = (s: P2State, a: Attr): boolean => pointsFree(s) > 0 && worksLeft(s, a) > 0;
 export function spendPoint(s: P2State, a: Attr): boolean {
   if (!canSpendPoint(s, a)) return false;

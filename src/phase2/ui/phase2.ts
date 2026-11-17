@@ -8,7 +8,7 @@ import { fmt } from '../../shared/format';
 import { h, modal } from '../../shared/ui/dom';
 import { speedControl } from '../../shared/ui/speed';
 import { expeditionLevel } from '../core/attributes';
-import { bluetreriOffer, canResearch, pointsFree, rates, systemsOf } from '../core/economy';
+import { bluetreriOffer, canResearch, pointsFree, pointsUseful, rates, systemsOf } from '../core/economy';
 import { techById, TECHS } from '../core/research';
 import { moduleById } from '../core/ship';
 import { STUDIES } from '../core/starmap';
@@ -105,7 +105,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     if (now.researched > was.researched) tell(`Research done: ${techById(s.researched[s.researched.length - 1])?.name ?? '?'}`);
     if (now.modules > was.modules) tell(`Module built: ${moduleById(s.modules[s.modules.length - 1])?.name ?? '?'}`);
     if (now.dry && !was.dry) tell('The sump is empty: buy bluetreri in the Fuel tab');
-    if (now.level > was.level) tell(`Expedition Lv ${now.level} · a point to spend`);
+    if (now.level > was.level && pointsUseful(s)) tell(`Expedition Lv ${now.level} · a point to spend`);
     was = now;
   }
 
@@ -114,7 +114,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
   const tabs: Tab[] = [...BUILDINGS.map((b) => buildingTab(ctx, b, desert)), starMapTab(ctx), labTab(ctx), teamTab(ctx), shipTab(ctx)];
   /** Something waits on the player in these tabs (they blink when not open). */
   const alerts: Partial<Record<string, (st: P2State) => boolean>> = {
-    Team: (st) => pointsFree(st) > 0,
+    Team: (st) => pointsFree(st) > 0 && pointsUseful(st),
     Lab: (st) => !st.lab && TECHS.some((t) => canResearch(st, t.id)),
     Fuel: (st) => st.bluetreri.lt(1) && bluetreriOffer(st) > 0,
   };
@@ -143,16 +143,22 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
   panel.append(bar2, ...tabs.map((t) => t.list));
 
   let told = s.launchedAt !== null;
+  /** The modules the dock's ship shows (rebuilt when one is added). */
+  let shipShown = '';
   function refresh(): void {
     report();
+    const shipKey = s.modules.join() || '-';
+    if (shipKey !== shipShown) { shipShown = shipKey; desert.setShip([...s.modules]); }
     const r = rates(s);
     set(rate, `+${num(r.metal * 3600)}/h`);
     set(res, `Fuel ${num(s.fuel)}/${num(r.capacity)} L${s.bluetreri.lt(1) ? ' (no bluetreri)' : ''} · Data ${num(s.data)} · Power ${Math.round(r.power * 100)}%`);
     const e = expeditionLevel(s.xp);
     const free = pointsFree(s);
     const busy = crewText(s);
-    set(lvl, `Expedition Lv ${e.level}${free > 0 ? ` · ${free} point${free > 1 ? 's' : ''}!` : ''} · ${busy ? `crew: ${busy}` : 'crew free'}`);
-    fill(xp.fill, e.into / e.need);
+    // Once every work is used, levels give nothing: the level and its bar stop (full).
+    const useful = pointsUseful(s);
+    set(lvl, `${useful ? `Expedition Lv ${e.level}${free > 0 ? ` · ${free} point${free > 1 ? 's' : ''}!` : ''}` : 'Expedition: all works used'} · ${busy ? `crew: ${busy}` : 'crew free'}`);
+    fill(xp.fill, useful ? e.into / e.need : 1);
     flag(res, 'short', r.power < 1 || s.bluetreri.lt(1));
     set(plate, name(shownPlot));
     tabs.forEach((t, k) => {

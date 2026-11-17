@@ -126,7 +126,7 @@ start with `src/`.
   and Lab tabs blink when something waits (a point to spend; research affordable with the lab free). **News** on the
   scene (top left, `report` compares a `snapshot` each refresh): a probe back (system, data, study), a level built,
   research or a module done, an expedition level; up to `NEWS_MAX` lines, each fading after `NEWS_MS`. Launching the
-  ship shows a message once. A **Speed ×N** button on the scene (src/shared/ui/speed.ts, the same one and setting as
+  ship shows a message once. In dev, the `/phase2` preview's state is `window.__p2` (to poke in the console). A **Speed ×N** button on the scene (src/shared/ui/speed.ts, the same one and setting as
   phase I's) multiplies the time `advance` gets, for testing.
   - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
     picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
@@ -134,7 +134,7 @@ start with `src/`.
     is busy, Hurry (`hurryButton`, also on the Ship tab); the Fuel tab adds the sump (`sumpRow`: what is left, red when
     empty, and Buy once it holds under two tank farms; the Fuel tab blinks, the top bar's fuel turns red and a news
     line says so when it runs dry);
-    the upgrades as rows (Start / Built / Next / Building). A new level rebuilds the building on its plot.
+    only two upgrade rows: the level reached (Now) and the next (Next / Building); the full list was long and said little. A new level rebuilds the building on its plot.
   - **Map** (`ui/starmap.ts`): shows the star map in the scene in place of the desert (which stops rendering while
     hidden): home, the rings (by the square root of the distance), dashed yellow what the telescope sees, red how far
     probes reach, dotted blue what the antenna hears; the systems seen (grey until studied, then their star's colour;
@@ -146,9 +146,12 @@ start with `src/`.
     "Stop launches"; the systems seen as rows (distance and sample kind, ? until studied). The speed button sits top
     right of the scene (the legend is bottom left).
   - **Lab** (`ui/lab.ts`): research under way (bar, time left), then all research by tier (locked tiers greyed, with
-    how many are needed), each with its effect, cost and time.
+    how many are needed), each with its effect, cost and time. The list always scrolls to what is next to research
+    (on opening the tab and whenever it changes; its tier heading above when it starts a tier).
   - **Team** (`ui/team.ts`): level and XP, points to spend, the six attributes (points, effect, factor, works left,
-    a pip per work of its kind: used, used by its pair, ready, locked) with "+1".
+    a pip per work of its kind: used, used by its pair, ready, locked) with "+1". Once every work brought over is used
+    (`pointsUseful` false) levels give nothing: the Team tab no longer blinks, the level and XP bar stop ("all works
+    used", bar full) and level-up news stops.
   - **Ship** (`ui/ship.ts`, the dock's plot): what the launch still needs (a checklist) and the button (asks first),
     the crew, the modules with each cost part shown met or not.
 - Tapping a building's plot (or the dock) opens its tab; opening such a tab glides the view to it.
@@ -258,7 +261,9 @@ start with `src/`.
   press) picks the plot under it (raycast onto the ground plane), zooms back in and the view glides to it (`focus`);
   `onPlot` reports it and the plate shows its name. Zooming out drifts the view to the ground's centre (all of it fits
   at `ZOOM_MAX`) and outlines the selected plot in yellow. Selection is view state, not saved.
-- In the dock plot: the Black siphon's bell on four legs: obsidian plating over `plated` of it, the open sector (ribs
+- In the dock plot: the Black siphon (`ui/ship3d.ts`, `buildShip(modules)`, set by `setShip` whenever a module is
+  built; the comment at its top says what each module adds: plating, tanks, greenhouse, engines, dish, cryo windows,
+  shield ring, core). Before that it was a fixed mock-up: the bell on four legs: obsidian plating over `plated` of it, the open sector (ribs
   and hoops) facing the camera (angles as three's sphere `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a
   blinking beacon; seven tentacles (tubes, half sunk in the sand) with red probe tips; four floodlights (point lights,
   gently flickering). Textured like the telescope (plating with rivets and rust, plated segments along the tentacles)

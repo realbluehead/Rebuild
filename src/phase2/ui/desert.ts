@@ -9,12 +9,13 @@
 import {
   AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
-  TorusGeometry, TubeGeometry, Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
+  TubeGeometry, Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
 import { disposeGroup, type Anim } from './kit3d';
 import { buildGrid } from './grid3d';
 import { mergeByMaterial } from './merge3d';
+import { buildShip } from './ship3d';
 import { metalTexture, repeated, SAND_HIGH, SAND_LOW, SAND_TILE, sandTexture, shared, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
@@ -92,7 +93,7 @@ function duneHeight(x: number, z: number): number {
 const lambert = (c: string, flat = true) => shared(`dl|${c}|${flat}`, () => new MeshLambertMaterial({ color: c, flatShading: flat }));
 const glow = (c: string) => shared(`dg|${c}`, () => new MeshBasicMaterial({ color: c }));
 
-function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outline: LineLoop } {
+function buildScene(): { scene: Scene; lamps: PointLight[]; outline: LineLoop } {
   const scene = new Scene();
   scene.fog = new Fog('#141a34', 230, 380);
 
@@ -122,64 +123,11 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   slab.position.y = 0.75 - 2.5; // (just under the flattest sand, so they never fight for the same pixels)
   scene.add(slab);
 
-  // The bell on its four legs: half plated in obsidian, the rest still ribs and hoops.
-  const ship = new Group();
-  const base = 8;
-  ship.position.y = duneHeight(0, 0) + base;
-  for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-    const leg = new Mesh(new CylinderGeometry(0.35, 0.35, base + 2, 5), textured(STEEL, metalTexture(0.7)));
-    leg.position.set(x, -base / 2 - 1, z);
-    ship.add(leg);
-  }
-  const R = 8;
-  // Angles go round the bell as three.js's sphere does (phi: (-cos, 0, sin)). The camera looks from phi ~ 3π/4, so the
-  // open sector (still ribs) faces it and the plated one is behind.
-  const at = (phi: number, r: number, y: number) => new Vector3(-Math.cos(phi) * r, y, Math.sin(phi) * r);
-  const plateFrom = Math.PI, plated = Math.PI * 1.25; // the sector already plated
-  const openFrom = plateFrom + plated - Math.PI * 2, open = Math.PI * 2 - plated;
-  const shell = new Mesh(new SphereGeometry(R, 20, 8, plateFrom, plated, 0, Math.PI / 2), textured(OBSIDIAN, repeated(metalTexture(0.25), 6, 3), true));
-  ship.add(shell);
+  // The ship itself is set apart (`setShip`, ui/ship3d.ts: it grows with each module built).
   const steel = textured(STEEL, metalTexture(0.6));
-  for (let k = 0; k <= 6; k++) { // meridian ribs over the open sector
-    const rib = new Mesh(new TorusGeometry(R, 0.18, 4, 12, Math.PI / 2), steel);
-    rib.rotation.y = openFrom + (k / 6) * open + Math.PI; // (the torus arc starts at +x and rises to +y)
-    ship.add(rib);
-  }
-  for (const lat of [0.35, 0.75, 1.15]) { // hoops
-    const hoop = new Mesh(new TorusGeometry(R * Math.cos(lat), 0.15, 4, 24, open), steel);
-    hoop.rotation.x = Math.PI / 2; // lying flat: its arc runs (cos t, 0, sin t), t = π − phi
-    const turn = new Group();
-    turn.rotation.y = -(Math.PI - (openFrom + open)); // start the arc at the open sector's far end
-    turn.position.y = R * Math.sin(lat);
-    turn.add(hoop);
-    ship.add(turn);
-  }
-  const rim = new Mesh(new TorusGeometry(R + 0.6, 0.6, 5, 32), textured('#3a3e48', repeated(metalTexture(0.5), 1, 10)));
-  rim.rotation.x = Math.PI / 2;
-  ship.add(rim);
   const red = glow(RED);
-  for (let k = 0; k < 16; k++) { // lights on the rim, and windows on the plated side
-    const a = (k / 16) * Math.PI * 2;
-    const light = new Mesh(new BoxGeometry(0.6, 0.5, 0.6), red);
-    light.position.set(Math.cos(a) * (R + 1.2), 0, Math.sin(a) * (R + 1.2));
-    ship.add(light);
-  }
-  for (let k = 0; k < 7; k++) {
-    const y = 2.2;
-    const win = new Mesh(new BoxGeometry(0.7, 0.5, 0.7), red);
-    win.position.copy(at(plateFrom + ((k + 0.5) / 7) * plated, Math.sqrt(R * R - y * y) + 0.05, y));
-    ship.add(win);
-  }
-  const mast = new Mesh(new CylinderGeometry(0.15, 0.15, 4, 4), steel);
-  mast.position.y = R + 2;
-  ship.add(mast);
-  const beacon = new Mesh(new SphereGeometry(0.5, 6, 4), glow(RED));
-  beacon.position.y = R + 4.3;
-  beacon.userData.live = true; // (it blinks)
-  ship.add(beacon);
-  // The dock (ship, tentacles, clutter, floodlights) is drawn merged by material (merge3d.ts).
+  // The dock (tentacles, clutter, floodlights) is drawn merged by material (merge3d.ts).
   const dock = new Group();
-  dock.add(ship);
 
   // Tentacles laid out on the sand, each ending in a glowing probe.
   const tentacle = textured('#2c2f37', repeated(metalTexture(0.4), 10, 1), false, false); // (segment plates along it)
@@ -282,7 +230,7 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   const moon = new DirectionalLight('#b8c8f8', 2);
   moon.position.set(-30, 40, -10);
   scene.add(moon);
-  return { scene, beacon, lamps, outline };
+  return { scene, lamps, outline };
 }
 
 /** A night sky of pixel stars and a crescent moon, drawn once (the 3D view is transparent over it). */
@@ -306,6 +254,8 @@ export interface Desert {
   el: HTMLElement;
   /** Puts `building` (built round the origin) on plot `k`, replacing what stood there. */
   setBuilding(k: number, building: Group): void;
+  /** Puts the ship in the dock as far as `modules` (ids, core/ship.ts) have built it. */
+  setShip(modules: readonly string[]): void;
   /** Selects plot `k` (the view glides in to it; `onPlot` is not called). */
   select(k: number): void;
   stop(): void;
@@ -324,7 +274,10 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   renderer.setClearColor(new Color('#000000'), 0);
   el.append(renderer.domElement);
 
-  const { scene, beacon, lamps, outline } = buildScene();
+  const { scene, lamps, outline } = buildScene();
+  /** The ship in the dock (`setShip`) and its blinking beacon. */
+  let ship: Group | null = null;
+  let beacon: Object3D | null = null;
   const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 600);
   /** The plot selected, and the point the view centres on (easing to it; it drifts to the ground's centre as the view
    *  zooms out, so the whole ground fits). */
@@ -442,7 +395,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     const p = camera.position;
     p.addScaledVector(right, snap(p.dot(right))).addScaledVector(up, snap(p.dot(up)));
     camera.updateMatrixWorld();
-    beacon.visible = Math.floor(ms / 800) % 2 === 0;
+    if (beacon) beacon.visible = Math.floor(ms / 800) % 2 === 0;
     // The buildings' moving parts (`animated` in kit3d); with reduced motion they were posed once, at t = 0.
     if (!reduced) for (const parts of moving.values()) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
     for (const [k, l] of lamps.entries()) l.intensity = LAMP_POWER + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 8);
@@ -477,6 +430,14 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
       merged.traverse((o) => { if (o.userData.anim) parts.push(o as Group); });
       parts.forEach((o) => (o.userData.anim as Anim)(o, 0));
       moving.set(k, parts);
+    },
+    setShip(modules) {
+      if (ship) { scene.remove(ship); disposeGroup(ship); }
+      ship = mergeByMaterial(buildShip(modules));
+      ship.position.y = duneHeight(0, 0);
+      beacon = null;
+      ship.traverse((o) => { if (o.userData.beacon) beacon = o; });
+      scene.add(ship);
     },
     select(k) { plot = k; zoom = 1; spin = 0; },
     stop: () => { on = false; ro.disconnect(); renderer.dispose(); },

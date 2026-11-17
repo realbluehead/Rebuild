@@ -59,6 +59,7 @@ export function startPhase2(root: HTMLElement, legacy: Legacy, persist: boolean)
 
 function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: () => void = () => {}): void {
   aimFirst(state); // (the probes start at once on a new expedition, or one that never aimed them)
+  if (import.meta.env.DEV && !persist) (window as unknown as { __p2: P2State }).__p2 = state; // (the preview's state, to poke in the console)
   /** On restart or import this game must not be saved any more (pagehide would write it back). */
   let locked = !persist;
   const save = () => (locked ? Promise.resolve() : savePhase2(state));

@@ -28,9 +28,12 @@ export function labTab(ctx: Ctx): Tab {
   for (let k = 0; k < TIERS; k++) table.append(heads[k], ...rows.filter((r) => r.t.tier === k + 1).map((r) => r.row));
   list.append(card, table);
 
+  /** The research the list was last scrolled to ('' = scroll again: the tab was just opened). */
+  let scrolledTo = '';
   return {
     label: 'Lab',
     list,
+    shown() { scrolledTo = ''; },
     update(s) {
       const lab = s.lab;
       const r = rates(s);
@@ -57,6 +60,15 @@ export function labTab(ctx: Ctx): Tab {
         set(cost, done ? t.note : `${t.note} · ${num(c.data)} data${c.items ? ` · ${num(c.items)} ${ITEM_NAME[t.item]}` : ''} · ${time(TIER_SECONDS[t.tier - 1] / r.research)}`);
         enable(go, canResearch(s, t.id));
         set(go, done ? 'Done' : lab?.id === t.id ? 'Running' : !open ? '🔒' : 'Research');
+      }
+      // Always scrolled to what is next to research (the first not done nor running), with its tier's heading above.
+      const next = rows.find((x) => !s.researched.includes(x.t.id) && s.lab?.id !== x.t.id) ?? rows.find((x) => s.lab?.id === x.t.id);
+      if (next && !list.hidden && scrolledTo !== next.t.id) {
+        scrolledTo = next.t.id;
+        const head = heads[next.t.tier - 1];
+        const first = rows.find((x) => x.t.tier === next.t.tier)!;
+        const anchor = first === next ? head : next.row;
+        list.scrollTop += anchor.getBoundingClientRect().top - list.getBoundingClientRect().top - 4;
       }
     },
   };

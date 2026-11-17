@@ -3,7 +3,7 @@
 // pips: used, ready, or locked (padlock) until a level gives another point.
 import { h } from '../../shared/ui/dom';
 import { ATTRS, attrFactor, expeditionLevel } from '../core/attributes';
-import { canSpendPoint, pointsFree, spendPoint, worksLeft } from '../core/economy';
+import { canSpendPoint, pointsFree, pointsUseful, spendPoint, worksLeft } from '../core/economy';
 import type { LegacyWork } from '../core/legacy';
 import { bar, enable, fill, flag, num, set, type Ctx, type Tab } from './panel';
 
@@ -37,10 +37,11 @@ export function teamTab(ctx: Ctx): Tab {
     list,
     update(s) {
       const e = expeditionLevel(s.xp);
-      set(lv, `Expedition Lv ${e.level} · ${num(e.into)}/${num(e.need)} XP`);
-      fill(xp.fill, e.into / e.need);
-      const free = pointsFree(s);
-      set(points, free > 0
+      const useful = pointsUseful(s);
+      set(lv, useful ? `Expedition Lv ${e.level} · ${num(e.into)}/${num(e.need)} XP` : 'Expedition · every work used');
+      fill(xp.fill, useful ? e.into / e.need : 1);
+      const free = useful ? pointsFree(s) : 0;
+      set(points, !useful ? 'Every work brought from phase I is used: more levels give nothing.' : free > 0
         ? `${free} point${free > 1 ? 's' : ''} to spend: pick an attribute (for good)`
         : 'Each level gives a point to spend on an attribute, with one of phase I\'s works.');
       for (const { a, row, eff, pips, go, lvl } of rows) {
