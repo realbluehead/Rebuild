@@ -15,7 +15,7 @@ import {
 import { disposeGroup, type Anim } from './kit3d';
 import { buildGrid } from './grid3d';
 import { mergeByMaterial } from './merge3d';
-import { metalTexture, repeated, SAND_HIGH, SAND_LANE, SAND_LOW, SAND_TILE, sandTexture, shared, textured } from './textures';
+import { metalTexture, repeated, SAND_HIGH, SAND_LOW, SAND_TILE, sandTexture, shared, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
  *  mock-up). Plots are numbered row by row (0..GRID²-1); the middle one is the dry dock. */
@@ -43,6 +43,12 @@ const plotCentre = (k: number): Vector3 => CENTRES[k];
 /** Point lights a building may have (its brightest; the rest are dropped). Every building plot always holds this many,
  *  unlit when unused, so the scene's light count never changes (a change recompiles every shader: a hitch). */
 const LIGHTS_PER_BUILDING = 2;
+/** Point lights reach far and fade slowly (broad pools that run into each other, not a lit patch per plot), at a
+ *  share of the brightness their builders give them. */
+const LIGHT_REACH = 46;
+const LIGHT_DECAY = 1;
+const LIGHT_SHARE = 0.45;
+const LAMP_POWER = 140;
 const plotAt = (x: number, z: number) => {
   const c = (v: number) => Math.max(0, Math.min(GRID - 1, Math.floor((v + SIZE / 2) / PLOT)));
   return c(z) * GRID + c(x);
@@ -69,13 +75,16 @@ const STEEL = '#4a4e58';
 const RED = '#ff2a3a';
 const LAMP = '#fff2b0';
 
-/** Dune height at (x, z) (world units, 0.8 = the flat sand of the lanes between plots and round the slab's edge). */
+/** How far the cleared sand of a site eases back into the dunes (world units). */
+const CLEAR_EASE = 9;
+
+/** Dune height at (x, z) (world units, 0.8 = flat sand: the buildings' sites, the dock and the slab's edge). One desert
+ *  across the plots: no lanes between them, the dunes run on and only flatten round where something is built. */
 function duneHeight(x: number, z: number): number {
-  const local = (v: number) => ((((v + SIZE / 2) % PLOT) + PLOT) % PLOT) - PLOT / 2;
-  const edge = PLOT / 2 - Math.max(Math.abs(local(x)), Math.abs(local(z)));
   const near = Math.min(...BUILDING_PLOTS.map((k) => { const c = plotCentre(k); return Math.hypot(x - c.x, z - c.z); }));
-  const clear = Math.max(0, Math.min(1, (near - CLEARED) / 4));
-  const fade = Math.max(0, Math.min(1, (edge - 1.5) / 5)) * clear;
+  const ease = (d: number) => { const t = Math.max(0, Math.min(1, d / CLEAR_EASE)); return t * t * (3 - 2 * t); };
+  const edge = SIZE / 2 - Math.max(Math.abs(x), Math.abs(z));
+  const fade = ease(near - CLEARED) * ease(Math.hypot(x, z) - 13) * Math.max(0, Math.min(1, (edge - 1) / 5));
   const h = 1.2 + Math.sin((x * 0.8 + z * 0.35) / 3.2) * 0.9 + Math.sin(x / 7.3 + 1.7) * Math.cos(z / 6.1) * 1.3;
   return 0.8 + Math.max(0, h) * fade;
 }
@@ -88,14 +97,13 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
   scene.fog = new Fog('#141a34', 230, 380);
 
   // Ground: a slab with displaced dunes on top, textured sand (grain, ripples) tinted per vertex: darker in the hollows,
-  // lighter on the crests, in broad patches, and trodden darker along the lanes between plots.
+  // lighter on the crests, in broad patches running across the plots (no lanes: one desert).
   const ground = new PlaneGeometry(SIZE, SIZE, SIZE, SIZE);
   ground.rotateX(-Math.PI / 2);
   const pos = ground.getAttribute('position') as BufferAttribute;
   const uv = ground.getAttribute('uv') as BufferAttribute;
   const colours: number[] = [];
-  const low = new Color(SAND_LOW), high = new Color(SAND_HIGH), laneC = new Color(SAND_LANE), c = new Color();
-  const local = (v: number) => Math.abs(((((v + SIZE / 2) % PLOT) + PLOT) % PLOT) - PLOT / 2);
+  const low = new Color(SAND_LOW), high = new Color(SAND_HIGH), c = new Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i), y = duneHeight(x, z);
     pos.setY(i, y);
@@ -103,8 +111,6 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     const grain = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; // (a hash: a little speckle per vertex)
     const patch = Math.sin(x / 9.7 + 0.6) * Math.cos(z / 12.3 - 1.1) * 0.7 + Math.sin((x - z) / 5.3) * 0.25 + (grain - Math.floor(grain) - 0.5) * 0.25;
     c.copy(low).lerp(high, Math.max(0, Math.min(1, (y - 0.8) / 3 + patch * 0.35)));
-    const onLane = Math.max(0, Math.min(1, (Math.max(local(x), local(z)) - (PLOT / 2 - 1.6)) / 1.2));
-    c.lerp(laneC, onLane * 0.8);
     // The ship's shade on the sand under its bell (darkest at the middle).
     c.multiplyScalar(0.5 + 0.5 * Math.max(0, Math.min(1, (Math.hypot(x, z) - 5) / 8)));
     colours.push(c.r, c.g, c.b);
@@ -224,26 +230,12 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     pole.position.set(x, y0 + 6, z);
     const lamp = new Mesh(new BoxGeometry(1.6, 0.8, 0.8), glow(LAMP));
     lamp.position.set(x, y0 + 12.2, z);
-    const light = new PointLight(LAMP, 260, 20, 1.5);
+    const light = new PointLight(LAMP, LAMP_POWER, LIGHT_REACH, LIGHT_DECAY);
     light.position.set(x, y0 + 11, z);
     dock.add(pole, lamp, light);
     lamps.push(light);
   }
   scene.add(mergeByMaterial(dock));
-
-  // The plots' borders: the lanes are trodden darker sand (the ground's colours), with a red light where lanes cross.
-  // (Posts along the lanes looked like rain at the closest zoom; flat strips over the sand looked stuck on.)
-  const crossings: [number, number][] = [];
-  for (let i = 0; i <= GRID; i++) {
-    const a = -SIZE / 2 + i * PLOT;
-    for (let j = 0; j <= GRID; j++) crossings.push([a, -SIZE / 2 + j * PLOT]);
-  }
-  const place = (mesh: InstancedMesh, at: [number, number][], y: number) => {
-    const o = new Object3D();
-    at.forEach(([x, z], k) => { o.position.set(x, y, z); o.updateMatrix(); mesh.setMatrixAt(k, o.matrix); });
-    scene.add(mesh);
-  };
-  place(new InstancedMesh(new BoxGeometry(0.7, 0.7, 0.7), red, crossings.length), crossings, 1.5);
 
   // Rocks half sunk in the sand, scattered (none on the dock's site, only small ones on the buildings' sites).
   let seed = 23;
@@ -285,8 +277,9 @@ function buildScene(): { scene: Scene; beacon: Mesh; lamps: PointLight[]; outlin
     new LineBasicMaterial({ color: '#ffd23a', transparent: true }));
   scene.add(outline);
 
-  scene.add(new AmbientLight('#6a7aaa', 1.2));
-  const moon = new DirectionalLight('#b8c8f8', 1.4);
+  // A brighter moon and sky light the whole base evenly; the point lights only add broad, soft pools on top.
+  scene.add(new AmbientLight('#6a7aaa', 1.6));
+  const moon = new DirectionalLight('#b8c8f8', 2);
   moon.position.set(-30, 40, -10);
   scene.add(moon);
   return { scene, beacon, lamps, outline };
@@ -452,7 +445,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     beacon.visible = Math.floor(ms / 800) % 2 === 0;
     // The buildings' moving parts (`animated` in kit3d); with reduced motion they were posed once, at t = 0.
     if (!reduced) for (const parts of moving.values()) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
-    for (const [k, l] of lamps.entries()) l.intensity = 260 + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 15);
+    for (const [k, l] of lamps.entries()) l.intensity = LAMP_POWER + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 8);
     if (el.offsetParent !== null) renderer.render(scene, camera); // (not while hidden: the star map is shown)
     requestAnimationFrame(frame);
   };
@@ -471,11 +464,11 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
       own.forEach((l) => l.removeFromParent());
       (pools.get(k) ?? []).forEach((p, i) => {
         const l = own[i];
-        p.intensity = l ? l.intensity : 0;
+        p.intensity = l ? l.intensity * LIGHT_SHARE : 0;
         if (!l) return;
         p.color.copy(l.color);
-        p.distance = l.distance;
-        p.decay = l.decay;
+        p.distance = Math.max(l.distance, LIGHT_REACH);
+        p.decay = LIGHT_DECAY;
         p.position.copy(l.position).add(merged.position);
       });
       scene.add(merged);

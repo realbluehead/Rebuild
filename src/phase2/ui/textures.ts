@@ -35,7 +35,6 @@ const once = (key: string, make: () => Texture): Texture => {
 /** The sand's colours (moonlit): in the hollows, on the crests, and along the lanes between plots. */
 export const SAND_LOW = '#56567e';
 export const SAND_HIGH = '#78769a';
-export const SAND_LANE = '#46465e';
 
 /** Sand: grain, wind ripples running across, and a few pebbles. One tile is `SAND_TILE` world units. */
 export const SAND_TILE = 8;

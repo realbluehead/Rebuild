@@ -166,7 +166,9 @@ start with `src/`.
   each building, the grid and the dock **merged by material** (`mergeByMaterial`, ui/merge3d.ts: one mesh per material;
   lights and anything with `userData.live`, changed after building like the ship's beacon, are kept apart). Point
   lights: each building plot has a fixed pool of `LIGHTS_PER_BUILDING` (2) lights that take its builder's brightest
-  ones (unused ones unlit), so the scene's light count never changes (that recompiles every shader). About 70 draw calls
+  ones (unused ones unlit), so the scene's light count never changes (that recompiles every shader). They are dimmed
+  to `LIGHT_SHARE` and reach `LIGHT_REACH` with soft `LIGHT_DECAY` (the dock's floodlights too, `LAMP_POWER`), so light
+  washes over the whole ground with the ambient and the moon instead of pooling per plot. About 70 draw calls
   with everything at Lv 20 (it was ~1,700); in dev, `__renderer.info.render` in the console.
 - **Every upgrade animates** (each builder maps its 20 upgrades to what moves, in a comment above it): moving parts
   are `animated(part, x, y, z, anim)` (kit3d: `part` built round its pivot, merged by material, kept apart from the
@@ -232,10 +234,11 @@ start with `src/`.
 - **Plots** (work areas): the ground is `GRID`×`GRID` (3×3) plots of `PLOT` (40) units, numbered row by row (AREA k+1).
   The buildings' plots (`TELESCOPE_PLOT` 0 = AREA 1, where the view starts; `ANTENNA_PLOT` 1 = AREA 2; `POWER_PLOT`
   2 = AREA 3; `REFINERY_PLOT` 5 = AREA 6; `PROBES_PLOT` 7 = AREA 8, by the tanks and the dock; `TANKS_PLOT` 8 = AREA 9) have their sand cleared flat within `CLEARED`;
-  the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; AREA 4 and AREA 7 are empty for now. Each plot has its own dunes
-  (`duneHeight`, flat towards its edges), with flat lanes between (trodden darker sand, red lights at crossings; posts
-  along them looked like rain, flat strips looked stuck on). The sand is textured and tinted per vertex (`SAND_LOW` in
-  the hollows to `SAND_HIGH` on the crests, in broad patches with a little speckle, `SAND_LANE` on the lanes), with
+  the middle one (`DOCK_PLOT`) is the Black siphon's dry dock; AREA 4 and AREA 7 are empty for now. The dunes
+  (`duneHeight`) run on across the whole ground, with no lanes or edges between plots (the user wanted one desert, not
+  visible areas): they only ease flat (smoothstep over `CLEAR_EASE`) round each building's `CLEARED` site, the centre
+  and the slab's rim. The sand is textured and tinted per vertex (`SAND_LOW` in
+  the hollows to `SAND_HIGH` on the crests, in broad patches with a little speckle), with
   ~700 rocks half sunk in it (only small ones on the telescope's site, none on the dock's); the slab top sits just under the flattest sand to avoid z-fighting. A tap (a short still
   press) picks the plot under it (raycast onto the ground plane), zooms back in and the view glides to it (`focus`);
   `onPlot` reports it and the plate shows its name. Zooming out drifts the view to the ground's centre (all of it fits
