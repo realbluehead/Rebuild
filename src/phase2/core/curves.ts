@@ -25,7 +25,7 @@ export const probeReachLy = curve(6, 1.22);
 /** Probes launched an hour (while there is fuel). */
 export const probesPerHour = curve(4, 1.2);
 /** Probe cruise speed, light years an hour. */
-export const probeSpeedLyH = curve(30, 1.12);
+export const probeSpeedLyH = curve(60, 1.12);
 /** Fuel a launch burns, litres. */
 export const probeFuelL = curve(200, 1.18);
 
@@ -39,4 +39,4 @@ const COST_BASE: Record<BuildingId, number> = { telescope: 1200, power: 1400, re
 export const COST_GROWTH = 1.6;
 export const upgradeMetal = (id: BuildingId, level: number): number => COST_BASE[id] * Math.pow(COST_GROWTH, level - 2);
 /** Crew time for the upgrade that reaches `level`, seconds, before Speed and research. */
-export const upgradeSeconds = (_id: BuildingId, level: number): number => 270 * Math.pow(1.25, level - 2);
+export const upgradeSeconds = (_id: BuildingId, level: number): number => 30 * Math.pow(1.45, level - 2);

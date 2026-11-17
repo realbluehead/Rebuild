@@ -45,7 +45,7 @@ export const TIERS = 5;
 /** Research done to open tier t (4 per tier before it). */
 export const tierOpensAt = (tier: number): number => (tier - 1) * 4;
 /** Data for a piece of research of each tier. */
-export const TIER_DATA = [15, 900, 9000, 90000, 600000];
+export const TIER_DATA = [6, 900, 9000, 90000, 600000];
 /** Lab time, seconds, before Intelligence and research. */
 export const TIER_SECONDS = [1200, 3600, 9600, 21600, 43200];
 /** Share of the items brought over of its kind (all research of a kind takes under half of them). */

@@ -31,7 +31,10 @@ start with `src/`.
   counts; the facility files' upgrades are only what the level looks like, and their tab stats show these numbers):
   tower MW, refinery L/min, tanks L, telescope sight ly, antenna hearing ly and data factor, probe reach ly, launches an
   hour, speed ly/h, fuel a launch. An upgrade costs metal (`upgradeMetal`, ×`COST_GROWTH` 1.6 a level) and **crew**
-  time (`upgradeSeconds`); **one crew** builds one thing at a time (building levels and ship modules). Every building
+  time (`upgradeSeconds`: 30 s for Lv 2, ×1.45 a level, so the first quarter hour is a build a minute and the late
+  levels take hours); **one crew** builds one thing at a time (building levels and ship modules). **Hurry**
+  (`hurry`, `hurryCost`) finishes the crew's job now for `HURRY_RATE` (2) seconds of the base's metal per second
+  saved: always dearer than waiting, a way to trade metal for time while the crew is busy. Every building
   but the tower draws power (`demandMW`, a share of the tower's curve): short of power, metal, fuel and launches slow
   down by the share covered (`rates().power`).
 - **Resources**: metal (the currency; the rovers brought over salvage it, ×research, ×Strength, +4% per study of a
@@ -41,7 +44,8 @@ start with `src/`.
 - **Star map** (`starmap.ts`, from the legacy's seed, never saved): 16 systems in 4 rings (4–7, 10–20, 25–45, 50–90
   ly), each with a star, a sample kind (all five within the first three rings) and one habitable far system (ring 4):
   the destination. A system can be targeted if the telescope sees it (or it was studied) and probes reach it.
-- **Probes**: the player sets a target; the hangar launches by itself every `launchEvery` while the tanks have the
+- **Probes**: the player sets a target (a new expedition, or one that never aimed, is aimed at the nearest system on
+  boot: `aimFirst`, so the first probe leaves at once and is back in ~8 min); the hangar launches by itself every `launchEvery` while the tanks have the
   launch fuel; each probe flies out and back (`tripSeconds`) and brings back data (by ring, ×antenna, ×research,
   ×Endurance, and only the part the antenna hears if it is farther than its range), a study (1: star and kind; 2 and on:
   samples, ×Endurance, fractional; 3: whether it can be lived on) and XP.
@@ -58,8 +62,10 @@ start with `src/`.
   from one event to the next (crew or lab done, a probe back, a launch, the tanks full, the fuel for a launch, the sump
   empty); one long step ends where many short ones do (tested). The frame loop and the time away on boot both call it.
 - **Balance** (`npm run sim2 -- <hours>`, tools/sim2.ts): a greedy bot plays from the sample legacy. `STRAT=all`
-  prints one SUMMARY per strategy (balanced, or all points it can into one attribute). First pass: balanced launches
-  at ~61 h with its 45 points at ~49 h; one attribute pushed to 15 (its pair at 0) takes 61–78 h (spreading pays).
+  prints one SUMMARY per strategy (balanced, or all points it can into one attribute). Balanced launches at ~59 h
+  with its 45 points at ~48 h; one attribute pushed to 15 (its pair at 0) takes 58–71 h (spreading pays). The start is
+  tuned so something happens every minute or two (builds, the first probes, the first research at ~22 min: tier 1 is
+  6 data); the bot never hurries.
 
 ## Starting point: the legacy
 - Phase II starts **only** from `Legacy` (`core/legacy.ts`): what phase I achieved, frozen when the player enters phase
@@ -116,11 +122,14 @@ start with `src/`.
 - **Ten tabs** in two rows of five (`Tab` in `ui/panel.ts`: label, list, `update(s)`, optional plot, scene, `shown`).
   `render` writes the metal every frame and refreshes every tab every `REFRESH_MS` (250 ms; helpers in panel.ts write
   only what changed). Actions call core/economy.ts and then `ctx.changed()` (boot saves, the screen refreshes). The Team
-  and Lab tabs blink when something waits (a point to spend; research affordable with the lab free). Launching the
+  and Lab tabs blink when something waits (a point to spend; research affordable with the lab free). **News** on the
+  scene (top left, `report` compares a `snapshot` each refresh): a probe back (system, data, study), a level built,
+  research or a module done, an expedition level; up to `NEWS_MAX` lines, each fading after `NEWS_MS`. Launching the
   ship shows a message once.
   - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
     picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
-    level reached; the crew's button (next level: metal, crew time) and a note (crew busy, short of metal, top level);
+    level reached; the crew's button (next level: metal, crew time), a note (crew busy, short of metal, top level) and, while the crew
+    is busy, Hurry (`hurryButton`, also on the Ship tab);
     the upgrades as rows (Start / Built / Next / Building). A new level rebuilds the building on its plot.
   - **Map** (`ui/starmap.ts`): shows the star map in the scene in place of the desert (which stops rendering while
     hidden): home, the rings (by the square root of the distance), dashed yellow what the telescope sees, red how far

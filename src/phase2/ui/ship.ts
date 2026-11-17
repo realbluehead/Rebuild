@@ -6,7 +6,7 @@ import { confirmModal, h } from '../../shared/ui/dom';
 import { buildModule, canBuildModule, canLaunchShip, destinationKnown, launchShip, moduleMetal, rates } from '../core/economy';
 import { LAUNCH_FUEL, MODULES } from '../core/ship';
 import { destinationOf, STUDIES, type SampleKind } from '../core/starmap';
-import { crewText } from './buildings';
+import { crewText, hurryButton } from './buildings';
 import { DOCK_PLOT } from './desert';
 import { enable, flag, num, part, set, time, type Ctx, type Tab } from './panel';
 
@@ -19,6 +19,9 @@ export function shipTab(ctx: Ctx): Tab {
   card.append(name, needs, launch);
   launch.addEventListener('click', () => confirmModal('Launch the ship? This ends phase II.', 'Launch', () => { if (launchShip(ctx.s)) ctx.changed(); }));
   const crew = h('div', 'p2-note');
+  const rush = hurryButton(ctx);
+  const act = h('div', 'p2-act');
+  act.append(crew, rush.el);
   const table = h('div', 'part-table px-box p2-table p2-ship');
   const rows = MODULES.map((m) => {
     const row = h('div', 'part-row');
@@ -31,7 +34,7 @@ export function shipTab(ctx: Ctx): Tab {
     table.append(row);
     return { m, row, cost, go };
   });
-  list.append(card, crew, table);
+  list.append(card, act, table);
 
   return {
     label: 'Ship',
@@ -52,6 +55,7 @@ export function shipTab(ctx: Ctx): Tab {
       enable(launch, canLaunchShip(s));
       const busy = crewText(s);
       set(crew, busy ? `Crew: ${busy}` : 'The crew is free.');
+      rush.update(s);
       for (const { m, row, cost, go } of rows) {
         const done = s.modules.includes(m.id);
         const building = s.crew?.kind === 'module' && s.crew.id === m.id;

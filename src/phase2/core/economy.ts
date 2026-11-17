@@ -119,6 +119,15 @@ export function setTarget(s: P2State, id: number | null): boolean {
   return true;
 }
 
+/** A new expedition's probes start at once: aims them at the nearest system they reach, if they were never aimed (no
+ *  target, none out, nothing studied). Returns whether it aimed. */
+export function aimFirst(s: P2State): boolean {
+  if (s.target !== null || s.probes.length > 0 || s.studies.some((n) => n > 0)) return false;
+  const r = rates(s);
+  const near = systemsOf(s).filter((x) => canTarget(s, x.id, r)).sort((a, b) => a.distance - b.distance)[0];
+  return !!near && setTarget(s, near.id);
+}
+
 /** A probe is back: data, the next study (XP), and once the system's kind is known, samples (a share of one more with
  *  each point of Endurance: counts are fractional, shown whole). */
 export function probeBack(s: P2State, sys: StarSystem, r: Rates): void {
@@ -148,6 +157,26 @@ export function upgrade(s: P2State, id: BuildingId): boolean {
   if (!canUpgrade(s, id)) return false;
   s.metal = s.metal.sub(upgradeCost(s, id)!);
   s.crew = { kind: 'building', id, left: upgradeSeconds(id, s.levels[id] + 1) };
+  return true;
+}
+
+/** Hurrying the crew costs HURRY_RATE seconds of the base's metal for every second of work it saves (so waiting is
+ *  always cheaper; hurrying trades metal for time). */
+export const HURRY_RATE = 2;
+/** Metal to finish the crew's job now (building or module), or null if the crew is free. */
+export function hurryCost(s: P2State): number | null {
+  if (!s.crew || s.launchedAt !== null) return null;
+  const r = rates(s);
+  return Math.max(1, Math.ceil((s.crew.left / r.build) * r.metal * HURRY_RATE));
+}
+export function canHurry(s: P2State): boolean {
+  const c = hurryCost(s);
+  return c !== null && s.metal.gte(c);
+}
+export function hurry(s: P2State): boolean {
+  if (!canHurry(s)) return false;
+  s.metal = s.metal.sub(hurryCost(s)!);
+  jobDone(s);
   return true;
 }
 

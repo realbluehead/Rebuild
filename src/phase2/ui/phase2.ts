@@ -7,8 +7,10 @@ import './phase2.css';
 import { fmt } from '../../shared/format';
 import { h, modal } from '../../shared/ui/dom';
 import { expeditionLevel } from '../core/attributes';
-import { canResearch, pointsFree, rates } from '../core/economy';
-import { TECHS } from '../core/research';
+import { canResearch, pointsFree, rates, systemsOf } from '../core/economy';
+import { techById, TECHS } from '../core/research';
+import { moduleById } from '../core/ship';
+import { STUDIES } from '../core/starmap';
 import type { P2State } from '../core/state';
 import { BUILDINGS, buildingTab, crewText } from './buildings';
 import { createDesert, DOCK_PLOT, TELESCOPE_PLOT } from './desert';
@@ -20,6 +22,15 @@ import { teamTab } from './team';
 
 /** How often the tabs refresh, ms (the top bar's metal every frame). */
 const REFRESH_MS = 250;
+/** News lines on the scene (a probe back, a build or research done): how long each stays, ms, and how many at once. */
+const NEWS_MS = 5000;
+const NEWS_MAX = 3;
+
+/** What the news compares between refreshes. */
+const snapshot = (s: P2State) => ({
+  data: s.data, studies: [...s.studies], levels: { ...s.levels }, researched: s.researched.length, modules: s.modules.length,
+  level: expeditionLevel(s.xp).level,
+});
 
 export interface Phase2Screen {
   /** Updates the screen from the state (every frame; only what changed is written). */
@@ -64,7 +75,34 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     const t = tabs.findIndex((x) => x.plot === k);
     if (t >= 0 && t !== tab) showTab(t, false);
   }, TELESCOPE_PLOT);
-  scene.append(desert.el, plate);
+  const news = h('div', 'p2-news');
+  scene.append(desert.el, plate, news);
+  /** A line on the scene's news (the oldest goes when there are too many). */
+  const tell = (text: string) => {
+    const line = h('div', 'p2-news-line px-box', text);
+    news.append(line);
+    while (news.children.length > NEWS_MAX) news.firstElementChild!.remove();
+    setTimeout(() => line.classList.add('out'), NEWS_MS);
+    setTimeout(() => line.remove(), NEWS_MS + 600);
+  };
+  let was = snapshot(s);
+  /** What happened since the last refresh, as news. */
+  function report(): void {
+    const now = snapshot(s);
+    const got = now.data - was.data;
+    const systems = systemsOf(s);
+    const studied = now.studies.flatMap((n, k) => (n > was.studies[k] ? [k] : []));
+    for (const k of studied) {
+      const sys = systems[k];
+      tell(`Probe back from ${sys.name}${got > 0 ? ` · +${num(got)} data` : ''} · study ${Math.min(STUDIES, now.studies[k])}/${STUDIES}${now.studies[k] === 1 ? ` · ${sys.kind}` : ''}`);
+    }
+    if (!studied.length && got > 0) tell(`Probe back · +${num(got)} data`);
+    for (const b of BUILDINGS) if (now.levels[b.id] > was.levels[b.id]) tell(`${b.tab} Lv ${now.levels[b.id]} built`);
+    if (now.researched > was.researched) tell(`Research done: ${techById(s.researched[s.researched.length - 1])?.name ?? '?'}`);
+    if (now.modules > was.modules) tell(`Module built: ${moduleById(s.modules[s.modules.length - 1])?.name ?? '?'}`);
+    if (now.level > was.level) tell(`Expedition Lv ${now.level} · a point to spend`);
+    was = now;
+  }
 
   // Bottom panel: the tabs.
   const ctx: Ctx = { s, changed: () => { changed(); refresh(); } };
@@ -100,6 +138,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
 
   let told = s.launchedAt !== null;
   function refresh(): void {
+    report();
     const r = rates(s);
     set(rate, `+${num(r.metal * 3600)}/h`);
     set(res, `Fuel ${num(s.fuel)}/${num(r.capacity)} L · Data ${num(s.data)} · Power ${Math.round(r.power * 100)}%`);

@@ -3,7 +3,7 @@ import sample from '../dev/sample-legacy.json';
 import { advance } from './advance';
 import { ATTRS, attrFactor, expeditionLevel, xpToNext } from './attributes';
 import {
-  buildModule, canLaunchShip, canSpendPoint, canTarget, launchShip, pointsFree, rates, research, setTarget, spendPoint,
+  aimFirst, buildModule, canHurry, hurry, hurryCost, canLaunchShip, canSpendPoint, canTarget, launchShip, pointsFree, rates, research, setTarget, spendPoint,
   systemsOf, tripSeconds, upgrade, upgradeCost, worksLeft,
 } from './economy';
 import type { Legacy } from './legacy';
@@ -83,6 +83,34 @@ describe('the economy', () => {
     expect(s.levels.refinery).toBe(2);
     expect(s.crew).toBeNull();
     expect(s.xp).toBeGreaterThan(0);
+  });
+
+  it("hurrying finishes the crew's job now for metal, dearer than waiting for it", () => {
+    const s = fresh();
+    expect(hurryCost(s)).toBeNull();
+    expect(upgrade(s, 'telescope')).toBe(true);
+    const cost = hurryCost(s)!;
+    const wait = (s.crew!.left / rates(s).build) * rates(s).metal;
+    expect(cost).toBeGreaterThan(wait);
+    const before = s.metal.toNumber();
+    expect(hurry(s)).toBe(true);
+    expect(s.crew).toBeNull();
+    expect(s.levels.telescope).toBe(2);
+    expect(s.metal.toNumber()).toBeCloseTo(before - cost);
+    s.metal = D(0);
+    upgrade(s, 'power'); // (no metal: the crew stays free)
+    expect(canHurry(s)).toBe(false);
+  });
+
+  it('a new expedition aims its probes at the nearest system at once, but never re-aims one already aimed', () => {
+    const s = fresh();
+    expect(aimFirst(s)).toBe(true);
+    const near = [...systemsOf(s)].sort((a, b) => a.distance - b.distance)[0];
+    expect(s.target).toBe(near.id);
+    advance(s, 1);
+    expect(s.probes).toHaveLength(1);
+    setTarget(s, null);
+    expect(aimFirst(s)).toBe(false);
   });
 
   it('the refinery fills the tanks up to their capacity, burning the sump', () => {

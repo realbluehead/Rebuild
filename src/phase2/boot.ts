@@ -8,6 +8,7 @@ import { onBackground } from '../platform';
 import { WORLD_CACHE_DB } from '../shared/keys';
 import type { Legacy } from './core/legacy';
 import { advance } from './core/advance';
+import { aimFirst } from './core/economy';
 import { newPhase2, type P2State } from './core/state';
 import { loadPhase2, savePhase2, serializeP2 } from './save';
 import { showPhase2 } from './ui/phase2';
@@ -57,6 +58,7 @@ export function startPhase2(root: HTMLElement, legacy: Legacy, persist: boolean)
 }
 
 function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: () => void = () => {}): void {
+  aimFirst(state); // (the probes start at once on a new expedition, or one that never aimed them)
   /** On restart or import this game must not be saved any more (pagehide would write it back). */
   let locked = !persist;
   const save = () => (locked ? Promise.resolve() : savePhase2(state));

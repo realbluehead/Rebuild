@@ -5,7 +5,7 @@ import { h } from '../../shared/ui/dom';
 import { fmt } from '../../shared/format';
 import { ANTENNA } from '../core/antenna';
 import { upgradeSeconds, type BuildingId } from '../core/curves';
-import { canUpgrade, rates, upgrade, upgradeCost } from '../core/economy';
+import { canHurry, canUpgrade, hurry, hurryCost, rates, upgrade, upgradeCost } from '../core/economy';
 import { specAt, type Facility } from '../core/facility';
 import { POWER } from '../core/power';
 import { PROBES } from '../core/probes';
@@ -94,6 +94,22 @@ export function crewText(s: P2State): string | null {
   return `${what} · ${time(j.left / rates(s).build)}`;
 }
 
+/** "Hurry ⊙ cost": finishes the crew's job now for metal (core: `hurry`); hidden while the crew is free. */
+export function hurryButton(ctx: Ctx): { el: HTMLButtonElement; update(s: P2State): void } {
+  const el = h('button', 'px-btn buy p2-go p2-hurry');
+  el.addEventListener('click', () => { if (hurry(ctx.s)) ctx.changed(); });
+  return {
+    el,
+    update(s) {
+      const cost = hurryCost(s);
+      el.hidden = cost === null;
+      if (cost === null) return;
+      enable(el, canHurry(s));
+      if (el.dataset.k !== String(cost)) { el.dataset.k = String(cost); el.replaceChildren('Hurry', h('i', 'nut'), fmt(cost)); }
+    },
+  };
+}
+
 /** The tab of building `b`. */
 export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: Desert): Tab {
   const list = h('div', 'list tele');
@@ -107,7 +123,8 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
   const act = h('div', 'p2-act');
   const go = h('button', 'px-btn buy p2-go');
   const note = h('div', 'p2-note');
-  act.append(go, note);
+  const rush = hurryButton(ctx);
+  act.append(go, note, rush.el);
   go.addEventListener('click', () => { if (upgrade(ctx.s, b.id)) ctx.changed(); });
   const table = h('div', 'part-table px-box p2-table tele-table');
   const head = h('div', 'part-row head');
@@ -149,6 +166,7 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
         if (cost !== null) go.append(h('i', 'nut'), fmt(cost), ` · ${time(upgradeSeconds(b.id, level + 1) / rates(s).build)}`);
       }
       const busy = crewText(s);
+      rush.update(s);
       set(note, cost === null ? 'Every upgrade is built.' : building ? `Building… ${busy}` : busy ? `Crew busy: ${busy}` : s.metal.lt(cost) ? 'Not enough metal yet.' : 'The crew is free.');
       rows.forEach(({ row, state }, k) => {
         const n = k + 1;
