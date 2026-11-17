@@ -303,6 +303,11 @@ start with `src/`.
   it, always: four floodlights (point lights, gently flickering), the sand darkened under the bell (baked into the
   ground's vertex colours), heaps against the towers' feet,
   crates and a stack of spare plates.
+- **The crew at work** (`ui/works3d.ts`, `buildWorks`, `desert.setWorks(plot)`): while the crew builds a level or a
+  module, four worker robots (tracks, hazard-yellow body, cyan eye, an arm with a torch) stand on that plot (the dock
+  for a module) on the side the camera sees, just past the building (its box, capped to the site), welding in bursts
+  (`WELD_SEC`, `WELD_ON`) with a flickering blue-white flash and showers of sparks (one InstancedMesh, `SPARKS` each).
+  phase2.ts moves them when the crew's job changes; gone when the crew is free.
 - The camera sways: a bob of `BOB_UNITS` every `BOB_SEC` and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with
   reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides on a little
   after a flick (`spin`, `GLIDE_KEEP`). Two fingers (pinch) or the mouse wheel zoom out up to `ZOOM_MAX` (4) times

@@ -150,8 +150,14 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
   let told = s.launchedAt !== null;
   /** The modules the dock's ship shows (rebuilt when one is added). */
   let shipShown = '';
+  /** The plot the crew's robots are on (undefined: not set yet). */
+  let worksShown: number | null | undefined;
   function refresh(): void {
     report();
+    // The crew's robots weld on the plot under way (the dock for a module).
+    const job = s.crew;
+    const workPlot = !job ? null : job.kind === 'module' ? DOCK_PLOT : BUILDINGS.find((b) => b.id === job.id)!.plot;
+    if (workPlot !== worksShown) { worksShown = workPlot; desert.setWorks(workPlot); }
     const shipKey = s.modules.join() || '-';
     if (shipKey !== shipShown) { shipShown = shipKey; desert.setShip([...s.modules]); }
     const r = rates(s);

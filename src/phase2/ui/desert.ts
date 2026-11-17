@@ -7,7 +7,7 @@
 // The ground is a GRID × GRID of plots (work areas), each about one closest view; the middle one is the Black siphon's
 // dry dock. Zoomed out, the whole ground shows; a tap on a plot selects it and the view glides in to it.
 import {
-  AmbientLight, BoxGeometry, BufferAttribute, Color, CylinderGeometry, DirectionalLight, Fog,
+  AmbientLight, Box3, BoxGeometry, BufferAttribute, Color, CylinderGeometry, DirectionalLight, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
   Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
@@ -16,6 +16,7 @@ import { disposeGroup, type Anim } from './kit3d';
 import { buildGrid } from './grid3d';
 import { mergeByMaterial } from './merge3d';
 import { buildShip } from './ship3d';
+import { buildWorks } from './works3d';
 import { metalTexture, repeated, SAND_HIGH, SAND_LOW, SAND_TILE, sandTexture, shared, textured } from './textures';
 
 /** A plot's side, plots per side of the ground and the ground's side, in world units (one unit ~ one voxel of the
@@ -240,6 +241,8 @@ export interface Desert {
   setShip(modules: readonly string[]): void;
   /** Selects plot `k` (the view glides in to it; `onPlot` is not called). */
   select(k: number): void;
+  /** Puts the crew's welding robots on plot `k` (the building or module under way), or takes them away (null). */
+  setWorks(k: number | null): void;
   /** Holds plot `k`'s moving parts still in their rest pose (t = 0) while `on` (the hangar with launches stopped). */
   still(k: number, on: boolean): void;
   stop(): void;
@@ -274,6 +277,9 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
   const moving = new Map<number, Group[]>();
   /** Plots whose moving parts are held at rest (`still`). */
   const held = new Set<number>();
+  /** The crew's robots at work (`setWorks`) and their moving parts. */
+  let works: Group | null = null;
+  let workParts: Group[] = [];
   const pools = new Map(BUILDING_PLOTS.map((k) => [k, Array.from({ length: LIGHTS_PER_BUILDING }, () => {
     const l = new PointLight('#ffffff', 0);
     scene.add(l);
@@ -384,6 +390,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     if (beacon) beacon.visible = Math.floor(ms / 800) % 2 === 0;
     // The buildings' moving parts (`animated` in kit3d); with reduced motion they were posed once, at t = 0.
     if (!reduced) for (const [k, parts] of moving) if (!held.has(k)) for (const o of parts) (o.userData.anim as Anim)(o, ms / 1000);
+    if (!reduced) for (const o of workParts) (o.userData.anim as Anim)(o, ms / 1000);
     for (const [k, l] of lamps.entries()) l.intensity = LAMP_POWER + (reduced ? 0 : Math.sin(ms / 900 + k * 2) * 8);
     if (el.offsetParent !== null) renderer.render(scene, camera); // (not while hidden: the star map is shown)
     requestAnimationFrame(frame);
@@ -416,6 +423,23 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
       merged.traverse((o) => { if (o.userData.anim) parts.push(o as Group); });
       parts.forEach((o) => (o.userData.anim as Anim)(o, 0));
       moving.set(k, parts);
+    },
+    setWorks(k) {
+      if (works) { scene.remove(works); disposeGroup(works); works = null; workParts = []; }
+      if (k === null) return;
+      const c = plotCentre(k);
+      // Just past what stands there (its footprint on the sand), but never off the cleared site.
+      const there = k === DOCK_PLOT ? ship : buildings.get(k);
+      let reach = 4;
+      if (there) {
+        const box = new Box3().setFromObject(there);
+        if (!box.isEmpty()) reach = Math.max(reach, Math.min(14, Math.max(box.max.x - c.x, c.x - box.min.x, box.max.z - c.z, c.z - box.min.z) * 0.8));
+      }
+      works = buildWorks(Math.min(reach + 1.5, 15), (x, z) => duneHeight(c.x + x, c.z + z));
+      works.position.set(c.x, 0, c.z);
+      works.traverse((o) => { if (o.userData.anim) workParts.push(o as Group); });
+      workParts.forEach((o) => (o.userData.anim as Anim)(o, 0));
+      scene.add(works);
     },
     still(k, on) {
       if (on === held.has(k)) return;
