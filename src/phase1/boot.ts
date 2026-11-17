@@ -188,10 +188,17 @@ export async function boot(app: HTMLElement, title: TitleScreen) {
     }
   };
 
-  /** Goals and works complete on their own (no button; between ticks, like a tap, so `tick` stays exact): a message
-   *  for each tier claimed and each work made (the view queues them). */
+  /** Goals and works complete on their own, and the Miner and the Hauler are built on their own once their level is
+   *  reached and the bluetreri is there (a player could end the map never building the Miner, and so never dig it out);
+   *  all between ticks, like a tap, so `tick` stays exact. A message for each (the view queues them). */
   const autoUnlock = () => {
     let any = false;
+    for (const kind of ['miner', 'hauler'] as const) {
+      if (state.doneAt === undefined && build(state, world, kind)) {
+        any = true;
+        view.toast(`${kindById(kind).name} built!\nIt leaves camp now`);
+      }
+    }
     for (const g of GOALS) {
       while (claimGoal(state, world, g.id)) {
         any = true;

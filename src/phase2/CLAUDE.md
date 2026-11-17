@@ -125,7 +125,8 @@ start with `src/`.
   and Lab tabs blink when something waits (a point to spend; research affordable with the lab free). **News** on the
   scene (top left, `report` compares a `snapshot` each refresh): a probe back (system, data, study), a level built,
   research or a module done, an expedition level; up to `NEWS_MAX` lines, each fading after `NEWS_MS`. Launching the
-  ship shows a message once.
+  ship shows a message once. A **Speed ×N** button on the scene (src/shared/ui/speed.ts, the same one and setting as
+  phase I's) multiplies the time `advance` gets, for testing.
   - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
     picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
     level reached; the crew's button (next level: metal, crew time), a note (crew busy, short of metal, top level) and, while the crew

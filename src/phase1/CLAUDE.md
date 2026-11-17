@@ -29,7 +29,8 @@ cells per side); you start at the closest and the next unlocks when 80% of the c
   rank where they meet), takes its load and items, and drives them home. A full rover the Hauler is driving to waits instead
   of going home only if the Hauler gets there sooner than its own round trip to camp (`worthWaiting`, decided when the
   hold fills); otherwise it drives home and the Hauler turns back. Reaching the threshold while the Hauler waits is an event too, so `tick` stays exact. `build`/`canBuild` (level via
-  `roverLevelNeeded`, price, order) give the new rover the Scout's levels of the parts they share; the Rovers tab picker
+  `roverLevelNeeded`, price, order; boot's `autoUnlock` builds the Miner and then the Hauler **on their own** as soon as
+  `canBuild`, with a toast: a player once ended the map without the Miner, so nothing was dug and phase II got little) give the new rover the Scout's levels of the parts they share; the Rovers tab picker
   (Scout/Miner/Hauler) shows a Build card for a kind not built yet. Map: Miner orange, Hauler green (`robotFrames(kind)`);
   revealed cells keep their colour (and deposits) until dug out, then drain (`dugTo` in `MapView.render`).
 - **Upgrades are per rover** (save v14): `Bot.up` holds each rover's own levels; `GameState.upgrades` holds a fleet base

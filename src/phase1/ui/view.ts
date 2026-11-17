@@ -14,6 +14,7 @@ import type { OfflineReport } from '../save/offline';
 import { MapView, type TripView } from './map';
 import { COIN, FLAT, ITEM_SPRITES, LORE_SPRITES, spriteCanvas } from './sprites';
 import { confirmModal, h, modal, textModal } from '../../shared/ui/dom';
+import { speedControl } from '../../shared/ui/speed';
 import { createBinder } from './binder';
 import { createTimeline } from './timeline';
 import { SECTIONS, sectionOfWork, type SectionDef, type SectionId } from '../content/library';
@@ -145,20 +146,9 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
   const toast = h('div', 'toast px-box');
   let rateNow: (() => number) | null = null;
 
-  // Game speed multiplier, for testing (remembered in this browser).
-  const SPEEDS = [1, 2, 5, 10, 50, 100, 1000];
-  let speed = 1;
-  try { speed = SPEEDS.includes(Number(localStorage.getItem('rebuild:speed'))) ? Number(localStorage.getItem('rebuild:speed')) : 1; } catch { /* no storage */ }
-  const speedBtn = h('button', 'px-btn speed-ctl');
-  speedBtn.title = 'Game speed (for testing)';
-  const showSpeed = () => { speedBtn.textContent = `Speed ×${speed}`; speedBtn.classList.toggle('can', speed > 1); };
-  showSpeed();
-  speedBtn.addEventListener('click', () => {
-    speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
-    try { localStorage.setItem('rebuild:speed', String(speed)); } catch { /* no storage */ }
-    showSpeed();
-  });
-  mapWrap.append(canvas, zoomCtl, cellBox, speedBtn, toast);
+  // Game speed multiplier, for testing (src/shared/ui/speed.ts, shared with phase II).
+  const speedCtl = speedControl();
+  mapWrap.append(canvas, zoomCtl, cellBox, speedCtl.el, toast);
   // (the library view is added once it exists, below)
 
   // View controls: drag (mouse or finger) to move, wheel or pinch to zoom.
@@ -942,7 +932,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
     const built = roverIndex(s, 'miner') >= 0;
     set(orderName, 'Dig order');
     set(orderDesc, !built
-      ? 'Build the Miner first (Rovers tab).'
+      ? 'The Miner is built on its own once you reach its level.'
       : (s.digOrder === 'rich' ? 'Richest cells of each finished ring first.' : 'Every cell, right behind the Scout.') + (s.digPick !== s.digOrder ? ' Switching at the next ring.' : ''));
     digRow.btns.forEach((b) => { b.disabled = !built; });
     // Radio squares, not brass buttons: brass means something can be bought.
@@ -1121,7 +1111,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'Shop receipts, concert tickets, propaganda leaflets: the city left scraps of its story behind. The Scout picks one up as soon as it reveals its cell, with no detour.',
         'Once the Decoder is built in the Library, switch it on: it reads the DNA left on the scraps found and prints the planet\'s history, 20 sheets in all. Each sheet needs more scraps found than the last (they are not used up; the funnel shows the scraps found towards the next sheet) and takes a little longer; the printer\'s counter shows the time left. Left on, it prints one sheet after another, also while you are away, and switches itself off when it has too few scraps for the next. Tap the printer\'s tray to read the sheets. The Archivist goal counts every scrap found.'] },
       { on: crafted, title: 'Library', lines: [
-        'Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title. Each part of the Library is built first (the magnifying glass there explains them).',
+        'Works are made on their own as soon as you have the pages, notes or photos for the next one. Every work gives a permanent bonus: books, speed; records, more bluetreri; discoveries, bigger holds. The Library tab swaps the map for your shelves: tap a volume to read its title. Each part of the Library is built first (the magnifying glass there explains them).',
         `Each collection has ${WORKS_MAX} works and the Library shows how complete it is. The world hides enough pages, notes and photos to finish the whole library.`] },
       { on: u.radar > 0, title: 'Radar', lines: [
         'A submarine-style radar sweeps around the Scout, reaching as many cells as its range. It detects pages, notes and photos in the dark around it: they light up as the needle passes.',
@@ -1136,7 +1126,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
         'Under the top bar: your explorer level and how far you are to the next. It grows with the ground explored and the bluetreri taken out of it, half and half; each level asks for about a third more than the one before, so the first come fast and the last take hours. The top level comes only with the whole map explored and dug out.',
         'New routes, route levels and library works each need an explorer level; until you reach it, they stay hidden behind ???.'] },
       { on: Object.values(s.goals).some((x) => x > 0), title: 'Goals', lines: [
-        'Each goal has 5 tiers. When you reach one, its Claim button lights up on the Goals tab; claiming it multiplies a stat for good (rover speed, bluetreri, holds, the Miner\'s drill or the drive to and from camp).'] },
+        'Each goal has 5 tiers. When you reach one it is claimed on its own and multiplies a stat for good (rover speed, bluetreri, holds, the Miner\'s drill or the drive to and from camp).'] },
       { on: true, title: 'Rovers', lines: [
         'The Scout explores: it is fast, but its hold is tiny and its drill only scratches each cell (a little of its bluetreri). The rest stays in the ground: revealed cells keep their colour until they are dug out.',
         'The Rovers tab has a card for each kind. Kinds you have not built yet show what they do, their price and the explorer level they need.'] },
@@ -1468,7 +1458,7 @@ export function createView(root: HTMLElement, world: World, initial: GameState, 
       showToast(`${kindById(rover).name} · ${u.name} lv${level}\n${effectText(id, before, after)}`, 2600);
     },
     /** Chosen speed multiplier (1 = normal). */
-    gameSpeed: () => speed,
+    gameSpeed: () => speedCtl.speed(),
     /** The end of phase I (the whole map explored and every bluetreri at camp): what the expedition achieved, then,
      *  `onContinue` (boot puts up "The voyage" splash). */
     showComplete(s: GameState, onContinue: () => void) {

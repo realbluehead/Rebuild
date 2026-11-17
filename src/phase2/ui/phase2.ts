@@ -6,6 +6,7 @@
 import './phase2.css';
 import { fmt } from '../../shared/format';
 import { h, modal } from '../../shared/ui/dom';
+import { speedControl } from '../../shared/ui/speed';
 import { expeditionLevel } from '../core/attributes';
 import { canResearch, pointsFree, rates, systemsOf } from '../core/economy';
 import { techById, TECHS } from '../core/research';
@@ -35,6 +36,8 @@ const snapshot = (s: P2State) => ({
 export interface Phase2Screen {
   /** Updates the screen from the state (every frame; only what changed is written). */
   render(s: P2State): void;
+  /** The game speed multiplier picked for testing (1 = normal). */
+  speed(): number;
 }
 
 /** Puts the phase II screen over `root` (the phone), fading in. `openMenu` opens the ≡ menu; `changed` is called
@@ -76,7 +79,8 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     if (t >= 0 && t !== tab) showTab(t, false);
   }, TELESCOPE_PLOT);
   const news = h('div', 'p2-news');
-  scene.append(desert.el, plate, news);
+  const speedCtl = speedControl(); // (for testing, like phase I's)
+  scene.append(desert.el, plate, news, speedCtl.el);
   /** A line on the scene's news (the oldest goes when there are too many). */
   const tell = (text: string) => {
     const line = h('div', 'p2-news-line px-box', text);
@@ -175,5 +179,6 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
       const now = performance.now();
       if (now - last >= REFRESH_MS) { last = now; refresh(); }
     },
+    speed: () => speedCtl.speed(),
   };
 }

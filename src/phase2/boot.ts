@@ -97,7 +97,7 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
   const frame = (now: number) => {
     const dt = (now - last) / 1000;
     last = now;
-    advance(state, dt); // (a frozen or hidden tab catches up on the next frame)
+    advance(state, dt * screen.speed()); // (a frozen or hidden tab catches up on the next frame)
     screen.render(state);
     requestAnimationFrame(frame);
   };
