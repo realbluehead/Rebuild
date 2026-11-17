@@ -16,6 +16,7 @@ import type { P2State } from '../core/state';
 import { BUILDINGS, buildingTab, crewText } from './buildings';
 import { createDesert, DOCK_PLOT, TELESCOPE_PLOT } from './desert';
 import { labTab } from './lab';
+import { nextStep } from './next';
 import { bar, fill, flag, num, set, type Ctx, type Tab } from './panel';
 import { shipTab } from './ship';
 import { starMapTab } from './starmap';
@@ -80,7 +81,10 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
   }, TELESCOPE_PLOT);
   const news = h('div', 'p2-news');
   const speedCtl = speedControl(); // (for testing, like phase I's)
-  scene.append(desert.el, plate, news, speedCtl.el);
+  // "Next:" what most needs the player (ui/next.ts); a tap opens its tab.
+  const next = h('button', 'p2-next px-box');
+  next.addEventListener('click', () => { const k = tabs.findIndex((t) => t.label === next.dataset.tab); if (k >= 0) showTab(k, true); });
+  scene.append(desert.el, plate, next, news, speedCtl.el);
   /** A line on the scene's news (the oldest goes when there are too many). */
   const tell = (text: string) => {
     const line = h('div', 'p2-news-line px-box', text);
@@ -99,6 +103,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     for (const k of studied) {
       const sys = systems[k];
       tell(`Probe back from ${sys.name}${got > 0 ? ` · +${num(got)} data` : ''} · study ${Math.min(STUDIES, now.studies[k])}/${STUDIES}${now.studies[k] === 1 ? ` · ${sys.kind}` : ''}`);
+      if (now.studies[k] >= STUDIES && was.studies[k] < STUDIES && s.target === k) tell(`${sys.name} fully studied: pick the next system on the Map`);
     }
     if (!studied.length && got > 0) tell(`Probe back · +${num(got)} data`);
     for (const b of BUILDINGS) if (now.levels[b.id] > was.levels[b.id]) tell(`${b.tab} Lv ${now.levels[b.id]} built`);
@@ -161,6 +166,9 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     fill(xp.fill, useful ? e.into / e.need : 1);
     flag(res, 'short', r.power < 1 || s.bluetreri.lt(1));
     set(plate, name(shownPlot));
+    const step = nextStep(s);
+    next.hidden = !step || !!tabs[tab].scene;
+    if (step) { set(next, `Next: ${step.text}`); next.dataset.tab = step.tab; }
     tabs.forEach((t, k) => {
       t.update(s);
       const alert = alerts[t.label];

@@ -3,12 +3,31 @@
 // that ends phase II.
 import { fmt } from '../../shared/format';
 import { confirmModal, h } from '../../shared/ui/dom';
-import { buildModule, canBuildModule, canLaunchShip, canQueue, crewFree, destinationKnown, launchShip, moduleMetal, rates } from '../core/economy';
+import { buildModule, canBuildModule, canLaunchShip, canQueue, canTarget, crewFree, destinationKnown, launchShip, moduleMetal, rates, systemsOf } from '../core/economy';
 import { LAUNCH_FUEL, MODULES } from '../core/ship';
-import { destinationOf, STUDIES, type SampleKind } from '../core/starmap';
+import { destinationOf, SAMPLE_KINDS, SAMPLES_FROM, STUDIES, type SampleKind } from '../core/starmap';
+import type { P2State } from '../core/state';
 import { crewText, hurryButton, queueList } from './buildings';
 import { DOCK_PLOT } from './desert';
 import { enable, flag, num, part, set, time, type Ctx, type Tab } from './panel';
+
+/** The samples the modules still to build need, each with what you have and where it comes from: the systems known to
+ *  have that kind (the probes' target first, then the nearest in reach), or that none is known yet. */
+function sampleLines(s: P2State): string[] {
+  const need = Object.fromEntries(SAMPLE_KINDS.map((k) => [k, 0])) as Record<SampleKind, number>;
+  for (const m of MODULES) if (!s.modules.includes(m.id) && !(s.crew?.kind === 'module' && s.crew.id === m.id)) for (const [k, n] of Object.entries(m.samples)) need[k as SampleKind] += n ?? 0;
+  const r = rates(s);
+  const systems = systemsOf(s);
+  return SAMPLE_KINDS.filter((k) => need[k] > 0 && s.samples[k] < need[k]).map((k) => {
+    const known = systems.filter((x) => x.kind === k && s.studies[x.id] > 0)
+      .sort((a, b) => Number(b.id === s.target) - Number(a.id === s.target) || Number(canTarget(s, b.id, r)) - Number(canTarget(s, a.id, r)) || a.distance - b.distance);
+    const from = known[0];
+    const where = !from ? 'no system known to have it yet: study more systems (Map)'
+      : from.id === s.target ? (s.studies[from.id] >= SAMPLES_FROM ? `the probes bring it from ${from.name}` : `from ${from.name} (the probes' target) after its 2nd study`)
+      : `send probes to ${from.name}${canTarget(s, from.id, r) ? '' : ' (out of reach yet)'}`;
+    return `${k}: ${Math.floor(s.samples[k])}/${need[k]} · ${where}`;
+  });
+}
 
 export function shipTab(ctx: Ctx): Tab {
   const list = h('div', 'list tele');
@@ -16,7 +35,8 @@ export function shipTab(ctx: Ctx): Tab {
   const name = h('div', 'p2-name');
   const needs = h('div', 'p2-facts');
   const launch = h('button', 'px-btn buy p2-go', 'Launch the ship');
-  card.append(name, needs, launch);
+  const samples = h('div', 'p2-facts p2-samples');
+  card.append(name, needs, samples, launch);
   launch.addEventListener('click', () => confirmModal('Launch the ship? This ends phase II.', 'Launch', () => { if (launchShip(ctx.s)) ctx.changed(); }));
   const crew = h('div', 'p2-note');
   const rush = hurryButton(ctx);
@@ -52,6 +72,8 @@ export function shipTab(ctx: Ctx): Tab {
         `${s.fuel >= LAUNCH_FUEL ? '✓' : '·'} ${fmt(LAUNCH_FUEL)} L of fuel in the tanks (${fmt(Math.floor(s.fuel))}${r.capacity < LAUNCH_FUEL ? `; they hold ${fmt(Math.floor(r.capacity))}: build more tanks` : ''})`,
       ];
       if (needs.dataset.k !== lines.join('|')) { needs.dataset.k = lines.join('|'); needs.replaceChildren(...lines.map((t) => h('div', '', t))); }
+      const sl = s.launchedAt !== null ? [] : sampleLines(s);
+      if (samples.dataset.k !== sl.join('|')) { samples.dataset.k = sl.join('|'); samples.replaceChildren(...(sl.length ? [h('div', '', 'Samples still needed:'), ...sl.map((t) => h('div', '', `· ${t}`))] : [])); }
       launch.hidden = s.launchedAt !== null;
       enable(launch, canLaunchShip(s));
       const busy = crewText(s);

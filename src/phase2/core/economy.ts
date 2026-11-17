@@ -108,6 +108,13 @@ export const canTarget = (s: P2State, id: number, r = rates(s)): boolean => {
   const sys = systemsOf(s)[id];
   return !!sys && isSeen(s, sys, r) && inReach(sys, r);
 };
+/** The nearest system probes can be sent to that is not fully studied yet (for "Next system"), or null. */
+export function nextUnstudied(s: P2State, r = rates(s)): number | null {
+  const x = systemsOf(s).filter((y) => s.studies[y.id] < STUDIES && canTarget(s, y.id, r)).sort((a, b) => a.distance - b.distance)[0];
+  return x ? x.id : null;
+}
+/** Whether the probes' target is fully studied (they bring back only data and samples from it now). */
+export const targetDone = (s: P2State): boolean => s.target !== null && s.studies[s.target] >= STUDIES;
 /** Seconds a probe takes out and back. */
 export const tripSeconds = (sys: StarSystem, r: Rates): number => ((2 * sys.distance) / r.speed) * 3600;
 /** Data a probe brings back from `sys` (part of it if the antenna hears it only partly). */

@@ -99,8 +99,11 @@ start with `src/`.
 - Once this save exists, src/main.ts boots straight into phase II (`boot` here; if it cannot be read, phase I boots):
   none of phase I's code, save or map is loaded (check the network list when touching boot or imports), and phase I's
   built map in IndexedDB (`WORLD_CACHE_DB`, tens of MB) is deleted on entering and on each boot (`dropPhase1Map`).
-  Phase I's save is kept untouched. Menu: Export (this save), Import (either phase's text, via src/saves.ts), Restart
-  (wipes both phases).
+  Phase I's save is kept untouched. Menu: Field notes (`ui/notes.ts`, also shown once on the first visit,
+  `rebuild:p2-notes-seen`), Export (this save), Import (either phase's text, via src/saves.ts), Restart phase II (a new
+  phase II from the same legacy; phase I's save untouched), Restart (wipes both phases). Going to the background
+  schedules a local notification (Android) for when the crew or the lab runs out of work, queues included (`idleIn`
+  plays a copy ahead in minutes, up to a day; from 5 min), cancelled on coming back.
 
 ## Flow
 - Entering: phase I's end shows "The voyage" splash (`ui/voyage.ts`, `showVoyage`, shown by src/phase1/boot.ts): an SVG
@@ -140,8 +143,11 @@ start with `src/`.
   only what changed). Actions call core/economy.ts and then `ctx.changed()` (boot saves, the screen refreshes). The Team
   and Lab tabs blink when something waits (a point to spend; research affordable with the lab free). **News** on the
   scene (top left, `report` compares a `snapshot` each refresh): a probe back (system, data, study), a level built,
-  research or a module done, an expedition level; up to `NEWS_MAX` lines, each fading after `NEWS_MS`. Launching the
-  ship shows a message once. In dev, the `/phase2` preview's state is `window.__p2` (to poke in the console). A **Speed ×N** button on the scene (src/shared/ui/speed.ts, the same one and setting as
+  research or a module done, an expedition level, the probes' target fully studied; up to `NEWS_MAX` lines, each fading after `NEWS_MS`. Launching the
+  ship shows a message once. **Next** (`ui/next.ts`, `nextStep`): a yellow line low on the scene with what most
+  needs the player, the first that applies (points to spend, the launch ready, the crew idle with something
+  affordable, the lab idle, the sump dry, no target, the target fully studied, the samples or data the next module
+  needs, the destination, the fuel); a tap opens its tab. Hidden while a tab shows its own scene (the Map). In dev, the `/phase2` preview's state is `window.__p2` (to poke in the console). A **Speed ×N** button on the scene (src/shared/ui/speed.ts, the same one and setting as
   phase I's) multiplies the time `advance` gets, for testing.
   - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
     picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
@@ -163,7 +169,9 @@ start with `src/`.
     its card (`describe`: first its samples, in capitals with how many you have and whether probes bring them yet
     (`SAMPLES_FROM`), then its star and, fully studied, whether it is habitable; a probe's trip and data, why it cannot
     be targeted) and "Send probes here"; the hangar line (target, probes out, next launch or the fuel it waits for) with
-    "Stop launches"; the systems seen as rows (distance and sample kind, ? until studied). The speed button sits top
+    "Stop launches", and "Next system" (`nextUnstudied`: the nearest in reach not fully studied) when the target is fully
+    studied (`targetDone`; the line says it brings only data and samples now) or there is none (the Probes tab's
+    launches row has it too); the systems seen as rows (distance and sample kind, ? until studied). The speed button sits top
     right of the scene (the legend is bottom left).
   - **Lab** (`ui/lab.ts`): research under way (bar, time left), then all research by tier (locked tiers greyed, with
     how many are needed), each with its effect, cost and time. The list always scrolls to what is next to research
@@ -172,7 +180,9 @@ start with `src/`.
     a pip per work of its kind: used, used by its pair, ready, locked) with "+1". Once every work brought over is used
     (`pointsUseful` false) levels give nothing: the Team tab no longer blinks, the level and XP bar stop ("all works
     used", bar full) and level-up news stops.
-  - **Ship** (`ui/ship.ts`, the dock's plot): what the launch still needs (a checklist) and the button (asks first),
+  - **Ship** (`ui/ship.ts`, the dock's plot): what the launch still needs (a checklist), the samples the modules
+    left need with where each comes from (`sampleLines`: the target, a known system to send probes to, or none known
+    yet) and the button (asks first),
     the crew, the modules with each cost part shown met or not.
 - Tapping a building's plot (or the dock) opens its tab; opening such a tab glides the view to it.
 

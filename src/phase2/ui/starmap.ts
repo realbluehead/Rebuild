@@ -3,7 +3,7 @@
 // reach, the systems seen, the probes out, and the target. A tap picks a system; the panel shows it, sends the probes
 // there, and lists every system seen.
 import { h } from '../../shared/ui/dom';
-import { canTarget, destinationKnown, isSeen, probeData, rates, setTarget, systemsOf, tripSeconds, type Rates } from '../core/economy';
+import { canTarget, destinationKnown, isSeen, nextUnstudied, probeData, rates, setTarget, systemsOf, targetDone, tripSeconds, type Rates } from '../core/economy';
 import { RINGS, SAMPLES_FROM, STUDIES, type StarKind, type StarSystem } from '../core/starmap';
 import type { P2State } from '../core/state';
 import { enable, flag, num, set, time, type Ctx, type Tab } from './panel';
@@ -50,8 +50,11 @@ export function starMapTab(ctx: Ctx): Tab {
   card.append(title, facts, send, why);
   const hangar = h('div', 'p2-note p2-hangar');
   const stop = h('button', 'px-btn p2-small', 'Stop launches');
+  const next = h('button', 'px-btn buy p2-small', 'Next system');
+  next.title = 'Send the probes to the nearest system not fully studied';
+  next.addEventListener('click', () => { const k = nextUnstudied(ctx.s); if (k !== null && setTarget(ctx.s, k)) { selected = k; ctx.changed(); } });
   const hangarRow = h('div', 'p2-act');
-  hangarRow.append(hangar, stop);
+  hangarRow.append(hangar, next, stop);
   const rows = h('div', 'part-table px-box p2-table p2-systems');
   list.append(card, hangarRow, rows);
   send.addEventListener('click', () => { if (selected !== null && setTarget(ctx.s, selected)) ctx.changed(); });
@@ -160,9 +163,11 @@ export function starMapTab(ctx: Ctx): Tab {
       }
       const target = s.target === null ? null : systems[s.target];
       set(hangar, target
-        ? `Probes to ${target.name} · ${s.probes.length} out · ${s.fuel < r.launchFuel ? `waiting for ${num(r.launchFuel)} L of fuel` : `next launch ${time(s.launchWait)}`}`
+        ? `Probes to ${target.name}${targetDone(s) ? ` (fully studied: only data and ${target.kind} now)` : ''} · ${s.probes.length} out · ${s.fuel < r.launchFuel ? `waiting for ${num(r.launchFuel)} L of fuel` : `next launch ${time(s.launchWait)}`}`
         : `${s.probes.length} probes out · no target: the hangar waits`);
       stop.hidden = s.target === null;
+      // Fully studied (or no target): offer the nearest system still to study.
+      next.hidden = !(s.target === null || targetDone(s)) || nextUnstudied(s, r) === null;
       // The systems seen, as rows (rebuilt when what is known changes).
       const seen = systems.filter((y) => isSeen(s, y, r));
       const key = `${seen.map((y) => `${y.id}:${s.studies[y.id]}`).join(',')}|${s.target}|${selected}|${destinationKnown(s)}`;

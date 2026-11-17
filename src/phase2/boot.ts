@@ -4,15 +4,16 @@ import type { TitleScreen } from '../shared/ui/title';
 import { confirmModal, h, modal, textModal } from '../shared/ui/dom';
 import { encodeSave } from '../shared/codec';
 import { offerUpdates } from '../shared/updates';
-import { onBackground } from '../platform';
+import { cancelReminders, onBackground, scheduleReminder } from '../platform';
 import { WORLD_CACHE_DB } from '../shared/keys';
 import type { Legacy } from './core/legacy';
 import { advance } from './core/advance';
 import { awaySummary, AWAY_MIN_SEC, snap } from './core/away';
 import { aimFirst } from './core/economy';
 import { newPhase2, type P2State } from './core/state';
-import { loadPhase2, savePhase2, serializeP2 } from './save';
+import { deserializeP2, loadPhase2, savePhase2, serializeP2 } from './save';
 import { showAway } from './ui/away';
+import { showNotes, showNotesOnce } from './ui/notes';
 import { showPhase2 } from './ui/phase2';
 
 const AUTOSAVE_MS = 30_000;
@@ -20,6 +21,23 @@ const AUTOSAVE_MS = 30_000;
 /** Phase I's built map is no use any more: frees its storage (a reload of phase I, after an import, builds it again). */
 function dropPhase1Map(): void {
   try { indexedDB.deleteDatabase(WORLD_CACHE_DB); } catch { /* no IndexedDB */ }
+}
+
+/** Least time until the crew or the lab runs out of work worth a reminder (seconds), and how far ahead to look. */
+const REMIND_MIN_SEC = 300;
+const REMIND_HORIZON_SEC = 24 * 3600;
+/** When the crew or the lab (whichever first) will have nothing left to do, queues included: played ahead on a copy. Null
+ *  if one is idle already or both stay busy past the horizon. */
+function idleIn(s: P2State): { sec: number; who: 'crew' | 'lab' } | null {
+  const idle = (x: P2State) => (!x.crew && !x.queue.length ? 'crew' : !x.lab && !x.labQueue.length ? 'lab' : null);
+  if (idle(s) || s.launchedAt !== null) return null;
+  const copy = deserializeP2(JSON.parse(JSON.stringify(serializeP2(s, 0)))).state;
+  for (let t = 60; t <= REMIND_HORIZON_SEC; t += 60) {
+    advance(copy, 60);
+    const who = idle(copy);
+    if (who) return { sec: t, who };
+  }
+  return null;
 }
 
 /** Boots straight into phase II (main.ts, a phase II save exists). Returns false if no save could be read, so main.ts
@@ -81,6 +99,7 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
       b.addEventListener('click', () => { m.close(); fn(); });
       m.box.append(b);
     };
+    item('Field notes', '', showNotes);
     item('Export game', '', () => textModal('Copy this text to save your game:', encodeSave(serializeP2(state, Date.now())), true));
     if (persist) {
       item('Import game', '', () => textModal('Paste an exported game:', '', false, (text) => {
@@ -90,8 +109,13 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
           () => { locked = false; const e = modal(); e.box.append(h('div', '', 'That text is not a valid game.')); e.addClose('OK'); },
         );
       }));
+      // Phase II again from the start, from the same legacy (what phase I brought); phase I's save is left as it is.
+      item('Restart phase II', 'danger', () => confirmModal('Start phase II again from the beginning? Everything built in phase II is lost; phase I stays as it is.', 'Restart phase II', () => {
+        locked = true; // (no autosave may land on top of the new start)
+        reloadAfter(savePhase2(newPhase2(state.legacy)));
+      }));
       item('Restart (new map)', 'danger', () => confirmModal('Erase this game (both phases) and start a new map?', 'Erase and restart', () => {
-        try { localStorage.removeItem('rebuild:help-seen'); } catch { /* no storage */ }
+        try { localStorage.removeItem('rebuild:help-seen'); localStorage.removeItem('rebuild:p2-notes-seen'); } catch { /* no storage */ }
         reloadAfter(import('../saves').then(({ wipeAll }) => wipeAll()));
       }));
     } else {
@@ -102,6 +126,7 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
   };
 
   const screen = showPhase2(root, state, openMenu, () => void save());
+  if (persist) showNotesOnce();
   let last = performance.now();
   const frame = (now: number) => {
     const dt = (now - last) / 1000;
@@ -115,5 +140,17 @@ function run(root: HTMLElement, state: P2State, persist: boolean, onForeground: 
   };
   requestAnimationFrame(frame);
   setInterval(() => void save(), AUTOSAVE_MS);
-  onBackground((hidden) => { if (hidden) void save(); else onForeground(); });
+  onBackground((hidden) => {
+    if (hidden) {
+      void save();
+      // A local notification (Android) when the crew or the lab runs out of work, if that is a while off.
+      if (persist) {
+        const idle = idleIn(state);
+        if (idle && idle.sec >= REMIND_MIN_SEC) void scheduleReminder(idle.who === 'crew' ? 'The crew has finished' : 'The lab has finished', 'Come back and give them the next job!', idle.sec);
+      }
+    } else {
+      void cancelReminders();
+      onForeground();
+    }
+  });
 }

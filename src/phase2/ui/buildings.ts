@@ -7,7 +7,7 @@ import { ANTENNA } from '../core/antenna';
 import { upgradeSeconds, type BuildingId } from '../core/curves';
 import {
   BLUETRERI_METAL, bluetreriOffer, buyBluetreri, canHurry, canQueue, canUpgrade, crewFree, hurry, hurryCost, levelCost, plannedLevel, QUEUE_MAX, queueWaits,
-  rates, setTarget, systemsOf, unqueue, upgrade, upgradeCost,
+  nextUnstudied, rates, setTarget, systemsOf, targetDone, unqueue, upgrade, upgradeCost,
 } from '../core/economy';
 import { specAt, type Facility } from '../core/facility';
 import { POWER } from '../core/power';
@@ -178,20 +178,23 @@ function launchRow(ctx: Ctx, desert: Desert): { el: HTMLElement; update(s: P2Sta
   const el = h('div', 'p2-act');
   const note = h('div', 'p2-note');
   const btn = h('button', 'px-btn p2-small');
+  const next = h('button', 'px-btn buy p2-small', 'Next system');
+  next.addEventListener('click', () => { const k = nextUnstudied(ctx.s); if (k !== null && setTarget(ctx.s, k)) ctx.changed(); });
   let last = ctx.s.target;
   btn.addEventListener('click', () => {
     if (ctx.s.target !== null) setTarget(ctx.s, null);
     else if (last === null || !setTarget(ctx.s, last)) return;
     ctx.changed();
   });
-  el.append(note, btn);
+  el.append(note, next, btn);
   return {
     el,
     update(s) {
       if (s.target !== null) last = s.target;
       const on = s.target !== null;
       desert.still(PROBES_PLOT, !on);
-      set(note, on ? `Launching probes to ${systemsOf(s)[s.target!].name}.` : last !== null ? 'Launches stopped: no probe leaves.' : 'Launches stopped: pick a system on the Map to send probes.');
+      next.hidden = !(on ? targetDone(s) : true) || nextUnstudied(s) === null;
+      set(note, on ? `Launching probes to ${systemsOf(s)[s.target!].name}${targetDone(s) ? ' (fully studied: only data and samples now)' : ''}.` : last !== null ? 'Launches stopped: no probe leaves.' : 'Launches stopped: pick a system on the Map to send probes.');
       set(btn, on ? 'Stop launches' : 'Resume launches');
       btn.hidden = !on && last === null;
     },
