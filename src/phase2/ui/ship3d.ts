@@ -1,6 +1,7 @@
 // The Black siphon in the dry dock, as far as it is built: the dock starts empty, and each ship module (core/ship.ts,
 // in this order) adds what it is:
-//   frame      four legs, the bell's ribs and hoops, the rim with its red lights, a mast with a blinking beacon
+//   frame      scaffolding (four lattice towers with arms to the rim) holding the bell high, its ribs and hoops, the rim
+//              with its red lights, a mast with a blinking beacon
 //   hull       obsidian plating closes the bell, red windows
 //   tanks      four tall frosted cryogenic tanks hung outside the rim, between the legs
 //   life       a green-lit greenhouse dome on top (breathes)
@@ -9,25 +10,34 @@
 //   cryo       a band of cyan windows round the bell (the sleepers)
 //   shield     a faint violet ring round the bell, turning slowly
 //   core       the bluetreri core glowing (pulsing) under the bell; the rim lights and the beacon turn blue
-//   tentacles  seven tentacles from the rim out over the sand, red probe tips, swaying slightly
-// (what hangs under the bell sits low enough to show between the legs from the game's camera). Moving parts are
-// `animated` (kit3d), so the desert runs them like the buildings'. Built round the origin with the sand at y = 0;
-// `ground(x, z)` is the sand's height there (relative). The beacon is `userData.live` and `userData.beacon` (it blinks).
-import { BoxGeometry, CatmullRomCurve3, CylinderGeometry, Group, Mesh, SphereGeometry, TorusGeometry, TubeGeometry, Vector3 } from 'three';
-import { animated, glow, lambert, OBSIDIAN, RED, STEEL } from './kit3d';
+//   tentacles  a dozen jointed tentacles hanging from under the bell nearly to the sand, red probe tips, a slow wave
+//              running down them: the cover's jellyfish (ui/voyage.ts)
+// (the scaffolding holds the bell high, so what hangs under it shows from the game's camera). Moving parts are
+// `animated` (kit3d), so the desert runs them like the buildings'. Built round the origin with the sand at y = 0.
+// The beacon is `userData.live` and `userData.beacon` (it blinks).
+import { BoxGeometry, CylinderGeometry, Group, InstancedMesh, Mesh, Object3D, Quaternion, SphereGeometry, TorusGeometry, Vector3 } from 'three';
+import { animated, glow, lambert, OBSIDIAN, RED, rod, STEEL, v3 } from './kit3d';
 import { metalTexture, repeated, textured } from './textures';
 
-/** Bell radius and how high its rim stands. */
+/** Bell radius and how high its rim stands (on the scaffolding). */
 const R = 8;
-const BASE = 8;
-/** Tentacles: how many, and how far they sway (radians) and how slowly (seconds a sway). */
-const TENTACLES = 7;
-const SWAY = 0.035;
-const SWAY_SEC = 6;
+const BASE = 20;
+/** Scaffolding towers: their corners' distance from the axis (on the diagonals), width, and floors' height. */
+const TOWER_AT = 9.5;
+const TOWER_W = 1.8;
+const FLOOR = 4;
+/** Tentacles: how many, joints and their length, how far out they hang (radians from straight down) and the wave
+ *  running down them (radians a joint, how fast). */
+const TENTACLES = 12;
+const JOINTS = 13;
+const JOINT_LEN = 1.4;
+const HANG = 0.22;
+const WAVE = 0.07;
+const WAVE_SPEED = 1.5;
 
 const group = (...meshes: Mesh[]) => { const g = new Group(); g.add(...meshes); return g; };
 
-export function buildShip(modules: readonly string[], ground: (x: number, z: number) => number = () => 0): Group {
+export function buildShip(modules: readonly string[]): Group {
   const ship = new Group();
   if (modules.length === 0) return ship; // (an empty dock)
   const has = (id: string) => modules.includes(id);
@@ -35,10 +45,22 @@ export function buildShip(modules: readonly string[], ground: (x: number, z: num
   bell.position.y = BASE;
   ship.add(bell);
   const steel = textured(STEEL, metalTexture(0.6));
-  for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-    const leg = new Mesh(new CylinderGeometry(0.35, 0.35, BASE + 2, 5), textured(STEEL, metalTexture(0.7)));
-    leg.position.set(x, BASE / 2 - 1, z);
-    ship.add(leg);
+  // Scaffolding: a lattice tower on each diagonal, braced floor by floor, with arms reaching in under the rim.
+  const pole = textured(STEEL, metalTexture(0.7));
+  const top = BASE + 1;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = sx * TOWER_AT, cz = sz * TOWER_AT, h = TOWER_W / 2;
+    const corners = [[cx - h, cz - h], [cx + h, cz - h], [cx + h, cz + h], [cx - h, cz + h]];
+    for (const [x, z] of corners) ship.add(rod(v3(x, 0, z), v3(x, top, z), 0.14, pole, 4));
+    for (let y = FLOOR; y <= top; y += FLOOR) {
+      for (let c = 0; c < 4; c++) {
+        const [x1, z1] = corners[c], [x2, z2] = corners[(c + 1) % 4];
+        ship.add(rod(v3(x1, y, z1), v3(x2, y, z2), 0.09, pole, 4));
+        ship.add(rod(v3(x1, y - FLOOR, z1), v3(x2, y, z2), 0.06, pole, 3)); // (a cross brace on each face)
+      }
+    }
+    const rimAt = (R + 0.6) / Math.SQRT2;
+    for (const dy of [-0.6, -2.4]) ship.add(rod(v3(cx, BASE + dy, cz), v3(sx * rimAt, BASE - 0.3, sz * rimAt), 0.16, pole, 4));
   }
   // Angles round the bell as three.js's sphere does (phi: (-cos, 0, sin)).
   const at = (phi: number, r: number, y: number) => new Vector3(-Math.cos(phi) * r, y, Math.sin(phi) * r);
@@ -158,25 +180,57 @@ export function buildShip(modules: readonly string[], ground: (x: number, z: num
   beacon.userData.live = true; // (it blinks)
   beacon.userData.beacon = true;
   bell.add(beacon);
-  if (has('tentacles')) {
-    // From under the rim down to the sand and out over it, each turning a little about the ship's axis.
-    const skin = textured('#2c2f37', repeated(metalTexture(0.4), 10, 1), false, false); // (segment plates along it)
-    for (let k = 0; k < TENTACLES; k++) {
-      const a = (k / TENTACLES) * Math.PI * 2 + 0.3;
-      const pts: Vector3[] = [];
-      for (let t = 0; t <= 15; t++) {
-        const r = R + t, w = Math.sin(t / 2.5 + k) * 1.6;
-        const x = Math.cos(a) * r - Math.sin(a) * w, z = Math.sin(a) * r + Math.cos(a) * w;
-        if (Math.abs(x) > 18 || Math.abs(z) > 18) break; // (they stay inside the dock's plot)
-        const sand = ground(x, z) + 0.25; // (half sunk)
-        pts.push(new Vector3(x, t < 4 ? BASE + (sand - BASE) * (t / 4) : sand, z));
-      }
-      if (pts.length < 3) continue;
-      const arm = new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 3, 0.45, 5), skin);
-      const tip = new Mesh(new SphereGeometry(0.6, 6, 4), red);
-      tip.position.copy(pts[pts.length - 1]);
-      ship.add(animated(group(arm, tip), 0, 0, 0, (o, t) => { o.rotation.y = Math.sin((t / SWAY_SEC) * Math.PI * 2 + k * 1.3) * SWAY; }));
-    }
-  }
+  if (has('tentacles')) bell.add(tentacles(-BASE, red));
   return ship;
+}
+
+/** The tentacles, under the bell (its rim at y = 0, the sand at `floor`): jointed arms hanging from a ring under the
+ *  bell, each joint turning a little from the one above in a wave running down (like the cover's). Drawn as instanced
+ *  segments, joints and tips (three draw calls), moved every frame. */
+function tentacles(floor: number, tipLight: ReturnType<typeof glow>): Group {
+  const n = TENTACLES * JOINTS;
+  const skin = new InstancedMesh(new CylinderGeometry(0.62, 0.5, 1, 6), textured('#2c2f37', metalTexture(0.4)), n);
+  const knots = new InstancedMesh(new SphereGeometry(0.72, 6, 4), textured(STEEL, metalTexture(0.5)), n);
+  const tips = new InstancedMesh(new SphereGeometry(0.85, 6, 4), tipLight, TENTACLES);
+  const part = new Group();
+  part.add(skin, knots, tips);
+  const o = new Object3D(), up = new Vector3(0, 1, 0), q = new Quaternion();
+  const p = new Vector3(), d = new Vector3(), next = new Vector3();
+  const pose = (_g: Group, t: number) => {
+    for (let i = 0; i < TENTACLES; i++) {
+      const a = (i / TENTACLES) * Math.PI * 2 + 0.13;
+      const out = new Vector3(Math.cos(a), 0, Math.sin(a)), side = new Vector3(-Math.sin(a), 0, Math.cos(a));
+      p.copy(out).multiplyScalar(R * 0.8).setY(-0.4);
+      let ang = HANG;
+      for (let k = 0; k < JOINTS; k++) {
+        ang += WAVE * Math.sin(t * WAVE_SPEED + i * 1.1 - k * 0.55) + (HANG * 0.6 - ang) * 0.08;
+        const twist = WAVE * 0.6 * Math.sin(t * WAVE_SPEED * 0.8 + i * 0.7 - k * 0.5);
+        d.set(0, -Math.cos(ang), 0).addScaledVector(out, Math.sin(ang)).addScaledVector(side, twist).normalize();
+        next.copy(p).addScaledVector(d, JOINT_LEN);
+        next.y = Math.max(next.y, floor + 1.2); // (never into the sand)
+        d.subVectors(next, p);
+        const len = d.length();
+        o.position.copy(p).addScaledVector(d, 0.5);
+        o.quaternion.copy(q.setFromUnitVectors(up, d.normalize()));
+        o.scale.set(1, len, 1);
+        o.updateMatrix();
+        skin.setMatrixAt(i * JOINTS + k, o.matrix);
+        o.position.copy(p);
+        o.quaternion.identity();
+        o.scale.set(1, 1, 1);
+        o.updateMatrix();
+        knots.setMatrixAt(i * JOINTS + k, o.matrix);
+        p.copy(next);
+      }
+      o.position.copy(p);
+      o.updateMatrix();
+      tips.setMatrixAt(i, o.matrix);
+    }
+    skin.instanceMatrix.needsUpdate = true;
+    knots.instanceMatrix.needsUpdate = true;
+    tips.instanceMatrix.needsUpdate = true;
+  };
+  for (const m of [skin, knots, tips]) m.frustumCulled = false; // (they move: their bounds would go stale)
+  pose(part, 0);
+  return animated(part, 0, 0, 0, pose);
 }

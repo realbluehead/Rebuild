@@ -263,13 +263,17 @@ start with `src/`.
   press) picks the plot under it (raycast onto the ground plane), zooms back in and the view glides to it (`focus`);
   `onPlot` reports it and the plate shows its name. Zooming out drifts the view to the ground's centre (all of it fits
   at `ZOOM_MAX`) and outlines the selected plot in yellow. Selection is view state, not saved.
-- In the dock plot: the Black siphon (`ui/ship3d.ts`, `buildShip(modules, ground)`, set by `setShip` whenever a module
-  is built): the dock starts empty and each module adds its part (the comment at the top of ship3d.ts lists them: frame,
-  plating, tanks, greenhouse, engines, dish, cryo windows, shield ring, core, tentacles). What hangs under the bell is
-  low enough to show between the legs from the game's camera. Its moving parts are kit3d `animated` and run with the
-  buildings' (`moving`, keyed by `DOCK_PLOT`): the dome breathes, the plumes flicker, the dish turns, the shield turns
-  and bobs, the core pulses, the tentacles sway slightly (`SWAY`, `SWAY_SEC`). Around it, always: four floodlights
-  (point lights, gently flickering), the sand darkened under the bell (baked into the ground's vertex colours), heaps,
+- In the dock plot: the Black siphon (`ui/ship3d.ts`, `buildShip(modules)`, set by `setShip` whenever a module
+  is built): the dock starts empty and each module adds its part (the comment at the top of ship3d.ts lists them: frame
+  with its scaffolding, plating, tanks, greenhouse, engines, dish, cryo windows, shield ring, core, tentacles). The
+  Frame's scaffolding (four lattice towers on the diagonals, `TOWER_AT`, with arms to the rim) holds the bell high
+  (`BASE` 20) so what hangs under it shows from the game's camera, and the last module's tentacles hang from under it
+  nearly to the sand like the cover's (`TENTACLES` 12 of `JOINTS` 13, each joint turning a little from the one above
+  in a wave running down: `HANG`, `WAVE`, `WAVE_SPEED`; instanced segments, joints and red tips, posed every frame).
+  Its moving parts are kit3d `animated` and run with the buildings' (`moving`, keyed by `DOCK_PLOT`): the dome
+  breathes, the plumes flicker, the dish turns, the shield turns and bobs, the core pulses, the tentacles wave. Around
+  it, always: four floodlights (point lights, gently flickering), the sand darkened under the bell (baked into the
+  ground's vertex colours), heaps against the towers' feet,
   crates and a stack of spare plates.
 - The camera sways: a bob of `BOB_UNITS` every `BOB_SEC` and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with
   reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides on a little

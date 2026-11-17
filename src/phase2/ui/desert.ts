@@ -1,6 +1,6 @@
 // Phase II's scene: the Black siphon being built on a night desert, rendered in real 3D (three.js) with an isometric
 // (orthographic) camera, at a low resolution scaled up with crisp pixels. Dunes, the obsidian bell half plated (the rest
-// still ribs) on four legs, its tentacles laid out on the sand, and floodlights casting warm pools. The camera sways
+// still ribs) high on its scaffolding, and floodlights casting warm pools. The camera sways
 // gently (a slow bob up and down and ±1° of turn) so the scene never looks frozen, and a finger dragged sideways turns
 // it round (only round: the height of the view never changes), with a little glide after letting go. Two fingers (or
 // the mouse wheel) zoom out, up to ZOOM_MAX times as much ground, and back in to the starting view.
@@ -131,8 +131,8 @@ function buildScene(): { scene: Scene; lamps: PointLight[]; outline: LineLoop } 
 
   // Settled in the sand: heaps drifted against its feet, crates of parts and a stack of spare plates by the dock.
   const sandHeap = textured(SAND_LOW, repeated(sandTexture(), 0.4, 0.4));
-  for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-    const heap = new Mesh(new SphereGeometry(1.2, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), sandHeap);
+  for (const [x, z] of [[-9.5, -9.5], [9.5, -9.5], [-9.5, 9.5], [9.5, 9.5]]) { // (the scaffolding's towers, ship3d.ts)
+    const heap = new Mesh(new SphereGeometry(2, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), sandHeap);
     heap.scale.y = 0.4;
     heap.position.set(x, duneHeight(x, z) - 0.1, z);
     dock.add(heap);
@@ -416,7 +416,7 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     setShip(modules) {
       if (ship) { scene.remove(ship); disposeGroup(ship); }
       const sand = duneHeight(0, 0);
-      ship = mergeByMaterial(buildShip(modules, (x, z) => duneHeight(x, z) - sand));
+      ship = mergeByMaterial(buildShip(modules));
       ship.position.y = sand;
       beacon = null;
       const parts: Group[] = [];
