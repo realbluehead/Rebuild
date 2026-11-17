@@ -1,7 +1,9 @@
 // "The voyage" splash: shown once, when the explorer reaches the top level (the whole map explored), as the start of
 // phase II (from phase I's boot: a tap enters phase II). A robot jellyfish ship (the Black siphon: an obsidian armoured bell with red lights and a dozen jointed
 // tentacles ending in probes) floats over a starfield. Drawn in SVG; the tentacles are redrawn every frame so each
-// joint follows the one above it. Its ≡ menu is phase I's (export, import or a restart).
+// joint follows the one above it. Its ≡ menu is phase I's (export, import or a restart). Dressed like the title screen
+// (src/shared/ui/title.ts): the name in neon Monoton at the same place and size, the night-violet sky, CRT scanlines
+// and the green "TAP TO ENTER" in the same dark box at the bottom, all in units of the title's pixel (`--px`).
 import './phase2.css';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -10,6 +12,8 @@ const TAP_DELAY_MS = 1000;
 const FADE_MS = 600;
 const W = 240;
 const H = 400;
+/** The title screen's canvas width (its pixels): the splash's scanlines and box are sized in them. */
+const TITLE_PIXELS = 112;
 
 /** Obsidian plating, darkest edge to highlight (horizontal sheen across the bell and the rim). */
 const PLATE = ['#030304', '#23262c', '#5a606b', '#2a2d34', '#050507'];
@@ -71,7 +75,8 @@ function scene(titled: boolean): string {
   const dome = `M${-BW},0 C${f(-BW * a)},${f(-BH * b)} ${f(-BW * c)},${-BH} 0,${-BH} C${f(BW * c)},${-BH} ${f(BW * a)},${f(-BH * b)} ${BW},0Z`;
   let o = `<defs><linearGradient id="vy-plate" x1="0" x2="1">${[0, 0.28, 0.42, 0.7, 1].map((at, i) => `<stop offset="${at}" stop-color="${PLATE[i]}"/>`).join('')}</linearGradient>`
     + `<clipPath id="vy-hull"><path d="${dome}"/></clipPath></defs>`;
-  o += `<rect width="${W}" height="${H}" fill="#030305"/>${starfield(70)}`;
+  o += `<linearGradient id="vy-sky" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#06031a"/><stop offset="1" stop-color="#1a0d36"/></linearGradient>`
+    + `<rect x="-${W}" y="-${H}" width="${W * 3}" height="${H * 3}" fill="url(#vy-sky)"/>${starfield(70)}`;
   if (titled) o += `<text x="120" y="44" text-anchor="middle" class="vy-title">THE VOYAGE</text>`
     + `<line x1="42" y1="60" x2="68" y2="60" class="vy-rule"/><line x1="172" y1="60" x2="198" y2="60" class="vy-rule"/>`
     + `<text x="120" y="63" text-anchor="middle" class="vy-sub">PHASE II</text>`;
@@ -167,24 +172,38 @@ export function shipScene(label: string, titled = true): { svg: SVGSVGElement; s
 export function showVoyage(root: HTMLElement, openMenu: () => void, onEnter: () => Promise<void>): void {
   const el = document.createElement('div');
   el.className = 'voyage';
-  const { svg, stop } = shipScene('The voyage');
-  const hint = document.createElement('span');
-  hint.className = 'voyage-hint';
-  hint.textContent = 'TAP TO ENTER';
+  const { svg, stop } = shipScene('The voyage', false);
+  const div = (cls: string, text = '') => { const d = document.createElement('div'); d.className = cls; d.textContent = text; return d; };
+  const name = div('title-name lit voyage-name', 'THE VOYAGE');
+  const sub = div('voyage-sub', 'PHASE II');
+  const box = div('voyage-box');
+  box.append(div('voyage-hint', 'TAP TO ENTER'));
+  const lines = div('voyage-scan');
   const menu = document.createElement('button');
   menu.className = 'px-btn menu-btn voyage-menu';
   menu.title = 'Menu';
   menu.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
   menu.addEventListener('click', (e) => { e.stopPropagation(); openMenu(); });
-  el.append(svg, hint, menu);
+  el.append(svg, lines, name, sub, box, menu);
   root.append(el);
+  // Sized like the title screen: its pixel, and the name filling most of the width (once Monoton is in).
+  const fit = () => {
+    const w = el.clientWidth || window.innerWidth;
+    el.style.setProperty('--px', `${w / TITLE_PIXELS}px`);
+    name.style.fontSize = '40px';
+    name.style.fontSize = `${Math.min(64 * (w / 360), (40 * w * 0.88) / Math.max(1, name.offsetWidth))}px`;
+    sub.style.top = `${name.offsetTop + name.offsetHeight + 8}px`;
+  };
+  fit();
+  void document.fonts?.load('40px Monoton').then(fit, () => {});
+  window.addEventListener('resize', fit);
   requestAnimationFrame(() => el.classList.add('in'));
   const shown = performance.now();
   el.addEventListener('click', () => {
     if (performance.now() - shown < TAP_DELAY_MS || el.classList.contains('leaving')) return;
     el.classList.add('leaving'); // (the ship fades out; the black stays)
     void onEnter().then(
-      () => setTimeout(() => { stop(); el.remove(); }, FADE_MS), // (once phase II has faded in over it)
+      () => setTimeout(() => { stop(); el.remove(); window.removeEventListener('resize', fit); }, FADE_MS), // (once phase II has faded in over it)
       (e: unknown) => { console.error('Phase II could not start', e); el.classList.remove('leaving'); },
     );
   });

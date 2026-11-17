@@ -100,7 +100,9 @@ start with `src/`.
 - Entering: phase I's end shows "The voyage" splash (`ui/voyage.ts`, `showVoyage`, shown by src/phase1/boot.ts): an SVG
   robot jellyfish ship, the Black siphon (obsidian plated bell with seams, rivets, red windows, a beacon mast and engine
   ports on a ribbed rim; 12 jointed tentacles redrawn every frame so each joint follows the one above, with glowing probe
-  tips) over stars, "THE VOYAGE · PHASE II", "TAP TO ENTER" (taps ignored for the first second); its ≡ is phase I's menu
+  tips) over stars, dressed like the title screen (src/shared/ui/title.ts, sized in its pixel, `--px`): "THE
+  VOYAGE" in neon Monoton (red) where the title's name sits, "PHASE II" in cyan, the night-violet sky, CRT scanlines
+  and a blinking green "TAP TO ENTER" in the title's dark box (taps ignored for the first second); its ≡ is phase I's menu
   (`.voyage ~ .modal` above it). The tap fades the ship to black (the splash's black stays) while `startPhase2(root, legacy, true)` (phase
   II's chunk, with three.js, loads meanwhile) saves the new phase II and fades its screen in over the black; only then
   does the splash go, so nothing of phase I shows in between. Phase I's loop and saving stop. (`?phase2` covers phase
