@@ -3,7 +3,7 @@ import sample from '../dev/sample-legacy.json';
 import { advance } from './advance';
 import { ATTRS, attrFactor, expeditionLevel, xpToNext } from './attributes';
 import {
-  aimFirst, buildModule, canHurry, hurry, hurryCost, canLaunchShip, canSpendPoint, canTarget, launchShip, pointsFree, rates, research, setTarget, spendPoint,
+  aimFirst, bluetreriOffer, BLUETRERI_METAL, buildModule, buyBluetreri, canHurry, hurry, hurryCost, canLaunchShip, canSpendPoint, canTarget, launchShip, pointsFree, rates, research, setTarget, spendPoint,
   systemsOf, tripSeconds, upgrade, upgradeCost, worksLeft,
 } from './economy';
 import type { Legacy } from './legacy';
@@ -100,6 +100,25 @@ describe('the economy', () => {
     s.metal = D(0);
     upgrade(s, 'power'); // (no metal: the crew stays free)
     expect(canHurry(s)).toBe(false);
+  });
+
+  it('once the sump runs dry, metal buys bluetreri: a tank farm at a time, and the refinery goes on', () => {
+    const s = fresh();
+    s.bluetreri = D(0);
+    s.fuel = 0;
+    advance(s, 3600);
+    expect(s.fuel).toBe(0); // (nothing to refine)
+    s.metal = D(1e6);
+    const n = bluetreriOffer(s);
+    expect(n).toBe(Math.floor(rates(s).capacity));
+    expect(buyBluetreri(s)).toBe(true);
+    expect(s.bluetreri.toNumber()).toBe(n);
+    expect(s.metal.toNumber()).toBe(1e6 - n * BLUETRERI_METAL);
+    advance(s, 60);
+    expect(s.fuel).toBeGreaterThan(0);
+    s.metal = D(10);
+    expect(bluetreriOffer(s)).toBe(0);
+    expect(buyBluetreri(s)).toBe(false);
   });
 
   it('a new expedition aims its probes at the nearest system at once, but never re-aims one already aimed', () => {

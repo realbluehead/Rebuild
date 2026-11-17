@@ -8,7 +8,7 @@ import { fmt } from '../../shared/format';
 import { h, modal } from '../../shared/ui/dom';
 import { speedControl } from '../../shared/ui/speed';
 import { expeditionLevel } from '../core/attributes';
-import { canResearch, pointsFree, rates, systemsOf } from '../core/economy';
+import { bluetreriOffer, canResearch, pointsFree, rates, systemsOf } from '../core/economy';
 import { techById, TECHS } from '../core/research';
 import { moduleById } from '../core/ship';
 import { STUDIES } from '../core/starmap';
@@ -30,7 +30,7 @@ const NEWS_MAX = 3;
 /** What the news compares between refreshes. */
 const snapshot = (s: P2State) => ({
   data: s.data, studies: [...s.studies], levels: { ...s.levels }, researched: s.researched.length, modules: s.modules.length,
-  level: expeditionLevel(s.xp).level,
+  level: expeditionLevel(s.xp).level, dry: s.bluetreri.lt(1),
 });
 
 export interface Phase2Screen {
@@ -104,6 +104,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     for (const b of BUILDINGS) if (now.levels[b.id] > was.levels[b.id]) tell(`${b.tab} Lv ${now.levels[b.id]} built`);
     if (now.researched > was.researched) tell(`Research done: ${techById(s.researched[s.researched.length - 1])?.name ?? '?'}`);
     if (now.modules > was.modules) tell(`Module built: ${moduleById(s.modules[s.modules.length - 1])?.name ?? '?'}`);
+    if (now.dry && !was.dry) tell('The sump is empty: buy bluetreri in the Fuel tab');
     if (now.level > was.level) tell(`Expedition Lv ${now.level} · a point to spend`);
     was = now;
   }
@@ -115,6 +116,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
   const alerts: Partial<Record<string, (st: P2State) => boolean>> = {
     Team: (st) => pointsFree(st) > 0,
     Lab: (st) => !st.lab && TECHS.some((t) => canResearch(st, t.id)),
+    Fuel: (st) => st.bluetreri.lt(1) && bluetreriOffer(st) > 0,
   };
   for (const t of tabs) if (t.scene) { t.scene.hidden = true; scene.append(t.scene); }
   const panel = h('aside', 'panel');
@@ -145,13 +147,13 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
     report();
     const r = rates(s);
     set(rate, `+${num(r.metal * 3600)}/h`);
-    set(res, `Fuel ${num(s.fuel)}/${num(r.capacity)} L · Data ${num(s.data)} · Power ${Math.round(r.power * 100)}%`);
+    set(res, `Fuel ${num(s.fuel)}/${num(r.capacity)} L${s.bluetreri.lt(1) ? ' (no bluetreri)' : ''} · Data ${num(s.data)} · Power ${Math.round(r.power * 100)}%`);
     const e = expeditionLevel(s.xp);
     const free = pointsFree(s);
     const busy = crewText(s);
     set(lvl, `Expedition Lv ${e.level}${free > 0 ? ` · ${free} point${free > 1 ? 's' : ''}!` : ''} · ${busy ? `crew: ${busy}` : 'crew free'}`);
     fill(xp.fill, e.into / e.need);
-    flag(res, 'short', r.power < 1);
+    flag(res, 'short', r.power < 1 || s.bluetreri.lt(1));
     set(plate, name(shownPlot));
     tabs.forEach((t, k) => {
       t.update(s);

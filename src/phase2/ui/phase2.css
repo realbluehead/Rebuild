@@ -97,6 +97,7 @@
 .p2 .tab { font-size: 7px; padding: 6px 1px; }
 .p2-rate { margin-left: 6px; font-size: 13px; color: var(--muted); }
 .p2-res.short { color: var(--red); }
+.p2-note.short { color: var(--red); }
 /* The upgrade / action row under a card, its note, and the cards of the other tabs. */
 .p2-act { display: flex; align-items: center; gap: 8px; }
 .p2-act .p2-note { flex: 1; }

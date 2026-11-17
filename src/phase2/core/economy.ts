@@ -160,6 +160,27 @@ export function upgrade(s: P2State, id: BuildingId): boolean {
   return true;
 }
 
+// ---- The sump
+
+/** Metal for one bluetreri bought for the sump (salvage crews dig it out of the ruins): what keeps the refinery going
+ *  once phase I's bluetreri runs out (a game burns ~8.5M; a phase I without the Miner brings far less). */
+export const BLUETRERI_METAL = 2;
+/** Least bluetreri worth a purchase. */
+export const BLUETRERI_MIN = 1000;
+/** Bluetreri the next purchase brings: a tank farm's worth, or as much as the metal pays for (0 if under the minimum). */
+export function bluetreriOffer(s: P2State): number {
+  if (s.launchedAt !== null) return 0;
+  const n = Math.floor(Math.min(rates(s).capacity, s.metal.toNumber() / BLUETRERI_METAL));
+  return n >= BLUETRERI_MIN ? n : 0;
+}
+export function buyBluetreri(s: P2State): boolean {
+  const n = bluetreriOffer(s);
+  if (n <= 0) return false;
+  s.metal = s.metal.sub(n * BLUETRERI_METAL);
+  s.bluetreri = s.bluetreri.add(n);
+  return true;
+}
+
 /** Hurrying the crew costs HURRY_RATE seconds of the base's metal for every second of work it saves (so waiting is
  *  always cheaper; hurrying trades metal for time). */
 export const HURRY_RATE = 2;

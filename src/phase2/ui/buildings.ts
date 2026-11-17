@@ -5,7 +5,7 @@ import { h } from '../../shared/ui/dom';
 import { fmt } from '../../shared/format';
 import { ANTENNA } from '../core/antenna';
 import { upgradeSeconds, type BuildingId } from '../core/curves';
-import { canHurry, canUpgrade, hurry, hurryCost, rates, upgrade, upgradeCost } from '../core/economy';
+import { BLUETRERI_METAL, bluetreriOffer, buyBluetreri, canHurry, canUpgrade, hurry, hurryCost, rates, upgrade, upgradeCost } from '../core/economy';
 import { specAt, type Facility } from '../core/facility';
 import { POWER } from '../core/power';
 import { PROBES } from '../core/probes';
@@ -110,6 +110,32 @@ export function hurryButton(ctx: Ctx): { el: HTMLButtonElement; update(s: P2Stat
   };
 }
 
+/** "Sump: N bluetreri" and "Buy N ⊙ cost" (core: `buyBluetreri`): the refinery burns the sump into fuel and stops
+ *  when it is empty. */
+function sumpRow(ctx: Ctx): { el: HTMLElement; update(s: P2State): void } {
+  const el = h('div', 'p2-act');
+  const note = h('div', 'p2-note');
+  const buy = h('button', 'px-btn buy p2-go p2-hurry');
+  buy.addEventListener('click', () => { if (buyBluetreri(ctx.s)) ctx.changed(); });
+  el.append(note, buy);
+  return {
+    el,
+    update(s) {
+      const left = s.bluetreri.toNumber();
+      flag(note, 'short', left < 1);
+      set(note, left < 1 ? 'Sump empty: the refinery has no bluetreri. Buy some with metal.' : `Sump: ${fmt(Math.floor(left))} bluetreri to refine.`);
+      buy.hidden = left >= 2 * rates(s).capacity; // (no use while the sump holds plenty)
+      const n = bluetreriOffer(s);
+      enable(buy, n > 0);
+      const k = String(n);
+      if (buy.dataset.k !== k) {
+        buy.dataset.k = k;
+        buy.replaceChildren(n > 0 ? `Buy ${fmt(n)}` : 'Buy bluetreri', h('i', 'nut'), fmt(Math.max(n, 1000) * BLUETRERI_METAL));
+      }
+    },
+  };
+}
+
 /** The tab of building `b`. */
 export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: Desert): Tab {
   const list = h('div', 'list tele');
@@ -137,7 +163,9 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
     table.append(row);
     return { row, state };
   });
-  list.append(card, act, table);
+  // The refinery's tab: the sump (phase I's bluetreri) and, once it runs low, bluetreri bought with metal.
+  const sump = b.id === 'refinery' ? sumpRow(ctx) : null;
+  list.append(card, act, ...(sump ? [sump.el] : []), table);
 
   let shown = 0;
   /** The card, the rows and the 3D building at the level reached. */
@@ -167,6 +195,7 @@ export function buildingTab(ctx: Ctx, b: Building<{ level: number }>, desert: De
       }
       const busy = crewText(s);
       rush.update(s);
+      sump?.update(s);
       set(note, cost === null ? 'Every upgrade is built.' : building ? `Building… ${busy}` : busy ? `Crew busy: ${busy}` : s.metal.lt(cost) ? 'Not enough metal yet.' : 'The crew is free.');
       rows.forEach(({ row, state }, k) => {
         const n = k + 1;

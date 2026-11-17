@@ -39,7 +39,8 @@ start with `src/`.
   down by the share covered (`rates().power`).
 - **Resources**: metal (the currency; the rovers brought over salvage it, ×research, ×Strength, +4% per study of a
   system, +2% per building level, ×power); **bluetreri** in the siphon's sump (all phase I brought up: the larger of
-  `bluetreri`/`totalBluetreri`), refined 1:1 into **fuel**, held in the tanks (up to their capacity; they start full, so the first probes fly at once); **data** from
+  `bluetreri`/`totalBluetreri`; a game burns ~8.5M, and a phase I played without the Miner brought too little: once it
+  runs low, **metal buys more**, `buyBluetreri`, `BLUETRERI_METAL` 2 a bluetreri, a tank farm's worth at a time), refined 1:1 into **fuel**, held in the tanks (up to their capacity; they start full, so the first probes fly at once); **data** from
   the probes; **samples** (5 kinds) from the probes; the **items** brought over (pages, notes, photos) for research.
 - **Star map** (`starmap.ts`, from the legacy's seed, never saved): 16 systems in 4 rings (4–7, 10–20, 25–45, 50–90
   ly), each with a star, a sample kind (all five within the first three rings) and one habitable far system (ring 4):
@@ -130,7 +131,9 @@ start with `src/`.
   - **Buildings** (`ui/buildings.ts`, `BUILDINGS`: id, tab, plate name, plot, facility, 3D builder, optional card
     picture): a card (the telescope adds what it sees, `drawView`) with the numbers (`stats`) and a bar (`gauge`) at the
     level reached; the crew's button (next level: metal, crew time), a note (crew busy, short of metal, top level) and, while the crew
-    is busy, Hurry (`hurryButton`, also on the Ship tab);
+    is busy, Hurry (`hurryButton`, also on the Ship tab); the Fuel tab adds the sump (`sumpRow`: what is left, red when
+    empty, and Buy once it holds under two tank farms; the Fuel tab blinks, the top bar's fuel turns red and a news
+    line says so when it runs dry);
     the upgrades as rows (Start / Built / Next / Building). A new level rebuilds the building on its plot.
   - **Map** (`ui/starmap.ts`): shows the star map in the scene in place of the desert (which stops rendering while
     hidden): home, the rings (by the square root of the distance), dashed yellow what the telescope sees, red how far
