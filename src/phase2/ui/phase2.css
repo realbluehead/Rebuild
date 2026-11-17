@@ -65,7 +65,7 @@
 .p2-desert { position: absolute; inset: 0; background: #05060e center / cover no-repeat; image-rendering: pixelated; }
 .p2-desert { touch-action: none; cursor: grab; }
 .p2-desert canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-.p2 .speed-ctl { z-index: 3; }
+.p2 .speed-ctl { z-index: 3; top: 8px; bottom: auto; }
 .p2-hurry { flex-wrap: nowrap; white-space: nowrap; flex: none; }
 .p2-hurry[hidden] { display: none; }
 .p2-news { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; z-index: 3; }

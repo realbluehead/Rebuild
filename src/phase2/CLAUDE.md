@@ -137,9 +137,11 @@ start with `src/`.
     probes reach, dotted blue what the antenna hears; the systems seen (grey until studied, then their star's colour;
     the habitable one boxed in green once known), the target, probes out (yellow going, green coming back), and with
     `HINT_SHEETS` (10) sheets of the planet's history a faint mark where the habitable system is. A tap picks a system:
-    its card (what the studies told, a probe's trip and data, why it cannot be targeted) and "Send probes here"; the
-    hangar line (target, probes out, next launch or the fuel it waits for) with "Stop launches"; the systems seen as
-    rows.
+    its card (`describe`: first its samples, in capitals with how many you have and whether probes bring them yet
+    (`SAMPLES_FROM`), then its star and, fully studied, whether it is habitable; a probe's trip and data, why it cannot
+    be targeted) and "Send probes here"; the hangar line (target, probes out, next launch or the fuel it waits for) with
+    "Stop launches"; the systems seen as rows (distance and sample kind, ? until studied). The speed button sits top
+    right of the scene (the legend is bottom left).
   - **Lab** (`ui/lab.ts`): research under way (bar, time left), then all research by tier (locked tiers greyed, with
     how many are needed), each with its effect, cost and time.
   - **Team** (`ui/team.ts`): level and XP, points to spend, the six attributes (points, effect, factor, works left,

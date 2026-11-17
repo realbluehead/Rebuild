@@ -25,6 +25,8 @@ export interface StarSystem {
 /** Distances of each ring, light years. */
 export const RINGS: [number, number][] = [[4, 7], [10, 20], [25, 45], [50, 90]];
 export const PER_RING = 4;
+/** A probe brings samples back once its system has this many studies (the first tells its kind). */
+export const SAMPLES_FROM = 2;
 /** Studies that tell all about a system (1: its star and kind; 2: samples; 3: whether it can be lived on). */
 export const STUDIES = 3;
 

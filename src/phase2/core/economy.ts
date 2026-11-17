@@ -9,7 +9,7 @@ import {
 } from './curves';
 import { LAUNCH_FUEL, MODULES, moduleById, type Module } from './ship';
 import { techById, TECHS, tierOpensAt, TIER_DATA, TIER_ITEM_SHARE, TIER_SECONDS, type Effect, type Tech } from './research';
-import { destinationOf, starMap, STUDIES, type SampleKind, type StarSystem } from './starmap';
+import { destinationOf, SAMPLES_FROM, starMap, STUDIES, type SampleKind, type StarSystem } from './starmap';
 import type { P2State } from './state';
 
 /** Metal the rovers salvage, a minute each (at full power, before research). */
@@ -137,7 +137,7 @@ export function probeBack(s: P2State, sys: StarSystem, r: Rates): void {
     s.studies[sys.id]++;
     s.xp += XP.study * (sys.ring + 1);
   }
-  if (s.studies[sys.id] >= 2) s.samples[sys.kind] += r.samples;
+  if (s.studies[sys.id] >= SAMPLES_FROM) s.samples[sys.kind] += r.samples;
 }
 
 // ---- Buildings

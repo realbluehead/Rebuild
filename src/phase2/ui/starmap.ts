@@ -4,7 +4,7 @@
 // there, and lists every system seen.
 import { h } from '../../shared/ui/dom';
 import { canTarget, destinationKnown, isSeen, probeData, rates, setTarget, systemsOf, tripSeconds, type Rates } from '../core/economy';
-import { RINGS, STUDIES, type StarKind, type StarSystem } from '../core/starmap';
+import { RINGS, SAMPLES_FROM, STUDIES, type StarKind, type StarSystem } from '../core/starmap';
 import type { P2State } from '../core/state';
 import { enable, flag, num, set, time, type Ctx, type Tab } from './panel';
 
@@ -18,13 +18,16 @@ const FAR = RINGS[RINGS.length - 1][1] + 5;
 /** Sheets of the planet's history that point to the habitable system (a faint mark on the map before it is seen). */
 export const HINT_SHEETS = 10;
 
-const cap = (x: string) => x[0].toUpperCase() + x.slice(1);
-
-/** What is known of a system after its studies. */
+/** What is known of a system after its studies: its samples first (what the ship's modules ask for), then its star
+ *  and, once fully studied, whether it can be lived on. */
 export function describe(s: P2State, x: StarSystem): string[] {
   const n = s.studies[x.id];
-  if (n === 0) return ['Not studied yet'];
-  const out = [cap(x.star), `${cap(x.kind)} samples`];
+  if (n === 0) return ['Samples: unknown until a probe studies it', 'Star: not studied yet'];
+  const have = Math.floor(s.samples[x.kind]);
+  const out = [
+    n >= SAMPLES_FROM ? `Samples: ${x.kind.toUpperCase()} · one a probe (you have ${have})` : `Samples: ${x.kind.toUpperCase()} · from the next probe on (you have ${have})`,
+    `Star: ${x.star}`,
+  ];
   if (n >= STUDIES) out.push(x.habitable ? 'HABITABLE: the ship can go there' : 'Not habitable');
   return out;
 }
@@ -167,7 +170,7 @@ export function starMapTab(ctx: Ctx): Tab {
         rowsFor = key;
         rows.replaceChildren(...seen.map((y) => {
           const row = h('button', 'part-row p2-sys');
-          row.append(h('span', 'name', `${y.id === s.target ? '▶ ' : ''}${y.name}`), h('span', 'eff', `${y.distance} ly · ${describe(s, y)[0]}`), h('span', 'lvl', `${s.studies[y.id]}/${STUDIES}`));
+          row.append(h('span', 'name', `${y.id === s.target ? '▶ ' : ''}${y.name}`), h('span', 'eff', `${y.distance} ly · ${s.studies[y.id] > 0 ? y.kind : '?'}`), h('span', 'lvl', `${s.studies[y.id]}/${STUDIES}`));
           flag(row, 'on', y.id === selected);
           row.addEventListener('click', () => { selected = y.id; tab.update(ctx.s); });
           return row;
