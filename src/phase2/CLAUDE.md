@@ -53,7 +53,8 @@ start with `src/`.
 - **Research** (`research.ts`): 20 techs in 5 tiers (4 done open the next tier), one at a time in the lab: data
   (`TIER_DATA`) plus a share of the items of one kind brought over (`TIER_ITEM_SHARE`, so it never locks a player who
   kept few), lab time (`TIER_SECONDS`, ×Intelligence, ×research). Each multiplies one rate (`Effect`).
-- **The ship** (`ship.ts`): 8 modules (metal, data, samples, crew time); once all are built, the destination is
+- **The ship** (`ship.ts`): 10 modules (metal, data, samples, crew time), listed in the order the dock shows them: Frame
+  first (cheap, no samples), Tentacles last; once all are built, the destination is
   studied 3 times and the tanks hold `LAUNCH_FUEL`, `launchShip` ends phase II (`launchedAt`).
 - **Attributes** (`attributes.ts`): XP from levels built, research, probes back, studies and modules
   (`XP` in economy.ts) gives expedition levels (`xpToNext`, `XP_BASE` ×1.1 a level); each level a point, spent on an
@@ -63,8 +64,9 @@ start with `src/`.
   from one event to the next (crew or lab done, a probe back, a launch, the tanks full, the fuel for a launch, the sump
   empty); one long step ends where many short ones do (tested). The frame loop and the time away on boot both call it.
 - **Balance** (`npm run sim2 -- <hours>`, tools/sim2.ts): a greedy bot plays from the sample legacy. `STRAT=all`
-  prints one SUMMARY per strategy (balanced, or all points it can into one attribute). Balanced launches at ~59 h
-  with its 45 points at ~48 h; one attribute pushed to 15 (its pair at 0) takes 58–71 h (spreading pays). The start is
+  prints one SUMMARY per strategy (balanced, or all points it can into one attribute). Balanced launches at ~63 h
+  with its 45 points at ~47 h; one attribute pushed to 15 (its pair at 0) takes 63–77 h (spreading pays; Frame and
+  Tentacles added ~4.5 h). The start is
   tuned so something happens every minute or two (builds, the first probes, the first research at ~22 min: tier 1 is
   6 data); the bot never hurries.
 
@@ -261,14 +263,14 @@ start with `src/`.
   press) picks the plot under it (raycast onto the ground plane), zooms back in and the view glides to it (`focus`);
   `onPlot` reports it and the plate shows its name. Zooming out drifts the view to the ground's centre (all of it fits
   at `ZOOM_MAX`) and outlines the selected plot in yellow. Selection is view state, not saved.
-- In the dock plot: the Black siphon (`ui/ship3d.ts`, `buildShip(modules)`, set by `setShip` whenever a module is
-  built; the comment at its top says what each module adds: plating, tanks, greenhouse, engines, dish, cryo windows,
-  shield ring, core). Before that it was a fixed mock-up: the bell on four legs: obsidian plating over `plated` of it, the open sector (ribs
-  and hoops) facing the camera (angles as three's sphere `phi`: (−cos, 0, sin)), rim lights, windows, a mast with a
-  blinking beacon; seven tentacles (tubes, half sunk in the sand) with red probe tips; four floodlights (point lights,
-  gently flickering). Textured like the telescope (plating with rivets and rust, plated segments along the tentacles)
-  and settled in: the sand darkened under the bell (baked into the ground's vertex colours), heaps at its feet, crates
-  and a stack of spare plates.
+- In the dock plot: the Black siphon (`ui/ship3d.ts`, `buildShip(modules, ground)`, set by `setShip` whenever a module
+  is built): the dock starts empty and each module adds its part (the comment at the top of ship3d.ts lists them: frame,
+  plating, tanks, greenhouse, engines, dish, cryo windows, shield ring, core, tentacles). What hangs under the bell is
+  low enough to show between the legs from the game's camera. Its moving parts are kit3d `animated` and run with the
+  buildings' (`moving`, keyed by `DOCK_PLOT`): the dome breathes, the plumes flicker, the dish turns, the shield turns
+  and bobs, the core pulses, the tentacles sway slightly (`SWAY`, `SWAY_SEC`). Around it, always: four floodlights
+  (point lights, gently flickering), the sand darkened under the bell (baked into the ground's vertex colours), heaps,
+  crates and a stack of spare plates.
 - The camera sways: a bob of `BOB_UNITS` every `BOB_SEC` and ±`TURN_DEG` (1°) of turn every `TURN_SEC` (none with
   reduced motion). Dragging sideways turns it round (`turn`; `DRAG_TURN` per width, only yaw), and it glides on a little
   after a flick (`spin`, `GLIDE_KEEP`). Two fingers (pinch) or the mouse wheel zoom out up to `ZOOM_MAX` (4) times

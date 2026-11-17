@@ -7,9 +7,9 @@
 // The ground is a GRID × GRID of plots (work areas), each about one closest view; the middle one is the Black siphon's
 // dry dock. Zoomed out, the whole ground shows; a tap on a plot selects it and the view glides in to it.
 import {
-  AmbientLight, BoxGeometry, BufferAttribute, CatmullRomCurve3, Color, CylinderGeometry, DirectionalLight, Fog,
+  AmbientLight, BoxGeometry, BufferAttribute, Color, CylinderGeometry, DirectionalLight, Fog,
   Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, OrthographicCamera, PlaneGeometry, PointLight, Scene, SphereGeometry,
-  TubeGeometry, Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
+  Vector3, WebGLRenderer, InstancedMesh, Object3D, LineLoop, LineBasicMaterial,
   BufferGeometry, Raycaster, Plane, Vector2, DodecahedronGeometry, Float32BufferAttribute,
 } from 'three';
 import { disposeGroup, type Anim } from './kit3d';
@@ -73,7 +73,6 @@ const ZOOM_EASE = 12;
 
 const OBSIDIAN = '#3a3c48';
 const STEEL = '#4a4e58';
-const RED = '#ff2a3a';
 const LAMP = '#fff2b0';
 
 /** How far the cleared sand of a site eases back into the dunes (world units). */
@@ -125,27 +124,10 @@ function buildScene(): { scene: Scene; lamps: PointLight[]; outline: LineLoop } 
 
   // The ship itself is set apart (`setShip`, ui/ship3d.ts: it grows with each module built).
   const steel = textured(STEEL, metalTexture(0.6));
-  const red = glow(RED);
   // The dock (tentacles, clutter, floodlights) is drawn merged by material (merge3d.ts).
   const dock = new Group();
 
-  // Tentacles laid out on the sand, each ending in a glowing probe.
-  const tentacle = textured('#2c2f37', repeated(metalTexture(0.4), 10, 1), false, false); // (segment plates along it)
-  for (let k = 0; k < 7; k++) {
-    const a = (k / 7) * Math.PI * 2 + 0.3;
-    const pts: Vector3[] = [];
-    for (let t = 0; t <= 15; t++) {
-      const r = 8 + t, w = Math.sin(t / 2.5 + k) * 1.6;
-      const x = Math.cos(a) * r - Math.sin(a) * w, z = Math.sin(a) * r + Math.cos(a) * w;
-      if (Math.abs(x) > PLOT / 2 - 2 || Math.abs(z) > PLOT / 2 - 2) break; // (they stay inside the dock's plot)
-      pts.push(new Vector3(x, duneHeight(x, z) + 0.25, z)); // (half sunk in the sand)
-    }
-    if (pts.length < 3) continue;
-    dock.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 3, 0.45, 5), tentacle));
-    const tip = new Mesh(new SphereGeometry(0.6, 6, 4), red);
-    tip.position.copy(pts[pts.length - 1]);
-    dock.add(tip);
-  }
+  // (The tentacles are the ship's last module: ui/ship3d.ts.)
 
   // Settled in the sand: heaps drifted against its feet, crates of parts and a stack of spare plates by the dock.
   const sandHeap = textured(SAND_LOW, repeated(sandTexture(), 0.4, 0.4));
@@ -433,10 +415,14 @@ export function createDesert(onPlot: (k: number) => void = () => {}, start = DOC
     },
     setShip(modules) {
       if (ship) { scene.remove(ship); disposeGroup(ship); }
-      ship = mergeByMaterial(buildShip(modules));
-      ship.position.y = duneHeight(0, 0);
+      const sand = duneHeight(0, 0);
+      ship = mergeByMaterial(buildShip(modules, (x, z) => duneHeight(x, z) - sand));
+      ship.position.y = sand;
       beacon = null;
-      ship.traverse((o) => { if (o.userData.beacon) beacon = o; });
+      const parts: Group[] = [];
+      ship.traverse((o) => { if (o.userData.beacon) beacon = o; if (o.userData.anim) parts.push(o as Group); });
+      parts.forEach((o) => (o.userData.anim as Anim)(o, 0));
+      moving.set(DOCK_PLOT, parts); // (run like the buildings' moving parts)
       scene.add(ship);
     },
     select(k) { plot = k; zoom = 1; spin = 0; },

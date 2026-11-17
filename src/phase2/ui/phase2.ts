@@ -10,7 +10,7 @@ import { speedControl } from '../../shared/ui/speed';
 import { expeditionLevel } from '../core/attributes';
 import { bluetreriOffer, canResearch, pointsFree, pointsUseful, rates, systemsOf } from '../core/economy';
 import { techById, TECHS } from '../core/research';
-import { moduleById } from '../core/ship';
+import { moduleById, MODULES } from '../core/ship';
 import { STUDIES } from '../core/starmap';
 import type { P2State } from '../core/state';
 import { BUILDINGS, buildingTab, crewText } from './buildings';
@@ -69,7 +69,7 @@ export function showPhase2(root: HTMLElement, s: P2State, openMenu: () => void, 
   const name = (k: number) => {
     const b = BUILDINGS.find((x) => x.plot === k);
     if (b) return `AREA ${k + 1} · ${b.plate} · Lv ${s.levels[b.id]}`;
-    return k === DOCK_PLOT ? `AREA ${k + 1} · DRY DOCK · ${s.modules.length ? `the ship, ${s.modules.length}/8` : 'Black siphon'}` : `AREA ${k + 1} · empty`;
+    return k === DOCK_PLOT ? `AREA ${k + 1} · DRY DOCK · ${s.modules.length ? `the ship, ${s.modules.length}/${MODULES.length}` : 'Black siphon'}` : `AREA ${k + 1} · empty`;
   };
   let shownPlot = TELESCOPE_PLOT;
   const desert = createDesert((k) => {

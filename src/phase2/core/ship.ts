@@ -14,7 +14,9 @@ export interface Module {
   seconds: number;
 }
 
+/** In the order the dock shows them (ui/ship3d.ts): the frame first (the dock starts empty), the tentacles last. */
 export const MODULES: Module[] = [
+  { id: 'frame', name: 'Frame', note: 'legs, ribs and hoops of the bell', metal: 210000, data: 30000, samples: {}, seconds: 2400 },
   { id: 'hull', name: 'Hull', note: 'the bell becomes a hull', metal: 420000, data: 90000, samples: { iron: 30 }, seconds: 3600 },
   { id: 'tanks', name: 'Fuel tanks', note: 'cryogenic, in the keel', metal: 840000, data: 225000, samples: { ice: 45 }, seconds: 4860 },
   { id: 'life', name: 'Life support', note: 'air, water, greenhouses', metal: 1.12e+06, data: 540000, samples: { carbon: 60 }, seconds: 6060 },
@@ -23,6 +25,7 @@ export const MODULES: Module[] = [
   { id: 'cryo', name: 'Cryo bay', note: 'sleep through the voyage', metal: 4.03e+06, data: 3e+06, samples: { ice: 60, carbon: 60 }, seconds: 9660 },
   { id: 'shield', name: 'Shield', note: 'against dust at speed', metal: 5.82e+06, data: 4.8e+06, samples: { iron: 90, crystal: 60 }, seconds: 10860 },
   { id: 'core', name: 'Bluetreri core', note: 'the heart of the ship', metal: 8.96e+06, data: 7.5e+06, samples: { plasma: 90, crystal: 90 }, seconds: 14520 },
+  { id: 'tentacles', name: 'Tentacles', note: 'seven arms to land and gather', metal: 5.2e+06, data: 3.6e+06, samples: { iron: 40, carbon: 40 }, seconds: 9000 },
 ];
 
 /** Fuel the tanks must hold for the launch, litres. */
